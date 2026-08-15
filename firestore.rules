@@ -1,0 +1,102 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function getUserData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function isMaster() {
+      return isAuthenticated() && getUserData().role == "master";
+    }
+
+    function isStaff() {
+      return isAuthenticated() && (getUserData().role == "staff" || getUserData().role == "master");
+    }
+
+    function isActive() {
+      return isAuthenticated() && getUserData().status == "active";
+    }
+
+    // Users Collection
+    match /users/{userId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && request.auth.uid == userId;
+      allow update: if isMaster() || (isAuthenticated() && request.auth.uid == userId && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'status']));
+      allow delete: if isMaster();
+    }
+
+    // Access Requests Collection
+    match /accessRequests/{requestId} {
+      allow read: if isStaff() || (isAuthenticated() && request.auth.uid == requestId);
+      allow create: if isAuthenticated() && request.auth.uid == requestId;
+      allow update, delete: if isStaff();
+    }
+
+    // Request Messages Collection (Approval conversation)
+    match /requestMessages/{messageId} {
+      allow read: if isStaff() || (isAuthenticated() && resource.data.requestId == request.auth.uid);
+      allow create: if isAuthenticated() && (isStaff() || request.resource.data.requestId == request.auth.uid);
+    }
+
+    // Teams Collection
+    match /teams/{teamId} {
+      allow read: if isActive();
+      allow create: if isActive();
+      allow update: if isActive() && (isStaff() || resource.data.leaderId == request.auth.uid || resource.data.memberIds.hasAny([request.auth.uid]));
+      allow delete: if isStaff();
+    }
+
+    // Events Collection
+    match /events/{eventId} {
+      allow read: if isActive();
+      allow write: if isStaff();
+    }
+
+    // Posts / Achievements Collection
+    match /posts/{postId} {
+      allow read: if isActive();
+      allow create: if isActive();
+      allow update, delete: if isStaff() || (isActive() && resource.data.authorId == request.auth.uid);
+    }
+
+    // Announcements Collection
+    match /announcements/{announcementId} {
+      allow read: if isActive();
+      allow write: if isStaff();
+    }
+
+    // Notifications Collection
+    match /notifications/{notificationId} {
+      allow read: if isAuthenticated() && (resource.data.recipientId == request.auth.uid || isStaff());
+      allow create: if isAuthenticated();
+      allow update: if isAuthenticated() && resource.data.recipientId == request.auth.uid;
+      allow delete: if isStaff();
+    }
+
+    // Settings Collection
+    match /settings/{settingId} {
+      allow read: if isAuthenticated();
+      allow write: if isMaster();
+    }
+
+    // Activity Logs
+    match /activityLogs/{logId} {
+      allow read: if isStaff();
+      allow create: if isAuthenticated();
+    }
+
+    // System Notifications (created during registration & actions)
+    match /systemNotifications/{notifId} {
+      allow read: if isStaff();
+      allow create: if isAuthenticated();
+      allow update: if isStaff();
+      allow delete: if isMaster();
+    }
+  }
+}
