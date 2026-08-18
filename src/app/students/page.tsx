@@ -16,6 +16,7 @@ import { CopyField } from "@/components/ui/CopyField";
 import { EmptyState, LoadingState } from "@/components/ui/States";
 import { Modal } from "@/components/ui/Modal";
 import { Badge } from "@/components/ui/Badge";
+import { Button } from "@/components/ui/Button";
 import { normalizeForSearch } from "@/lib/utils";
 
 const DEPARTMENTS = [
@@ -283,7 +284,14 @@ function DirectoryContent() {
       )}
 
       {/* Student Detail Modal */}
-      <StudentModal student={selectedStudent} onClose={() => setSelectedStudent(null)} />
+      <StudentModal
+        student={selectedStudent}
+        onClose={() => setSelectedStudent(null)}
+        onFindAnother={(name) => {
+          setSelectedStudent(null);
+          setSearchQuery(name);
+        }}
+      />
     </div>
   );
 }
@@ -360,37 +368,41 @@ function StudentCard({ student, onOpen }: { student: User; onOpen: () => void })
       <div style={{ borderTop: "1px solid var(--color-border)", paddingTop: "0.625rem", display: "flex", justifyContent: "flex-end" }}
         onClick={(e) => e.stopPropagation()}
       >
-        <Link
-          href={`/students/${student.uid}`}
-          style={{ fontSize: "0.8125rem", fontWeight: 600, color: "var(--color-primary)", textDecoration: "none", display: "flex", alignItems: "center", gap: "4px" }}
-          onClick={(e) => e.stopPropagation()}
-        >
-          Full Profile →
-        </Link>
+        <span style={{ fontSize: "0.75rem", fontWeight: 600, color: "var(--color-muted)" }}>
+          Student profile
+        </span>
       </div>
     </div>
   );
 }
 
 // ── Student Detail Modal ──────────────────────────────────────
-function StudentModal({ student, onClose }: { student: User | null; onClose: () => void }) {
+function StudentModal({
+  student,
+  onClose,
+  onFindAnother,
+}: {
+  student: User | null;
+  onClose: () => void;
+  onFindAnother?: (name: string) => void;
+}) {
   if (!student) return null;
 
   const meta = [student.department, student.year && `${student.year} Year`, student.section && `Section ${student.section}`].filter(Boolean).join(" · ");
 
   return (
-    <Modal open={!!student} onClose={onClose} size="lg" title={student.name}>
-      <div style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }}>
+    <Modal open={!!student} onClose={onClose} size="xl" title={student.name}>
+      <div style={{ display: "flex", flexDirection: "column", gap: "1.25rem", maxHeight: "72vh", overflowY: "auto", paddingRight: "0.25rem" }}>
 
         {/* Profile hero */}
-        <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "1rem", border: "1px solid var(--color-border)", background: "var(--color-bg)", borderRadius: "14px", padding: "1rem" }}>
           <Avatar name={student.name} photoUrl={student.profilePhoto} size="xl" />
           <div>
-            <h2 style={{ fontWeight: 700, fontSize: "1.25rem" }}>{student.name}</h2>
+            <h2 style={{ fontWeight: 700, fontSize: "1.25rem", margin: 0 }}>{student.name}</h2>
             <p style={{ fontSize: "0.875rem", color: "var(--color-muted)", marginTop: "2px" }}>{meta}</p>
             {student.skills && student.skills.length > 0 && (
               <div style={{ display: "flex", flexWrap: "wrap", gap: "0.25rem", marginTop: "0.5rem" }}>
-                {student.skills.slice(0, 5).map((sk) => (
+                {student.skills.slice(0, 6).map((sk) => (
                   <span key={sk} style={{ fontSize: "11px", fontWeight: 600, background: "var(--blue-50)", color: "var(--blue-700)", padding: "2px 8px", borderRadius: "999px" }}>{sk}</span>
                 ))}
               </div>
@@ -398,54 +410,63 @@ function StudentModal({ student, onClose }: { student: User | null; onClose: () 
           </div>
         </div>
 
-        {/* Academic IDs */}
         <div>
           <p className="mm-profile-section-title">Academic</p>
           <div className="mm-profile-fields">
             <CopyField label="Register Number" value={student.registerNumber} />
             {student.rollNumber && <CopyField label="Roll Number" value={student.rollNumber} />}
-            {student.department && <CopyField label="Department" value={`${student.department} · ${student.year} Year · Sec ${student.section}`} />}
+            {student.department && <CopyField label="Department" value={`${student.department} · ${student.year || "N/A"} Year · Sec ${student.section || "N/A"}`} />}
+            {student.email && <CopyField label="College Email" value={student.email} />}
           </div>
         </div>
 
-        {/* Contact */}
         <div>
           <p className="mm-profile-section-title">Contact</p>
           <div className="mm-profile-fields">
-            <CopyField label="College Email" value={student.email} />
             {student.personalEmail && <CopyField label="Personal Email" value={student.personalEmail} />}
+            {student.alternateEmail && <CopyField label="Alternate Email" value={student.alternateEmail} />}
             {student.phone && <CopyField label="Phone" value={student.phone} />}
+            {student.parentPhoneNumber && <CopyField label="Parent/Guardian Phone" value={student.parentPhoneNumber} />}
+            {!student.parentPhoneNumber && <CopyField label="Parent/Guardian Phone" value={undefined} placeholder="To be updated" />}
+            {student.address && <CopyField label="Address" value={student.address} />}
           </div>
         </div>
 
-        {/* Social links */}
-        {(student.github || student.linkedIn || student.portfolio) && (
+        {(student.dateOfBirth || student.bloodGroup || student.aadhaarNumber) && (
           <div>
-            <p className="mm-profile-section-title">Links</p>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem" }}>
-              {student.github && (
-                <a href={student.github} target="_blank" rel="noreferrer" style={{ fontSize: "0.8125rem", fontWeight: 600, color: "var(--color-text)", background: "var(--color-surface-2)", padding: "5px 12px", borderRadius: "8px", textDecoration: "none", border: "1px solid var(--color-border)" }}>
-                  GitHub ↗
-                </a>
-              )}
-              {student.linkedIn && (
-                <a href={student.linkedIn} target="_blank" rel="noreferrer" style={{ fontSize: "0.8125rem", fontWeight: 600, color: "#0A66C2", background: "#EFF6FF", padding: "5px 12px", borderRadius: "8px", textDecoration: "none", border: "1px solid #DBEAFE" }}>
-                  LinkedIn ↗
-                </a>
-              )}
-              {student.portfolio && (
-                <a href={student.portfolio} target="_blank" rel="noreferrer" style={{ fontSize: "0.8125rem", fontWeight: 600, color: "var(--color-success)", background: "var(--color-success-bg)", padding: "5px 12px", borderRadius: "8px", textDecoration: "none", border: "1px solid var(--green-100)" }}>
-                  Portfolio ↗
-                </a>
-              )}
+            <p className="mm-profile-section-title">Personal Information</p>
+            <div className="mm-profile-fields">
+              {student.dateOfBirth && <CopyField label="Date of Birth" value={student.dateOfBirth} />}
+              {student.bloodGroup && <CopyField label="Blood Group" value={student.bloodGroup} />}
+              {student.aadhaarNumber && <CopyField label="Aadhaar Number" value={student.aadhaarNumber} masked />}
             </div>
           </div>
         )}
 
-        {/* Full profile link */}
-        <Link href={`/students/${student.uid}`} onClick={onClose} style={{ display: "block", textAlign: "center", fontWeight: 600, fontSize: "0.875rem", color: "var(--color-primary)", background: "var(--blue-50)", padding: "0.75rem", borderRadius: "10px", textDecoration: "none", border: "1px solid var(--blue-100)", transition: "background 0.15s" }}>
-          View Full Profile →
-        </Link>
+        {(student.github || student.linkedIn || student.portfolio || student.bio) && (
+          <div>
+            <p className="mm-profile-section-title">Links & Bio</p>
+            <div className="mm-profile-fields">
+              {student.github && <CopyField label="GitHub" value={student.github} />}
+              {student.linkedIn && <CopyField label="LinkedIn" value={student.linkedIn} />}
+              {student.portfolio && <CopyField label="Portfolio" value={student.portfolio} />}
+              {student.bio && <CopyField label="Bio" value={student.bio} />}
+            </div>
+          </div>
+        )}
+
+      </div>
+
+      <div style={{ display: "flex", justifyContent: "space-between", gap: "0.75rem", marginTop: "1rem", paddingTop: "0.75rem", borderTop: "1px solid var(--color-border)" }}>
+        <Button variant="secondary" onClick={onClose}>
+          Close
+        </Button>
+        <Button
+          variant="primary"
+          onClick={() => onFindAnother?.(student.name)}
+        >
+          Find Other Student
+        </Button>
       </div>
     </Modal>
   );

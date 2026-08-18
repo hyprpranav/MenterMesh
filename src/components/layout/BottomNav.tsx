@@ -10,6 +10,7 @@ import {
   LayoutDashboard, Users, UsersRound, Calendar,
   Bell, Megaphone, BookOpen, MoreHorizontal, X,
   UserCheck, Download, Settings, ShieldCheck, Layers,
+  User,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { cn } from "@/lib/utils";
@@ -22,6 +23,7 @@ const PRIMARY_NAV = [
 ];
 
 const MORE_NAV = [
+  { label: "Profile",       href: "/profile",       icon: User,       roles: ["student", "staff", "master"] },
   { label: "Community",     href: "/community",     icon: BookOpen,   roles: ["student", "staff", "master"] },
   { label: "Announcements", href: "/announcements", icon: Megaphone,  roles: ["student", "staff", "master"] },
   { label: "Notifications", href: "/notifications", icon: Bell,       roles: ["student", "staff", "master"] },

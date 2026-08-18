@@ -20,6 +20,7 @@ export interface User {
   registerNumber?: string;
   rollNumber?: string;
   phone?: string;
+  parentPhoneNumber?: string;  // Parent/Guardian phone number
   dateOfBirth?: string;
   personalEmail?: string;
   alternateEmail?: string;

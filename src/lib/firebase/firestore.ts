@@ -35,6 +35,12 @@ function getTimestampMs(val: any): number {
   return 0;
 }
 
+function stripUndefined<T extends Record<string, any>>(payload: T): Partial<T> {
+  return Object.fromEntries(
+    Object.entries(payload).filter(([, value]) => value !== undefined)
+  ) as Partial<T>;
+}
+
 // ─── Users ───────────────────────────────────────────────────
 export async function getUser(uid: string): Promise<User | null> {
   const snap = await getDoc(doc(db, "users", uid));
@@ -43,10 +49,10 @@ export async function getUser(uid: string): Promise<User | null> {
 }
 
 export async function updateUser(uid: string, data: Partial<User>): Promise<void> {
-  await updateDoc(doc(db, "users", uid), {
+  await updateDoc(doc(db, "users", uid), stripUndefined({
     ...data,
     updatedAt: serverTimestamp(),
-  });
+  }));
 }
 
 export async function getAllUsers(roleFilter?: string): Promise<User[]> {
@@ -123,7 +129,7 @@ export async function enrichStudentProfile(uid: string, data: Partial<User>): Pr
     }
   });
   cleanData.updatedAt = serverTimestamp();
-  await updateDoc(doc(db, "users", uid), cleanData);
+  await updateDoc(doc(db, "users", uid), stripUndefined(cleanData));
 }
 
 export function subscribeToUser(uid: string, callback: (user: User | null) => void) {
@@ -249,34 +255,34 @@ export async function getTeam(teamId: string): Promise<Team | null> {
 }
 
 export async function createTeam(data: Omit<Team, "id" | "createdAt" | "updatedAt">): Promise<string> {
-  const ref = await addDoc(collection(db, "teams"), {
+  const ref = await addDoc(collection(db, "teams"), stripUndefined({
     ...data,
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
-  });
+  }));
   return ref.id;
 }
 
 export async function updateTeam(teamId: string, data: Partial<Team>): Promise<void> {
-  await updateDoc(doc(db, "teams", teamId), {
+  await updateDoc(doc(db, "teams", teamId), stripUndefined({
     ...data,
     updatedAt: serverTimestamp(),
-  });
+  }));
 }
 
 export async function finalizeTeam(teamId: string): Promise<void> {
-  await updateDoc(doc(db, "teams", teamId), {
+  await updateDoc(doc(db, "teams", teamId), stripUndefined({
     status: "finalized",
     finalizedAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
-  });
+  }));
 }
 
 export async function deleteTeam(teamId: string): Promise<void> {
-  await updateDoc(doc(db, "teams", teamId), {
+  await updateDoc(doc(db, "teams", teamId), stripUndefined({
     status: "archived",
     updatedAt: serverTimestamp(),
-  });
+  }));
 }
 
 export async function reviewTeamProposal(
@@ -293,14 +299,14 @@ export async function reviewTeamProposal(
   const teamData = snap.data() as Team;
   const now = serverTimestamp();
 
-  await updateDoc(teamRef, {
+  await updateDoc(teamRef, stripUndefined({
     status: decision === "approved" ? "active" : "rejected",
     reviewedBy: reviewerId,
     reviewedByName: reviewerName,
     reviewedAt: now,
     reviewFeedback: feedback || undefined,
     updatedAt: now,
-  });
+  }));
 
   // Notify team leader & members
   const notifyIds = Array.from(
@@ -368,13 +374,13 @@ export async function removeMemberFromTeam(
   const memberIds = (teamData.memberIds || []).filter((id) => id !== memberId);
   const memberNames = (teamData.memberNames || []).filter((n) => n !== memberName);
 
-  await updateDoc(teamRef, {
+  await updateDoc(teamRef, stripUndefined({
     memberIds,
     memberNames,
     leaderId: teamData.leaderId === memberId ? undefined : teamData.leaderId,
     leaderName: teamData.leaderId === memberId ? undefined : teamData.leaderName,
     updatedAt: serverTimestamp(),
-  });
+  }));
 }
 
 export async function getUserTeams(uid: string): Promise<Team[]> {
@@ -408,19 +414,19 @@ export async function getEvent(eventId: string): Promise<Event | null> {
 }
 
 export async function createEvent(data: Omit<Event, "id" | "createdAt" | "updatedAt">): Promise<string> {
-  const ref = await addDoc(collection(db, "events"), {
+  const ref = await addDoc(collection(db, "events"), stripUndefined({
     ...data,
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
-  });
+  }));
   return ref.id;
 }
 
 export async function updateEvent(eventId: string, data: Partial<Event>): Promise<void> {
-  await updateDoc(doc(db, "events", eventId), {
+  await updateDoc(doc(db, "events", eventId), stripUndefined({
     ...data,
     updatedAt: serverTimestamp(),
-  });
+  }));
 }
 
 export async function reviewEventSubmission(
@@ -437,7 +443,7 @@ export async function reviewEventSubmission(
   const eventData = snap.data() as Event;
   const now = serverTimestamp();
 
-  await updateDoc(eventRef, {
+  await updateDoc(eventRef, stripUndefined({
     submissionStatus: status,
     status: status === "approved" ? "completed" : eventData.status || "upcoming",
     reviewedBy: reviewerId,
@@ -445,7 +451,7 @@ export async function reviewEventSubmission(
     reviewedAt: now,
     reviewFeedback: feedback || undefined,
     updatedAt: now,
-  });
+  }));
 
   // Notify student
   if (eventData.submittedBy) {
@@ -513,11 +519,11 @@ export async function getPosts(limitCount = 20): Promise<Post[]> {
 }
 
 export async function createPost(data: Omit<Post, "id" | "createdAt" | "updatedAt">): Promise<string> {
-  const ref = await addDoc(collection(db, "posts"), {
+  const ref = await addDoc(collection(db, "posts"), stripUndefined({
     ...data,
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
-  });
+  }));
   return ref.id;
 }
 
@@ -542,10 +548,10 @@ export async function getAnnouncements(): Promise<Announcement[]> {
 }
 
 export async function createAnnouncement(data: Omit<Announcement, "id" | "createdAt">): Promise<string> {
-  const ref = await addDoc(collection(db, "announcements"), {
+  const ref = await addDoc(collection(db, "announcements"), stripUndefined({
     ...data,
     createdAt: serverTimestamp(),
-  });
+  }));
   return ref.id;
 }
 
@@ -606,10 +612,10 @@ export function subscribeToNotifications(
 
 // ─── Activity Logs ───────────────────────────────────────────
 export async function logActivity(data: Omit<ActivityLog, "id" | "createdAt">): Promise<void> {
-  await addDoc(collection(db, "activityLogs"), {
+  await addDoc(collection(db, "activityLogs"), stripUndefined({
     ...data,
     createdAt: serverTimestamp(),
-  });
+  }));
 }
 
 export async function getActivityLogs(limitCount = 50): Promise<ActivityLog[]> {

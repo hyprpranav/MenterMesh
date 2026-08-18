@@ -8,7 +8,7 @@ import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { AppShell } from "@/components/layout/AppShell";
 import { useAuth } from "@/contexts/AuthContext";
-import { getUser, getUserTeams } from "@/lib/firebase/firestore";
+import { getAllUsers, getUser, getUserTeams } from "@/lib/firebase/firestore";
 import type { User, Team } from "@/types";
 import { Avatar } from "@/components/ui/Avatar";
 import { CopyField } from "@/components/ui/CopyField";
@@ -27,15 +27,20 @@ export default function StudentProfilePage() {
 
   const [student, setStudent] = useState<User | null>(null);
   const [teams,   setTeams]   = useState<Team[]>([]);
+  const [staffMembers, setStaffMembers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [pageErr, setPageErr] = useState("");
 
   useEffect(() => {
     if (!uid) return;
-    Promise.all([getUser(uid), getUserTeams(uid)])
-      .then(([u, t]) => {
+    Promise.all([getUser(uid), getUserTeams(uid), getAllUsers()])
+      .then(([u, t, allUsers]) => {
         if (!u) setPageErr("Student record not found.");
-        else { setStudent(u); setTeams(t); }
+        else {
+          setStudent(u);
+          setTeams(t);
+          setStaffMembers((allUsers || []).filter((member) => member.role === "staff" || member.role === "master"));
+        }
       })
       .catch(() => setPageErr("Unable to load student profile."))
       .finally(() => setLoading(false));
@@ -221,6 +226,41 @@ export default function StudentProfilePage() {
                   </Link>
                 );
               })}
+            </div>
+          </div>
+        )}
+
+        {/* Faculty & Staff */}
+        {staffMembers.length > 0 && (
+          <div className="mm-card" style={{ background: "linear-gradient(180deg, rgba(15,23,42,0.88), rgba(15,23,42,0.96))", borderColor: "rgba(148,163,184,0.4)" }}>
+            <p className="mm-profile-section-title" style={{ marginBottom: "0.75rem", color: "#E2E8F0" }}>Faculty & Staff</p>
+            <div style={{ display: "flex", flexDirection: "column", gap: "0.625rem" }}>
+              {staffMembers.map((member) => (
+                <Link key={member.uid} href={`/students/${member.uid}`} style={{ textDecoration: "none" }}>
+                  <div style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    gap: "0.75rem",
+                    padding: "0.8rem 0.9rem",
+                    borderRadius: "12px",
+                    border: "1px solid rgba(148,163,184,0.3)",
+                    background: "rgba(30,41,59,0.7)",
+                    color: "#F8FAFC",
+                  }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "0.625rem", minWidth: 0 }}>
+                      <Avatar name={member.name} photoUrl={member.profilePhoto} size="sm" />
+                      <div style={{ minWidth: 0 }}>
+                        <p style={{ fontWeight: 700, fontSize: "0.875rem", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "#F8FAFC" }}>{member.name}</p>
+                        <p style={{ fontSize: "0.75rem", color: "#CBD5E1", marginTop: "2px" }}>{member.role === "master" ? "Master" : "Staff / Faculty"}</p>
+                      </div>
+                    </div>
+                    <span style={{ fontSize: "0.7rem", fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: "#E2E8F0", background: "rgba(148,163,184,0.14)", border: "1px solid rgba(148,163,184,0.25)", borderRadius: "999px", padding: "5px 8px" }}>
+                      {member.department || "Faculty"}
+                    </span>
+                  </div>
+                </Link>
+              ))}
             </div>
           </div>
         )}
