@@ -80,6 +80,21 @@ export default function TeamDetailPage() {
   const [joinRequested, setJoinRequested] = useState(false);
   const [requesting, setRequesting] = useState(false);
 
+  // ── HOOKS MUST ALL BE BEFORE EARLY RETURNS ──
+  // Filter students who are not already in team (safe when team is null)
+  const availableToAdd = useMemo(() => {
+    const currentIds = team?.memberIds || [];
+    const pool = allStudents.filter((s) => !currentIds.includes(s.uid));
+    if (!memberSearch.trim()) return pool.slice(0, 10);
+    const q = memberSearch.toLowerCase();
+    return pool.filter(
+      (s) =>
+        s.name.toLowerCase().includes(q) ||
+        (s.registerNumber && s.registerNumber.toLowerCase().includes(q)) ||
+        (s.department && s.department.toLowerCase().includes(q))
+    );
+  }, [allStudents, team?.memberIds, memberSearch]);
+
   const loadTeamData = async () => {
     if (!teamId) return;
     try {
@@ -264,19 +279,7 @@ export default function TeamDetailPage() {
     }
   };
 
-  // Filter students who are not already in team
-  const availableToAdd = useMemo(() => {
-    const currentIds = team.memberIds || [];
-    const pool = allStudents.filter((s) => !currentIds.includes(s.uid));
-    if (!memberSearch.trim()) return pool.slice(0, 10);
-    const q = memberSearch.toLowerCase();
-    return pool.filter(
-      (s) =>
-        s.name.toLowerCase().includes(q) ||
-        (s.registerNumber && s.registerNumber.toLowerCase().includes(q)) ||
-        (s.department && s.department.toLowerCase().includes(q))
-    );
-  }, [allStudents, team.memberIds, memberSearch]);
+  // availableToAdd is computed above (before early returns) to satisfy Rules of Hooks
 
   return (
     <AppShell>

@@ -644,3 +644,56 @@ export async function updateSettings(data: Record<string, unknown>): Promise<voi
     updatedAt: serverTimestamp(),
   }, { merge: true });
 }
+
+// ─── Team Chat ────────────────────────────────────────────────
+export interface TeamChatMessage {
+  id: string;
+  senderId: string;
+  senderName: string;
+  senderPhoto?: string;
+  text: string;
+  createdAt: any;
+}
+
+export async function sendTeamMessage(
+  teamId: string,
+  senderId: string,
+  senderName: string,
+  text: string,
+  senderPhoto?: string
+): Promise<void> {
+  await addDoc(
+    collection(db, "teamChats", teamId, "messages"),
+    stripUndefined({
+      senderId,
+      senderName,
+      senderPhoto: senderPhoto || undefined,
+      text: text.trim(),
+      createdAt: serverTimestamp(),
+    })
+  );
+}
+
+export function subscribeToTeamChat(
+  teamId: string,
+  callback: (msgs: TeamChatMessage[]) => void
+) {
+  return onSnapshot(
+    query(
+      collection(db, "teamChats", teamId, "messages"),
+      orderBy("createdAt", "asc"),
+      limit(200)
+    ),
+    (snap) => {
+      const msgs = snap.docs.map((d) => ({
+        id: d.id,
+        ...d.data(),
+      })) as TeamChatMessage[];
+      callback(msgs);
+    },
+    (err) => {
+      console.error("subscribeToTeamChat error:", err);
+      callback([]);
+    }
+  );
+}

@@ -3,7 +3,7 @@
 // ============================================================
 // MentorMesh — Teams List Page, Member Selection & Staff Approval Workflow
 // ============================================================
-import React, { useEffect, useState, useMemo } from "react";
+import React, { useEffect, useState, useMemo, useRef } from "react";
 import Link from "next/link";
 import { AppShell } from "@/components/layout/AppShell";
 import { useAuth } from "@/contexts/AuthContext";
@@ -13,6 +13,9 @@ import {
   getEvents,
   getActiveStudents,
   reviewTeamProposal,
+  sendTeamMessage,
+  subscribeToTeamChat,
+  type TeamChatMessage,
 } from "@/lib/firebase/firestore";
 import type { Team, Event, User } from "@/types";
 import { Button } from "@/components/ui/Button";
@@ -33,10 +36,57 @@ import {
   Clock,
   AlertCircle,
   Sparkles,
+  Info,
+  MessageCircle,
+  ArrowLeft,
+  Send,
+  Calendar,
+  Shield,
+  Users,
+  ChevronRight,
 } from "lucide-react";
 import { EmptyState, LoadingState } from "@/components/ui/States";
 import { useToast } from "@/components/ui/ToastProvider";
 
+// ── Helpers ────────────────────────────────────────────────────
+function formatDateTime(val: any): string {
+  if (!val) return "—";
+  let ms = 0;
+  if (typeof val === "object" && typeof val.seconds === "number") {
+    ms = val.seconds * 1000;
+  } else if (typeof val === "string") {
+    ms = new Date(val).getTime();
+  } else if (typeof val === "number") {
+    ms = val;
+  }
+  if (!ms) return "—";
+  const d = new Date(ms);
+  return d.toLocaleString("en-IN", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: true,
+  });
+}
+
+function formatChatTime(val: any): string {
+  if (!val) return "";
+  let ms = 0;
+  if (typeof val === "object" && typeof val.seconds === "number") {
+    ms = val.seconds * 1000;
+  } else if (typeof val === "string") {
+    ms = new Date(val).getTime();
+  } else if (typeof val === "number") {
+    ms = val;
+  }
+  if (!ms) return "";
+  const d = new Date(ms);
+  return d.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true });
+}
+
+// ── Main Page ──────────────────────────────────────────────────
 export default function TeamsPage() {
   return (
     <AppShell>
@@ -45,6 +95,7 @@ export default function TeamsPage() {
   );
 }
 
+// ── Teams Content ──────────────────────────────────────────────
 function TeamsContent() {
   const { user } = useAuth();
   const { success, error, warning } = useToast();
@@ -54,7 +105,7 @@ function TeamsContent() {
   const [loading, setLoading] = useState(true);
   const [filterStatus, setFilterStatus] = useState("all");
 
-  // Create Team Modal State
+  // Create Team Modal
   const [createOpen, setCreateOpen] = useState(false);
   const [name, setName] = useState("");
   const [eventId, setEventId] = useState("");
@@ -65,10 +116,14 @@ function TeamsContent() {
   const [submitForApproval, setSubmitForApproval] = useState(true);
   const [creating, setCreating] = useState(false);
 
-  // Staff Review Modal State
+  // Staff Reject Modal
   const [rejectingTeam, setRejectingTeam] = useState<Team | null>(null);
   const [rejectReason, setRejectReason] = useState("");
   const [actionLoading, setActionLoading] = useState(false);
+
+  // Team Info Panel
+  const [infoTeam, setInfoTeam] = useState<Team | null>(null);
+  const [infoView, setInfoView] = useState<"info" | "chat">("info");
 
   const isStaff = user?.role === "staff" || user?.role === "master";
 
@@ -93,7 +148,6 @@ function TeamsContent() {
     loadData();
   }, []);
 
-  // When opening Create Modal, pre-populate user as member & leader
   const handleOpenCreate = () => {
     if (user) {
       setSelectedMemberIds([user.uid]);
@@ -107,20 +161,15 @@ function TeamsContent() {
     setCreateOpen(true);
   };
 
-  // Toggle member selection in Create modal
   const handleToggleMember = (st: User) => {
     if (selectedMemberIds.includes(st.uid)) {
       const next = selectedMemberIds.filter((id) => id !== st.uid);
       setSelectedMemberIds(next);
-      if (selectedLeaderId === st.uid) {
-        setSelectedLeaderId(next[0] || "");
-      }
+      if (selectedLeaderId === st.uid) setSelectedLeaderId(next[0] || "");
     } else {
       const next = [...selectedMemberIds, st.uid];
       setSelectedMemberIds(next);
-      if (!selectedLeaderId) {
-        setSelectedLeaderId(st.uid);
-      }
+      if (!selectedLeaderId) setSelectedLeaderId(st.uid);
     }
   };
 
@@ -131,27 +180,21 @@ function TeamsContent() {
       warning("Please select at least one team member.");
       return;
     }
-
     setCreating(true);
     const selectedEv = events.find((ev) => ev.id === eventId);
-
-    // Collect member names
     const memberNames = selectedMemberIds.map((id) => {
       if (id === user.uid) return user.name;
-      const found = availableStudents.find((s) => s.uid === id);
-      return found?.name || id;
+      return availableStudents.find((s) => s.uid === id)?.name || id;
     });
-
     const leaderObj =
       selectedLeaderId === user.uid
         ? user
         : availableStudents.find((s) => s.uid === selectedLeaderId);
-
     const initialStatus = isStaff
       ? "approved"
       : submitForApproval
-      ? "pending_approval"
-      : "draft";
+        ? "pending_approval"
+        : "draft";
 
     try {
       await createTeam({
@@ -167,13 +210,11 @@ function TeamsContent() {
         createdBy: user.uid,
         createdByName: user.name,
       });
-
-      if (submitForApproval && !isStaff) {
-        success(`Team "${name}" created & submitted for staff approval! 🚀`);
-      } else {
-        success(`Team "${name}" created successfully.`);
-      }
-
+      success(
+        submitForApproval && !isStaff
+          ? `Team "${name}" created & submitted for staff approval! 🚀`
+          : `Team "${name}" created successfully.`
+      );
       setCreateOpen(false);
       await loadData();
     } catch (err) {
@@ -184,7 +225,6 @@ function TeamsContent() {
     }
   };
 
-  // Staff 1-click Approve
   const handleApproveTeam = async (t: Team) => {
     if (!user) return;
     setActionLoading(true);
@@ -199,7 +239,6 @@ function TeamsContent() {
     }
   };
 
-  // Staff Reject
   const handleConfirmReject = async () => {
     if (!rejectingTeam || !user) return;
     setActionLoading(true);
@@ -222,7 +261,6 @@ function TeamsContent() {
     }
   };
 
-  // Filtered members in picker
   const filteredAvailableStudents = useMemo(() => {
     if (!studentSearch.trim()) return availableStudents.slice(0, 15);
     const q = studentSearch.toLowerCase();
@@ -255,6 +293,11 @@ function TeamsContent() {
     { id: "finalized", label: "Finalized" },
   ];
 
+  const handleOpenInfo = (team: Team) => {
+    setInfoTeam(team);
+    setInfoView("info");
+  };
+
   return (
     <div className="space-y-6 w-full mm-page-animate">
       <PageHeader
@@ -285,7 +328,6 @@ function TeamsContent() {
 
       <Tabs tabs={tabs} activeTab={filterStatus} onTabChange={setFilterStatus} />
 
-      {/* Grid */}
       {loading ? (
         <LoadingState message="Loading teams..." />
       ) : filteredTeams.length === 0 ? (
@@ -308,13 +350,25 @@ function TeamsContent() {
                 setRejectingTeam(t);
                 setRejectReason("");
               }}
+              onViewInfo={() => handleOpenInfo(t)}
               actionLoading={actionLoading}
             />
           ))}
         </div>
       )}
 
-      {/* Create Team Modal */}
+      {/* ── Team Info + Chat Panel ────────────────────────── */}
+      {infoTeam && (
+        <TeamInfoPanel
+          team={infoTeam}
+          currentUser={user}
+          view={infoView}
+          onViewChange={setInfoView}
+          onClose={() => setInfoTeam(null)}
+        />
+      )}
+
+      {/* ── Create Team Modal ─────────────────────────────── */}
       <Modal
         open={createOpen}
         onClose={() => setCreateOpen(false)}
@@ -336,8 +390,8 @@ function TeamsContent() {
               {isStaff
                 ? "Create Approved Team"
                 : submitForApproval
-                ? "Submit for Staff Approval"
-                : "Save as Draft"}
+                  ? "Submit for Staff Approval"
+                  : "Save as Draft"}
             </Button>
           </>
         }
@@ -372,7 +426,6 @@ function TeamsContent() {
                 ))}
               </select>
             </div>
-
             <div>
               <label className="mm-label">Team Leader</label>
               <select
@@ -395,7 +448,6 @@ function TeamsContent() {
             </div>
           </div>
 
-          {/* Member Selection Box */}
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <label className="mm-label mb-0">
@@ -404,7 +456,6 @@ function TeamsContent() {
               <span className="text-xs text-slate-500">Click to add/remove</span>
             </div>
 
-            {/* Selected Member Chips */}
             {selectedMemberIds.length > 0 && (
               <div className="flex flex-wrap gap-1.5 p-2 bg-slate-50 rounded-xl border border-slate-200">
                 {selectedMemberIds.map((id) => {
@@ -416,11 +467,10 @@ function TeamsContent() {
                   return (
                     <span
                       key={id}
-                      className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold ${
-                        isLeader
+                      className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold ${isLeader
                           ? "bg-amber-100 text-amber-800 border border-amber-300"
                           : "bg-blue-100 text-blue-800 border border-blue-200"
-                      }`}
+                        }`}
                     >
                       {isLeader && <Star size={11} fill="currentColor" />}
                       {s?.name || id} {id === user?.uid ? "(You)" : ""}
@@ -439,7 +489,6 @@ function TeamsContent() {
               </div>
             )}
 
-            {/* Student Search & List */}
             <div className="border border-slate-200 rounded-xl p-2.5 space-y-2 bg-white">
               <div className="relative">
                 <Search
@@ -467,11 +516,10 @@ function TeamsContent() {
                       <div
                         key={st.uid}
                         onClick={() => handleToggleMember(st)}
-                        className={`flex items-center justify-between p-2 rounded-lg cursor-pointer text-xs transition-colors ${
-                          isSelected
+                        className={`flex items-center justify-between p-2 rounded-lg cursor-pointer text-xs transition-colors ${isSelected
                             ? "bg-blue-50/80 border border-blue-200 text-blue-900 font-semibold"
                             : "hover:bg-slate-50 border border-transparent text-slate-700"
-                        }`}
+                          }`}
                       >
                         <div className="flex items-center gap-2 min-w-0">
                           <Avatar name={st.name} photoUrl={st.profilePhoto} size="sm" />
@@ -485,7 +533,6 @@ function TeamsContent() {
                             </p>
                           </div>
                         </div>
-
                         <div className="shrink-0 ml-2">
                           {isSelected ? (
                             <span className="w-5 h-5 rounded-full bg-blue-600 text-white flex items-center justify-center">
@@ -536,12 +583,12 @@ function TeamsContent() {
         </form>
       </Modal>
 
-      {/* Reject Modal */}
+      {/* ── Reject Modal ─────────────────────────────────── */}
       <Modal
         open={!!rejectingTeam}
         onClose={() => setRejectingTeam(null)}
         title={rejectingTeam ? `Reject Team: ${rejectingTeam.name}` : "Reject Team"}
-        description="Provide feedback to the student leader explaining the rejection or requesting modifications."
+        description="Provide feedback to the student leader explaining the rejection."
         size="sm"
         footer={
           <>
@@ -573,12 +620,14 @@ function TeamsContent() {
   );
 }
 
+// ── TeamCard ───────────────────────────────────────────────────
 function TeamCard({
   team,
   currentUserId,
   isStaff,
   onApprove,
   onReject,
+  onViewInfo,
   actionLoading,
 }: {
   team: Team;
@@ -586,6 +635,7 @@ function TeamCard({
   isStaff?: boolean;
   onApprove?: () => void;
   onReject?: () => void;
+  onViewInfo: () => void;
   actionLoading?: boolean;
 }) {
   const isPending = team.status === "pending_approval";
@@ -593,13 +643,12 @@ function TeamCard({
 
   return (
     <div
-      className={`mm-card flex flex-col justify-between space-y-4 transition-all ${
-        isPending
+      className={`mm-card flex flex-col justify-between space-y-4 transition-all ${isPending
           ? "border-amber-300 bg-amber-50/20 shadow-sm"
           : isRejected
-          ? "border-red-200 bg-red-50/10"
-          : "hover:border-blue-300"
-      }`}
+            ? "border-red-200 bg-red-50/10"
+            : "hover:border-blue-300"
+        }`}
     >
       <div className="space-y-2.5">
         <div className="flex justify-between items-start gap-2">
@@ -617,7 +666,6 @@ function TeamCard({
           <p className="text-xs text-slate-600 line-clamp-2">{team.description}</p>
         )}
 
-        {/* Member names */}
         <div className="text-xs text-slate-600 pt-2 border-t border-slate-100">
           <p>
             <span className="font-semibold text-slate-700">
@@ -635,7 +683,6 @@ function TeamCard({
           </p>
         )}
 
-        {/* Staff reviewer note or rejection note */}
         {team.reviewedByName && (
           <p className="text-[11px] text-slate-500">
             Reviewed by <strong>{team.reviewedByName}</strong>
@@ -651,7 +698,6 @@ function TeamCard({
 
       {/* Action Footer */}
       <div className="pt-2 border-t border-slate-100 space-y-2">
-        {/* Staff Quick Action Bar for Pending Teams */}
         {isStaff && isPending && (
           <div className="flex items-center gap-2 pt-1">
             <Button
@@ -679,14 +725,673 @@ function TeamCard({
 
         <div className="flex items-center justify-between text-xs text-slate-400">
           <span>By {team.createdByName}</span>
-          <Link
-            href={`/teams/${team.id}`}
-            className="font-semibold text-blue-600 hover:text-blue-800 hover:underline"
-          >
-            View Details →
-          </Link>
+          <div className="flex items-center gap-2">
+            {/* View Info Button */}
+            <button
+              onClick={onViewInfo}
+              className="inline-flex items-center gap-1 text-xs font-semibold text-blue-600 hover:text-blue-800 hover:bg-blue-50 px-2 py-1 rounded-lg transition-colors cursor-pointer border border-transparent hover:border-blue-200"
+            >
+              <Info size={12} />
+              View Info
+            </button>
+            <Link
+              href={`/teams/${team.id}`}
+              className="font-semibold text-slate-500 hover:text-slate-700 hover:underline"
+            >
+              Details →
+            </Link>
+          </div>
         </div>
       </div>
     </div>
+  );
+}
+
+// ── TeamInfoPanel — slide-over with Info & WhatsApp Chat ───────
+function TeamInfoPanel({
+  team,
+  currentUser,
+  view,
+  onViewChange,
+  onClose,
+}: {
+  team: Team;
+  currentUser: any;
+  view: "info" | "chat";
+  onViewChange: (v: "info" | "chat") => void;
+  onClose: () => void;
+}) {
+  // Chat state
+  const [messages, setMessages] = useState<TeamChatMessage[]>([]);
+  const [chatText, setChatText] = useState("");
+  const [sending, setSending] = useState(false);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  // Subscribe to real-time messages
+  useEffect(() => {
+    const unsub = subscribeToTeamChat(team.id, setMessages);
+    return () => unsub();
+  }, [team.id]);
+
+  // Auto-scroll to bottom when messages change and in chat view
+  useEffect(() => {
+    if (view === "chat") {
+      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [messages, view]);
+
+  // Focus input when switching to chat view
+  useEffect(() => {
+    if (view === "chat") {
+      setTimeout(() => inputRef.current?.focus(), 100);
+    }
+  }, [view]);
+
+  const handleSend = async () => {
+    if (!chatText.trim() || !currentUser) return;
+    setSending(true);
+    try {
+      await sendTeamMessage(
+        team.id,
+        currentUser.uid,
+        currentUser.name,
+        chatText.trim(),
+        currentUser.profilePhoto
+      );
+      setChatText("");
+      inputRef.current?.focus();
+    } catch (e) {
+      console.error("Send message error:", e);
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      handleSend();
+    }
+  };
+
+  return (
+    <>
+      {/* Backdrop */}
+      <div
+        onClick={onClose}
+        style={{
+          position: "fixed",
+          inset: 0,
+          background: "rgba(0,0,0,0.4)",
+          zIndex: 55,
+          animation: "mm-overlay-in 0.2s ease",
+        }}
+      />
+
+      {/* Panel */}
+      <div
+        style={{
+          position: "fixed",
+          top: 0,
+          right: 0,
+          bottom: 0,
+          width: "min(420px, 100vw)",
+          background: "var(--color-surface)",
+          zIndex: 60,
+          display: "flex",
+          flexDirection: "column",
+          boxShadow: "var(--shadow-xl)",
+          animation: "mm-panel-in 0.28s cubic-bezier(0.32,0.72,0,1)",
+        }}
+      >
+        {/* ── Panel Header ── */}
+        <div
+          style={{
+            padding: "1rem 1.25rem",
+            borderBottom: "1px solid var(--color-border)",
+            display: "flex",
+            alignItems: "center",
+            gap: "0.75rem",
+            flexShrink: 0,
+            background: "var(--color-surface)",
+          }}
+        >
+          {view === "chat" ? (
+            <button
+              onClick={() => onViewChange("info")}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                width: 32,
+                height: 32,
+                borderRadius: 8,
+                border: "none",
+                background: "var(--color-surface-2)",
+                cursor: "pointer",
+                color: "var(--color-muted)",
+                flexShrink: 0,
+              }}
+            >
+              <ArrowLeft size={16} />
+            </button>
+          ) : (
+            <div
+              style={{
+                width: 36,
+                height: 36,
+                borderRadius: 10,
+                background: "var(--color-primary-light)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                flexShrink: 0,
+              }}
+            >
+              <Users size={18} color="var(--color-primary)" />
+            </div>
+          )}
+
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <p
+              style={{
+                fontWeight: 700,
+                fontSize: 15,
+                color: "var(--color-text)",
+                whiteSpace: "nowrap",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+              }}
+            >
+              {view === "chat" ? `💬 ${team.name}` : team.name}
+            </p>
+            {view === "chat" && (
+              <p style={{ fontSize: 11, color: "var(--color-muted)" }}>
+                {team.memberIds.length} members · Group Chat
+              </p>
+            )}
+            {view === "info" && (
+              <p style={{ fontSize: 11, color: "var(--color-muted)" }}>
+                Team Information
+              </p>
+            )}
+          </div>
+
+          <button
+            onClick={onClose}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              width: 32,
+              height: 32,
+              borderRadius: 8,
+              border: "none",
+              background: "var(--color-surface-2)",
+              cursor: "pointer",
+              color: "var(--color-muted)",
+              flexShrink: 0,
+            }}
+          >
+            <X size={16} />
+          </button>
+        </div>
+
+        {/* ── Info View ── */}
+        {view === "info" && (
+          <div style={{ flex: 1, overflowY: "auto", padding: "1.25rem" }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+
+              {/* Status Badge */}
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  padding: "0.75rem 1rem",
+                  background: "var(--color-surface-2)",
+                  borderRadius: 12,
+                  border: "1px solid var(--color-border)",
+                }}
+              >
+                <span style={{ fontSize: 13, fontWeight: 600, color: "var(--color-text)" }}>
+                  Status
+                </span>
+                <Badge variant={teamStatusBadge(team.status).variant}>
+                  {teamStatusBadge(team.status).label}
+                </Badge>
+              </div>
+
+              {/* Description */}
+              {team.description && (
+                <div
+                  style={{
+                    padding: "0.875rem 1rem",
+                    background: "#EFF6FF",
+                    borderRadius: 12,
+                    border: "1px solid #DBEAFE",
+                  }}
+                >
+                  <p style={{ fontSize: 12, fontWeight: 700, color: "#1E40AF", marginBottom: 4 }}>
+                    About
+                  </p>
+                  <p style={{ fontSize: 13, color: "#1D4ED8", lineHeight: 1.55 }}>
+                    {team.description}
+                  </p>
+                </div>
+              )}
+
+              {/* Timeline */}
+              <div
+                style={{
+                  padding: "0.875rem 1rem",
+                  background: "var(--color-surface)",
+                  borderRadius: 12,
+                  border: "1px solid var(--color-border)",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "0.75rem",
+                }}
+              >
+                <p style={{ fontSize: 12, fontWeight: 700, color: "var(--color-text-2)", marginBottom: 2 }}>
+                  Timeline
+                </p>
+
+                {/* Submitted */}
+                <div style={{ display: "flex", alignItems: "flex-start", gap: "0.625rem" }}>
+                  <div
+                    style={{
+                      width: 28,
+                      height: 28,
+                      borderRadius: 8,
+                      background: "#FEF3C7",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      flexShrink: 0,
+                    }}
+                  >
+                    <Calendar size={14} color="#D97706" />
+                  </div>
+                  <div>
+                    <p style={{ fontSize: 11, fontWeight: 600, color: "var(--color-muted)" }}>
+                      Submitted by {team.createdByName}
+                    </p>
+                    <p style={{ fontSize: 13, fontWeight: 600, color: "var(--color-text)" }}>
+                      {formatDateTime(team.createdAt)}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Approved / Reviewed */}
+                {team.reviewedByName && (
+                  <div style={{ display: "flex", alignItems: "flex-start", gap: "0.625rem" }}>
+                    <div
+                      style={{
+                        width: 28,
+                        height: 28,
+                        borderRadius: 8,
+                        background: team.status === "rejected" ? "#FFE4E6" : "#DCFCE7",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        flexShrink: 0,
+                      }}
+                    >
+                      <Shield
+                        size={14}
+                        color={team.status === "rejected" ? "#DC2626" : "#16A34A"}
+                      />
+                    </div>
+                    <div>
+                      <p style={{ fontSize: 11, fontWeight: 600, color: "var(--color-muted)" }}>
+                        {team.status === "rejected" ? "Rejected" : "Approved"} by{" "}
+                        {team.reviewedByName}
+                      </p>
+                      <p style={{ fontSize: 13, fontWeight: 600, color: "var(--color-text)" }}>
+                        {formatDateTime(team.reviewedAt)}
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                {/* Finalized */}
+                {team.finalizedAt && (
+                  <div style={{ display: "flex", alignItems: "flex-start", gap: "0.625rem" }}>
+                    <div
+                      style={{
+                        width: 28,
+                        height: 28,
+                        borderRadius: 8,
+                        background: "#EFF6FF",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        flexShrink: 0,
+                      }}
+                    >
+                      <CheckCircle2 size={14} color="#2563EB" />
+                    </div>
+                    <div>
+                      <p style={{ fontSize: 11, fontWeight: 600, color: "var(--color-muted)" }}>
+                        Finalized
+                      </p>
+                      <p style={{ fontSize: 13, fontWeight: 600, color: "var(--color-text)" }}>
+                        {formatDateTime(team.finalizedAt)}
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Members List */}
+              <div
+                style={{
+                  background: "var(--color-surface)",
+                  borderRadius: 12,
+                  border: "1px solid var(--color-border)",
+                  overflow: "hidden",
+                }}
+              >
+                <div
+                  style={{
+                    padding: "0.75rem 1rem",
+                    borderBottom: "1px solid var(--color-border)",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "0.5rem",
+                  }}
+                >
+                  <Users size={14} color="var(--color-muted)" />
+                  <p style={{ fontSize: 13, fontWeight: 700, color: "var(--color-text)" }}>
+                    Members ({team.memberIds.length})
+                  </p>
+                </div>
+
+                <div style={{ padding: "0.5rem" }}>
+                  {(team.memberNames || []).map((memberName, idx) => {
+                    const isLeader = memberName === team.leaderName;
+                    return (
+                      <div
+                        key={idx}
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "0.625rem",
+                          padding: "0.5rem 0.625rem",
+                          borderRadius: 8,
+                          background: isLeader ? "#FFFBEB" : "transparent",
+                        }}
+                      >
+                        <Avatar name={memberName} size="sm" />
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <p
+                            style={{
+                              fontSize: 13,
+                              fontWeight: isLeader ? 700 : 500,
+                              color: "var(--color-text)",
+                              whiteSpace: "nowrap",
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                            }}
+                          >
+                            {memberName}
+                          </p>
+                        </div>
+                        {isLeader && (
+                          <span
+                            style={{
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: 3,
+                              fontSize: 10,
+                              fontWeight: 700,
+                              color: "#D97706",
+                              background: "#FEF3C7",
+                              border: "1px solid #FDE68A",
+                              borderRadius: 99,
+                              padding: "2px 7px",
+                              flexShrink: 0,
+                            }}
+                          >
+                            <Star size={9} fill="currentColor" />
+                            Leader
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Rejection feedback */}
+              {team.reviewFeedback && team.status === "rejected" && (
+                <div
+                  style={{
+                    padding: "0.875rem 1rem",
+                    background: "#FFF1F2",
+                    borderRadius: 12,
+                    border: "1px solid #FFE4E6",
+                  }}
+                >
+                  <p style={{ fontSize: 12, fontWeight: 700, color: "#B91C1C", marginBottom: 4 }}>
+                    Rejection Feedback
+                  </p>
+                  <p style={{ fontSize: 13, color: "#DC2626" }}>{team.reviewFeedback}</p>
+                </div>
+              )}
+
+              {/* Chat CTA */}
+              <button
+                onClick={() => onViewChange("chat")}
+                style={{
+                  width: "100%",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  padding: "0.875rem 1rem",
+                  background: "linear-gradient(135deg, #25D366 0%, #128C7E 100%)",
+                  borderRadius: 12,
+                  border: "none",
+                  cursor: "pointer",
+                  transition: "opacity 0.15s",
+                  color: "#fff",
+                }}
+                onMouseEnter={(e) => (e.currentTarget.style.opacity = "0.9")}
+                onMouseLeave={(e) => (e.currentTarget.style.opacity = "1")}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: "0.625rem" }}>
+                  <MessageCircle size={20} />
+                  <div style={{ textAlign: "left" }}>
+                    <p style={{ fontWeight: 700, fontSize: 14 }}>Team Group Chat</p>
+                    <p style={{ fontSize: 11, opacity: 0.85 }}>
+                      {messages.length > 0
+                        ? `${messages.length} messages · Tap to open`
+                        : "Start the conversation"}
+                    </p>
+                  </div>
+                </div>
+                <ChevronRight size={18} />
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ── WhatsApp-style Chat View ── */}
+        {view === "chat" && (
+          <>
+            {/* Messages area */}
+            <div
+              style={{
+                flex: 1,
+                overflowY: "auto",
+                padding: "1rem",
+                display: "flex",
+                flexDirection: "column",
+                gap: "0.25rem",
+                background: "#ECE5DD",
+                backgroundImage:
+                  "url(\"data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23C4BDB5' fill-opacity='0.18'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E\")",
+              }}
+            >
+              {messages.length === 0 && (
+                <div
+                  style={{
+                    textAlign: "center",
+                    padding: "2rem 1rem",
+                    color: "#6B7280",
+                  }}
+                >
+                  <MessageCircle
+                    size={40}
+                    color="#9CA3AF"
+                    style={{ margin: "0 auto 0.5rem" }}
+                  />
+                  <p style={{ fontSize: 14, fontWeight: 600 }}>No messages yet</p>
+                  <p style={{ fontSize: 12, marginTop: 4 }}>
+                    Say hello to your team! 👋
+                  </p>
+                </div>
+              )}
+
+              {messages.map((msg, idx) => {
+                const isMe = msg.senderId === currentUser?.uid;
+                const prevMsg = idx > 0 ? messages[idx - 1] : null;
+                const showSender =
+                  !isMe && (!prevMsg || prevMsg.senderId !== msg.senderId);
+
+                return (
+                  <div
+                    key={msg.id}
+                    style={{
+                      display: "flex",
+                      flexDirection: "column",
+                      alignItems: isMe ? "flex-end" : "flex-start",
+                      marginTop: showSender && !isMe ? "0.5rem" : "2px",
+                    }}
+                  >
+                    {/* Sender name for received messages */}
+                    {showSender && (
+                      <p
+                        style={{
+                          fontSize: 11,
+                          fontWeight: 700,
+                          color: "#2563EB",
+                          marginBottom: 2,
+                          paddingLeft: 4,
+                        }}
+                      >
+                        {msg.senderName}
+                      </p>
+                    )}
+
+                    {/* Bubble */}
+                    <div
+                      style={{
+                        maxWidth: "78%",
+                        padding: "0.5rem 0.75rem",
+                        borderRadius: isMe
+                          ? "18px 18px 4px 18px"
+                          : "18px 18px 18px 4px",
+                        background: isMe ? "#DCF8C6" : "#FFFFFF",
+                        boxShadow: "0 1px 2px rgba(0,0,0,0.12)",
+                        position: "relative",
+                      }}
+                    >
+                      <p
+                        style={{
+                          fontSize: 14,
+                          color: "#111827",
+                          lineHeight: 1.45,
+                          wordBreak: "break-word",
+                        }}
+                      >
+                        {msg.text}
+                      </p>
+                      <p
+                        style={{
+                          fontSize: 10,
+                          color: "#6B7280",
+                          marginTop: 2,
+                          textAlign: "right",
+                        }}
+                      >
+                        {formatChatTime(msg.createdAt)}
+                      </p>
+                    </div>
+                  </div>
+                );
+              })}
+
+              {/* Auto-scroll anchor */}
+              <div ref={messagesEndRef} />
+            </div>
+
+            {/* Input bar */}
+            <div
+              style={{
+                padding: "0.75rem 1rem",
+                borderTop: "1px solid var(--color-border)",
+                display: "flex",
+                alignItems: "center",
+                gap: "0.625rem",
+                background: "#F0F0F0",
+                flexShrink: 0,
+              }}
+            >
+              <input
+                ref={inputRef}
+                type="text"
+                placeholder="Type a message"
+                value={chatText}
+                onChange={(e) => setChatText(e.target.value)}
+                onKeyDown={handleKeyDown}
+                style={{
+                  flex: 1,
+                  padding: "0.625rem 1rem",
+                  fontSize: 14,
+                  fontFamily: "var(--font-sans)",
+                  color: "var(--color-text)",
+                  background: "#FFFFFF",
+                  border: "1px solid #D1D5DB",
+                  borderRadius: 24,
+                  outline: "none",
+                  minHeight: 44,
+                  lineHeight: 1.4,
+                }}
+              />
+              <button
+                onClick={handleSend}
+                disabled={!chatText.trim() || sending}
+                style={{
+                  width: 44,
+                  height: 44,
+                  borderRadius: "50%",
+                  background:
+                    !chatText.trim() || sending ? "#D1D5DB" : "#25D366",
+                  border: "none",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  cursor: !chatText.trim() || sending ? "not-allowed" : "pointer",
+                  flexShrink: 0,
+                  transition: "background 0.15s",
+                }}
+              >
+                <Send size={18} color="#fff" />
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+
+      <style>{`
+        @keyframes mm-panel-in {
+          from { transform: translateX(100%); }
+          to   { transform: translateX(0); }
+        }
+      `}</style>
+    </>
   );
 }

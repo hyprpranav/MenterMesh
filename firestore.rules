@@ -105,5 +105,16 @@ service cloud.firestore {
       allow update: if isStaff();
       allow delete: if isMaster();
     }
+
+    // Team Chat Messages
+    // Any authenticated & active user who is a member of the team can read/write
+    match /teamChats/{teamId}/messages/{messageId} {
+      allow read: if isAuthenticated() &&
+        get(/databases/$(database)/documents/teams/$(teamId)).data.memberIds.hasAny([request.auth.uid]);
+      allow create: if isAuthenticated() &&
+        get(/databases/$(database)/documents/teams/$(teamId)).data.memberIds.hasAny([request.auth.uid]) &&
+        request.resource.data.senderId == request.auth.uid;
+      allow delete: if isStaff();
+    }
   }
 }
