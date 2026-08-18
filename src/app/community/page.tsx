@@ -93,7 +93,7 @@ function CommunityContent() {
   } as const;
 
   return (
-    <div className="space-y-6 max-w-3xl mx-auto mm-page-animate">
+    <div className="space-y-6 w-full max-w-6xl mx-auto mm-page-animate">
       <PageHeader
         icon={<BookOpen size={20} />}
         iconClass="bg-violet-100 text-violet-600"

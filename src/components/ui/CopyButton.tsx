@@ -1,49 +1,63 @@
 "use client";
 
 // ============================================================
-// MentorMesh — CopyButton Component
+// MentorMesh — CopyButton v2
 // ============================================================
 import React, { useState } from "react";
 import { Copy, Check } from "lucide-react";
-import { copyToClipboard } from "@/lib/utils";
-import { useToast } from "./ToastProvider";
+import { cn } from "@/lib/utils";
 
-interface CopyButtonProps {
-  text: string;
+export interface CopyButtonProps {
+  value?: string;
+  text?: string;
+  className?: string;
   label?: string;
 }
 
-export function CopyButton({ text, label }: CopyButtonProps) {
+export function CopyButton({ value, text, className, label }: CopyButtonProps) {
   const [copied, setCopied] = useState(false);
-  const { success, error } = useToast();
+  const targetValue = value ?? text ?? "";
 
-  const handleCopy = async () => {
-    const ok = await copyToClipboard(text);
-    if (ok) {
+  const handleCopy = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!targetValue) return;
+    try {
+      await navigator.clipboard.writeText(targetValue);
       setCopied(true);
-      success(label ? `${label} copied.` : "Copied to clipboard.");
       setTimeout(() => setCopied(false), 2000);
-    } else {
-      error("Unable to copy. Please copy manually.");
+    } catch {
+      // Fallback for older browsers
+      const el = document.createElement("textarea");
+      el.value = targetValue;
+      el.style.position = "fixed";
+      el.style.opacity = "0";
+      document.body.appendChild(el);
+      el.focus();
+      el.select();
+      document.execCommand("copy");
+      document.body.removeChild(el);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
     }
   };
 
   return (
     <button
-      className={`mm-copy-btn ${copied ? "copied" : ""}`}
+      type="button"
       onClick={handleCopy}
-      aria-label={`Copy ${label || "value"}`}
-      title={`Copy ${label || ""}`}
+      className={cn("mm-copy-btn", copied && "copied", className)}
+      title={`Copy ${label || "value"}`}
+      aria-label={copied ? "Copied!" : `Copy ${label || "value"}`}
     >
       {copied ? (
         <>
           <Check size={12} />
-          <span>Copied</span>
+          Copied
         </>
       ) : (
         <>
           <Copy size={12} />
-          <span>Copy</span>
+          Copy
         </>
       )}
     </button>

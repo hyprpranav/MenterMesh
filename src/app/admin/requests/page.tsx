@@ -61,7 +61,7 @@ function RequestsContent() {
     status === "approved" ? "approved" : status === "rejected" ? "rejected" : "pending";
 
   return (
-    <div className="space-y-6 max-w-4xl mx-auto mm-page-animate">
+    <div className="space-y-6 w-full max-w-6xl mx-auto mm-page-animate">
       <PageHeader
         icon={<UserCheck size={20} />}
         iconClass="bg-sky-100 text-sky-600"

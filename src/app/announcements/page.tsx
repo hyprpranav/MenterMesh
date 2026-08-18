@@ -86,7 +86,7 @@ function AnnouncementsContent() {
   };
 
   return (
-    <div className="space-y-6 max-w-3xl mx-auto mm-page-animate">
+    <div className="space-y-6 w-full max-w-6xl mx-auto mm-page-animate">
       <PageHeader
         icon={<Megaphone size={20} />}
         iconClass="bg-amber-100 text-amber-600"

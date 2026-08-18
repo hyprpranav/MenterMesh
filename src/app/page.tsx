@@ -6,7 +6,7 @@
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
-import { PageLoading } from "@/components/ui/States";
+import { LoadingState } from "@/components/ui/States";
 
 export default function RootPage() {
   const { user, loading } = useAuth();
@@ -27,5 +27,5 @@ export default function RootPage() {
     }
   }, [user, loading, router]);
 
-  return <PageLoading />;
+  return <LoadingState />;
 }

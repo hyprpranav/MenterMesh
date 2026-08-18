@@ -165,7 +165,7 @@ export default function CreateEventPage() {
 
   return (
     <AppShell>
-      <div className="space-y-6 max-w-3xl mx-auto">
+      <div className="space-y-6 max-w-5xl mx-auto w-full mm-page-animate">
         <Link href="/events" className="text-xs font-semibold text-slate-500 hover:text-blue-600 inline-flex items-center gap-1">
           <ArrowLeft size={14} /> Back to Events
         </Link>
@@ -178,12 +178,12 @@ export default function CreateEventPage() {
             </div>
             <div>
               <h1 className="text-xl font-bold text-slate-900">
-                {isStaff ? "Create New Event" : "Submit Event Experience"}
+                {isStaff ? "Publish College Event" : "Submit Event Participation"}
               </h1>
               <p className="text-xs text-slate-500">
                 {isStaff
-                  ? "Publish a hackathon or workshop for student teams."
-                  : "Submit details of your hackathon participation, project expo, or workshop."}
+                  ? "Publish an event announcement for students across all departments and years."
+                  : "Submit hackathon or competition participation for faculty verification."}
               </p>
             </div>
           </div>
@@ -192,23 +192,23 @@ export default function CreateEventPage() {
             {/* Basic Information */}
             <div className="space-y-4">
               <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
-                <FileText size={14} /> 1. Basic Information
+                <FileText size={14} /> 1. Event Details
               </h3>
-
-              <div>
-                <label className="mm-label">Event Name <span className="required">*</span></label>
-                <input
-                  className="mm-input"
-                  placeholder="e.g. Smart India Hackathon '26 / MEDHA Expo"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  required
-                />
-              </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className="mm-label">Event Type <span className="required">*</span></label>
+                  <label className="mm-label">Event Name <span style={{ color: "var(--color-danger)" }}>*</span></label>
+                  <input
+                    className="mm-input"
+                    placeholder="e.g. Smart India Hackathon 2026 / VLSI Designathon"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="mm-label">Event Type</label>
                   <select
                     className="mm-input mm-select"
                     value={type}
@@ -219,21 +219,11 @@ export default function CreateEventPage() {
                     ))}
                   </select>
                 </div>
-
-                <div>
-                  <label className="mm-label">Organizer / Host Institution</label>
-                  <input
-                    className="mm-input"
-                    placeholder="e.g. MKCE / AICTE / IEEE"
-                    value={organizer}
-                    onChange={(e) => setOrganizer(e.target.value)}
-                  />
-                </div>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className="mm-label">Start Date <span className="required">*</span></label>
+                  <label className="mm-label">Start Date <span style={{ color: "var(--color-danger)" }}>*</span></label>
                   <input
                     type="date"
                     className="mm-input"
@@ -289,11 +279,16 @@ export default function CreateEventPage() {
 
             {/* Team & Participation */}
             <div className="space-y-4 pt-4 border-t border-slate-100">
-              <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
-                <Users size={14} /> 2. Team & Participation
-              </h3>
+              <div className="flex items-center justify-between">
+                <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+                  <Users size={14} /> 2. Team & Participation
+                </h3>
+                <Link href="/teams" className="text-xs text-blue-600 hover:underline font-medium">
+                  + Create New Team
+                </Link>
+              </div>
 
-              {userTeams.length > 0 && (
+              {userTeams.length > 0 ? (
                 <div>
                   <label className="mm-label">Select Your Team (Auto-populates members)</label>
                   <select
@@ -301,11 +296,18 @@ export default function CreateEventPage() {
                     value={selectedTeamId}
                     onChange={(e) => handleTeamChange(e.target.value)}
                   >
-                    <option value="">Individual Participation / Create New Team</option>
+                    <option value="">Individual Participation (Just Me)</option>
                     {userTeams.map((t) => (
                       <option key={t.id} value={t.id}>{t.name} ({t.memberIds.length} members)</option>
                     ))}
                   </select>
+                </div>
+              ) : (
+                <div className="p-3 bg-blue-50/60 rounded-xl border border-blue-100 text-xs text-blue-900 flex items-center justify-between">
+                  <span>Submitting as individual. Have team members? Create a team on the Teams page.</span>
+                  <Link href="/teams" className="font-semibold text-blue-700 underline">
+                    Teams Page →
+                  </Link>
                 </div>
               )}
 

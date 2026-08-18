@@ -39,6 +39,9 @@ function AdminStudentsContent() {
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [editRole, setEditRole] = useState<"student" | "staff">("student");
   const [editStatus, setEditStatus] = useState<import("@/types").UserStatus>("active");
+  const [editDept, setEditDept] = useState("");
+  const [editYear, setEditYear] = useState("");
+  const [editSection, setEditSection] = useState("");
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -72,6 +75,9 @@ function AdminStudentsContent() {
     setEditingUser(u);
     setEditRole(u.role === "master" ? "staff" : (u.role as "student" | "staff"));
     setEditStatus(u.status);
+    setEditDept(u.department || "");
+    setEditYear(u.year || "");
+    setEditSection(u.section || "");
   };
 
   const handleSaveEdit = async () => {
@@ -81,10 +87,22 @@ function AdminStudentsContent() {
       await updateUser(editingUser.uid, {
         role: editRole,
         status: editStatus,
+        department: editDept || undefined,
+        year: editYear || undefined,
+        section: editSection || undefined,
       });
       setUsers((prev) =>
         prev.map((u) =>
-          u.uid === editingUser.uid ? { ...u, role: editRole, status: editStatus } : u
+          u.uid === editingUser.uid
+            ? {
+                ...u,
+                role: editRole,
+                status: editStatus,
+                department: editDept || u.department,
+                year: editYear || u.year,
+                section: editSection || u.section,
+              }
+            : u
         )
       );
       success(`Updated ${editingUser.name}'s account settings.`);
@@ -257,6 +275,61 @@ function AdminStudentsContent() {
               <option value="inactive">Inactive / Deactivated</option>
               <option value="rejected">Rejected</option>
             </select>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div>
+              <label className="mm-label">Department</label>
+              <select
+                className="mm-input mm-select"
+                value={editDept}
+                onChange={(e) => setEditDept(e.target.value)}
+              >
+                <option value="">None</option>
+                {["ECE", "CSE", "EEE", "MECH", "CIVIL", "IT", "VLSI / Microelectronics", "AI & DS", "Other"].map((d) => (
+                  <option key={d} value={d}>{d}</option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="mm-label">Year / Batch</label>
+              <select
+                className="mm-input mm-select"
+                value={editYear}
+                onChange={(e) => setEditYear(e.target.value)}
+              >
+                <option value="">None</option>
+                {[
+                  "I (1st Year)",
+                  "II (2nd Year)",
+                  "III (3rd Year)",
+                  "IV (4th Year / Final Year)",
+                  "Passed Out (2020-21)",
+                  "Passed Out (2021-22)",
+                  "Passed Out (2022-23)",
+                  "Passed Out (2023-24)",
+                  "Passed Out (2024-25)",
+                  "Passed Out (Alumni)",
+                ].map((y) => (
+                  <option key={y} value={y}>{y}</option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="mm-label">Section</label>
+              <select
+                className="mm-input mm-select"
+                value={editSection}
+                onChange={(e) => setEditSection(e.target.value)}
+              >
+                <option value="">None</option>
+                {["A", "B", "C", "D", "E", "F", "VLSI-1", "VLSI-2", "Other"].map((s) => (
+                  <option key={s} value={s}>{s}</option>
+                ))}
+              </select>
+            </div>
           </div>
         </div>
       </Modal>

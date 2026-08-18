@@ -40,6 +40,12 @@ export default function TeamBuilderPage() {
   const [numTeams, setNumTeams] = useState(4);
   const [selectedEventId, setSelectedEventId] = useState("");
 
+  // Filters for pool
+  const [filterDept, setFilterDept] = useState("All");
+  const [filterYear, setFilterYear] = useState("All");
+  const [filterSec, setFilterSec] = useState("All");
+  const [filterSearch, setFilterSearch] = useState("");
+
   // Builder State
   const [teams, setTeams] = useState<BuilderTeam[]>([]);
   const [unassignedIds, setUnassignedIds] = useState<string[]>([]);
@@ -360,10 +366,43 @@ export default function TeamBuilderPage() {
               if (studentId) handleMoveToUnassigned(studentId);
             }}
           >
-            <div className="mm-team-pool-header flex items-center justify-between">
-              <span className="font-bold text-slate-900 text-xs uppercase tracking-wider">
-                Unassigned Students ({unassignedIds.length})
-              </span>
+            <div className="mm-team-pool-header space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="font-bold text-slate-900 text-xs uppercase tracking-wider">
+                  Unassigned Pool ({unassignedIds.length})
+                </span>
+              </div>
+
+              {/* Pool Filters */}
+              <div className="grid grid-cols-2 gap-1.5 pt-1">
+                <input
+                  type="text"
+                  placeholder="Search student..."
+                  className="col-span-2 text-[11px] px-2 py-1 bg-slate-50 border border-slate-200 rounded outline-none"
+                  value={filterSearch}
+                  onChange={(e) => setFilterSearch(e.target.value)}
+                />
+                <select
+                  className="text-[11px] px-1 py-1 bg-slate-50 border border-slate-200 rounded"
+                  value={filterSec}
+                  onChange={(e) => setFilterSec(e.target.value)}
+                >
+                  <option value="All">All Secs</option>
+                  {["A", "B", "C", "D", "E", "F", "VLSI-1", "VLSI-2", "Other"].map((s) => (
+                    <option key={s} value={s}>Sec {s}</option>
+                  ))}
+                </select>
+                <select
+                  className="text-[11px] px-1 py-1 bg-slate-50 border border-slate-200 rounded"
+                  value={filterDept}
+                  onChange={(e) => setFilterDept(e.target.value)}
+                >
+                  <option value="All">All Depts</option>
+                  {["ECE", "CSE", "EEE", "MECH", "CIVIL", "IT", "VLSI / Microelectronics", "AI & DS"].map((d) => (
+                    <option key={d} value={d}>{d}</option>
+                  ))}
+                </select>
+              </div>
             </div>
 
             <div className="mm-team-pool-list">
@@ -372,7 +411,23 @@ export default function TeamBuilderPage() {
                   All students assigned to teams!
                 </div>
               ) : (
-                unassignedIds.map((uId) => {
+                unassignedIds
+                  .filter((uId) => {
+                    const s = students.find((st) => st.uid === uId);
+                    if (!s) return false;
+                    if (filterDept !== "All" && s.department !== filterDept) return false;
+                    if (filterSec !== "All" && s.section?.toUpperCase() !== filterSec.toUpperCase())
+                      return false;
+                    if (filterSearch.trim()) {
+                      const q = filterSearch.toLowerCase();
+                      return (
+                        s.name.toLowerCase().includes(q) ||
+                        (s.registerNumber && s.registerNumber.toLowerCase().includes(q))
+                      );
+                    }
+                    return true;
+                  })
+                  .map((uId) => {
                   const s = students.find((st) => st.uid === uId);
                   if (!s) return null;
                   return (

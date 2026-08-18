@@ -1,9 +1,9 @@
 "use client";
 
 // ============================================================
-// MentorMesh — Toast / Notification System
+// MentorMesh — ToastProvider v2
 // ============================================================
-import React, { createContext, useContext, useState, useCallback, useId } from "react";
+import React, { createContext, useContext, useState, useCallback } from "react";
 import { CheckCircle, XCircle, AlertTriangle, Info, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -11,72 +11,76 @@ type ToastType = "success" | "error" | "warning" | "info";
 
 interface Toast {
   id: string;
-  message: string;
   type: ToastType;
+  message: string;
 }
 
 interface ToastContextValue {
-  toast: (message: string, type?: ToastType) => void;
   success: (message: string) => void;
-  error: (message: string) => void;
+  error:   (message: string) => void;
   warning: (message: string) => void;
-  info: (message: string) => void;
+  info:    (message: string) => void;
 }
 
 const ToastContext = createContext<ToastContextValue | null>(null);
 
-const ICONS = {
-  success: CheckCircle,
-  error: XCircle,
-  warning: AlertTriangle,
-  info: Info,
+const TOAST_ICONS: Record<ToastType, React.ReactNode> = {
+  success: <CheckCircle   size={16} />,
+  error:   <XCircle       size={16} />,
+  warning: <AlertTriangle size={16} />,
+  info:    <Info          size={16} />,
 };
 
-const COLORS: Record<ToastType, string> = {
-  success: "bg-green-600",
-  error:   "bg-red-600",
-  warning: "bg-amber-600",
-  info:    "bg-blue-600",
+const TOAST_CLASS: Record<ToastType, string> = {
+  success: "mm-toast-success",
+  error:   "mm-toast-error",
+  warning: "mm-toast-warning",
+  info:    "mm-toast-info",
 };
 
 export function ToastProvider({ children }: { children: React.ReactNode }) {
   const [toasts, setToasts] = useState<Toast[]>([]);
 
-  const remove = useCallback((id: string) => {
+  const addToast = useCallback((type: ToastType, message: string) => {
+    const id = `toast-${Date.now()}-${Math.random()}`;
+    setToasts((prev) => {
+      // Max 3 visible
+      const next = [...prev.slice(-2), { id, type, message }];
+      return next;
+    });
+    setTimeout(() => {
+      setToasts((prev) => prev.filter((t) => t.id !== id));
+    }, 4000);
+  }, []);
+
+  const removeToast = useCallback((id: string) => {
     setToasts((prev) => prev.filter((t) => t.id !== id));
   }, []);
 
-  const toast = useCallback((message: string, type: ToastType = "info") => {
-    const id = `${Date.now()}_${Math.random()}`;
-    setToasts((prev) => [...prev.slice(-4), { id, message, type }]);
-    setTimeout(() => remove(id), 4000);
-  }, [remove]);
-
-  const success = useCallback((msg: string) => toast(msg, "success"), [toast]);
-  const error   = useCallback((msg: string) => toast(msg, "error"),   [toast]);
-  const warning = useCallback((msg: string) => toast(msg, "warning"), [toast]);
-  const info    = useCallback((msg: string) => toast(msg, "info"),    [toast]);
+  const value: ToastContextValue = {
+    success: (m) => addToast("success", m),
+    error:   (m) => addToast("error",   m),
+    warning: (m) => addToast("warning", m),
+    info:    (m) => addToast("info",    m),
+  };
 
   return (
-    <ToastContext.Provider value={{ toast, success, error, warning, info }}>
+    <ToastContext.Provider value={value}>
       {children}
-      <div className="mm-toast-container">
-        {toasts.map((t) => {
-          const Icon = ICONS[t.type];
-          return (
-            <div key={t.id} className={cn("mm-toast", COLORS[t.type])}>
-              <Icon size={18} className="shrink-0" />
-              <span className="flex-1">{t.message}</span>
-              <button
-                onClick={() => remove(t.id)}
-                className="shrink-0 opacity-70 hover:opacity-100 transition-opacity"
-                aria-label="Dismiss"
-              >
-                <X size={16} />
-              </button>
-            </div>
-          );
-        })}
+      <div className="mm-toast-container" role="region" aria-label="Notifications" aria-live="polite">
+        {toasts.map((toast) => (
+          <div key={toast.id} className={cn("mm-toast", TOAST_CLASS[toast.type])}>
+            <span className="mm-toast-icon">{TOAST_ICONS[toast.type]}</span>
+            <span style={{ flex: 1, lineHeight: 1.4 }}>{toast.message}</span>
+            <button
+              className="mm-toast-close"
+              onClick={() => removeToast(toast.id)}
+              aria-label="Dismiss"
+            >
+              <X size={14} />
+            </button>
+          </div>
+        ))}
       </div>
     </ToastContext.Provider>
   );

@@ -1,7 +1,7 @@
 "use client";
 
 // ============================================================
-// MentorMesh — App Shell Layout (authenticated pages)
+// MentorMesh — App Shell v2 (Mobile-First)
 // ============================================================
 import React, { useEffect, useState, useCallback } from "react";
 import { useRouter, usePathname } from "next/navigation";
@@ -18,15 +18,16 @@ interface AppShellProps {
   children: React.ReactNode;
 }
 
-// ── Minimal content skeleton shown while auth or data is resolving ──
 function ContentSkeleton() {
   return (
     <div className="mm-content-skeleton">
-      <div className="mm-content-skeleton-bar h-8 w-3/4" />
-      <div className="mm-content-skeleton-bar w-1/2" />
-      <div className="mm-content-skeleton-bar h-32 w-full" />
-      <div className="mm-content-skeleton-bar w-3/4" />
-      <div className="mm-content-skeleton-bar w-1/2" />
+      <div className="mm-content-skeleton-bar mm-skeleton" style={{ height: "2rem", width: "60%" }} />
+      <div className="mm-content-skeleton-bar mm-skeleton" style={{ height: "1rem", width: "40%" }} />
+      <div className="mm-content-skeleton-bar mm-skeleton" style={{ height: "8rem", width: "100%", marginTop: "0.5rem" }} />
+      <div className="mm-grid-2" style={{ marginTop: "1rem" }}>
+        <div className="mm-skeleton" style={{ height: "6rem", borderRadius: "12px" }} />
+        <div className="mm-skeleton" style={{ height: "6rem", borderRadius: "12px" }} />
+      </div>
     </div>
   );
 }
@@ -43,136 +44,218 @@ export function AppShell({ children }: AppShellProps) {
     setMobileMenuOpen(false);
   }, [pathname]);
 
-  // Lock body scroll when drawer is open
+  // Lock body scroll when drawer open
   useEffect(() => {
-    if (mobileMenuOpen) {
-      document.body.style.overflow = "hidden";
-    } else {
-      document.body.style.overflow = "";
-    }
+    document.body.style.overflow = mobileMenuOpen ? "hidden" : "";
     return () => { document.body.style.overflow = ""; };
   }, [mobileMenuOpen]);
 
   const closeDrawer = useCallback(() => setMobileMenuOpen(false), []);
+  const openDrawer  = useCallback(() => setMobileMenuOpen(true),  []);
 
   // Role-based redirect
   useEffect(() => {
     if (loading) return;
-    if (!user) { router.push("/login"); return; }
-    if (user.status === "pending")  { router.push("/pending"); return; }
-    if (user.status === "rejected") { router.push("/rejected"); return; }
-    if (user.status === "inactive") { router.push("/inactive"); return; }
+    if (!user)                        { router.push("/login");    return; }
+    if (user.status === "pending")    { router.push("/pending");  return; }
+    if (user.status === "rejected")   { router.push("/rejected"); return; }
+    if (user.status === "inactive")   { router.push("/inactive"); return; }
   }, [user, loading, router]);
 
   // Real-time unread notifications
   useEffect(() => {
-    if (!user || user.status !== "active") return;
+    if (!user || (user.status !== "active" && user.status !== "imported")) return;
     const unsub = subscribeToNotifications(user.uid, setUnreadNotifs);
     return () => unsub();
   }, [user]);
 
-  // Determine what to render inside the content area:
-  // - If auth is still loading → show skeleton (shell is still visible)
-  // - If user is not active (redirecting) → show skeleton
-  // - Otherwise → show actual children
-  const isReady = !loading && user && user.status === "active";
+  const isReady = !loading && user && (user.status === "active" || user.status === "imported");
+  const unreadCount = unreadNotifs.length;
 
   return (
-    <div className="mm-layout" style={{ overflow: "clip" }}>
-      {/* Desktop Sidebar */}
-      <Sidebar unreadCount={unreadNotifs.length} />
+    <div className="mm-layout">
+      {/* ── Desktop Sidebar ─────────────────────────────── */}
+      <Sidebar unreadCount={unreadCount} />
 
-      {/* Mobile Topbar */}
+      {/* ── Mobile Topbar ───────────────────────────────── */}
       <header className="mm-mobile-topbar">
-        <div className="flex items-center gap-2.5">
+        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+          {/* Hamburger */}
           <button
-            onClick={() => setMobileMenuOpen(true)}
-            className="p-1.5 text-slate-600 hover:text-slate-900 rounded-lg hover:bg-slate-100"
+            onClick={openDrawer}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              width: "36px",
+              height: "36px",
+              borderRadius: "8px",
+              border: "none",
+              background: "transparent",
+              color: "var(--color-text-2)",
+              cursor: "pointer",
+              transition: "background 0.15s",
+            }}
+            onMouseEnter={e => (e.currentTarget.style.background = "var(--color-surface-2)")}
+            onMouseLeave={e => (e.currentTarget.style.background = "transparent")}
             aria-label="Open navigation menu"
           >
-            <Menu size={22} />
+            <Menu size={20} />
           </button>
 
-          <Link href="/dashboard" className="flex items-center gap-2">
-            <div className="w-7 h-7 bg-blue-600 rounded-lg flex items-center justify-center">
+          {/* Logo */}
+          <Link
+            href="/dashboard"
+            style={{ display: "flex", alignItems: "center", gap: "8px", textDecoration: "none" }}
+          >
+            <div style={{
+              width: "28px", height: "28px", borderRadius: "8px",
+              background: "var(--color-primary)",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              flexShrink: 0,
+            }}>
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
-                <circle cx="9" cy="7" r="4"/>
-                <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
-                <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+                <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+                <circle cx="9" cy="7" r="4" />
+                <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+                <path d="M16 3.13a4 4 0 0 1 0 7.75" />
               </svg>
             </div>
-            <span className="font-bold text-slate-900 text-base">MentorMesh</span>
+            <span style={{ fontWeight: 700, fontSize: "15px", color: "var(--color-text)", letterSpacing: "-0.01em" }}>
+              MentorMesh
+            </span>
           </Link>
         </div>
 
-        <div className="flex items-center gap-2">
-          {/* Notification icon */}
-          <Link href="/notifications" className="relative p-2 text-slate-500 hover:text-slate-700">
+        {/* Right side icons */}
+        <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+          <Link
+            href="/notifications"
+            style={{
+              display: "flex", alignItems: "center", justifyContent: "center",
+              width: "36px", height: "36px", borderRadius: "8px",
+              color: "var(--color-muted)", position: "relative", textDecoration: "none",
+              transition: "background 0.15s",
+            }}
+            aria-label="Notifications"
+          >
             <Bell size={20} />
-            {unreadNotifs.length > 0 && (
-              <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full border border-white" />
+            {unreadCount > 0 && (
+              <span style={{
+                position: "absolute", top: "6px", right: "6px",
+                width: "8px", height: "8px",
+                background: "#EF4444",
+                borderRadius: "50%",
+                border: "2px solid var(--color-surface)",
+              }} />
             )}
           </Link>
 
-          {/* Profile */}
           {user && (
-            <Link href="/profile">
+            <Link href="/profile" style={{ textDecoration: "none", marginLeft: "2px" }}>
               <Avatar name={user.name} photoUrl={user.profilePhoto} size="sm" />
             </Link>
           )}
         </div>
       </header>
 
-      {/* Mobile Slide-Over Drawer */}
+      {/* ── Mobile Drawer ────────────────────────────────── */}
       {mobileMenuOpen && (
-        <div className="fixed inset-0 z-[60] flex" style={{ display: "flex" }}>
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Navigation menu"
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 60,
+            display: "flex",
+          }}
+        >
           {/* Backdrop */}
           <div
-            className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs"
             onClick={closeDrawer}
-            style={{ animation: "mm-overlay-in 0.2s ease" }}
+            style={{
+              position: "fixed",
+              inset: 0,
+              background: "rgb(0 0 0 / 0.45)",
+              animation: "mm-overlay-in 0.2s ease",
+            }}
           />
 
-          {/* Slide Drawer */}
+          {/* Drawer panel */}
           <div
-            className="relative w-4/5 max-w-[280px] bg-white h-full flex flex-col z-10 shadow-2xl"
-            style={{ animation: "mm-drawer-slide 0.25s ease" }}
+            style={{
+              position: "relative",
+              width: "min(280px, 85vw)",
+              background: "var(--color-surface)",
+              height: "100%",
+              display: "flex",
+              flexDirection: "column",
+              zIndex: 1,
+              boxShadow: "var(--shadow-xl)",
+              animation: "mm-drawer-in 0.25s cubic-bezier(0.32, 0.72, 0, 1)",
+            }}
           >
-            <div className="p-4 border-b border-slate-200 flex items-center justify-between">
-              <span className="font-bold text-slate-900 text-base">Menu</span>
+            {/* Drawer header */}
+            <div style={{
+              padding: "1rem 1rem 1rem 1.25rem",
+              borderBottom: "1px solid var(--color-border)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              flexShrink: 0,
+            }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                <div style={{
+                  width: "28px", height: "28px", borderRadius: "8px",
+                  background: "var(--color-primary)",
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                }}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+                    <circle cx="9" cy="7" r="4" />
+                    <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+                    <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+                  </svg>
+                </div>
+                <span style={{ fontWeight: 700, fontSize: "15px", color: "var(--color-text)" }}>MentorMesh</span>
+              </div>
               <button
                 onClick={closeDrawer}
-                className="p-1.5 text-slate-400 hover:text-slate-700 rounded-lg"
+                style={{
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  width: "32px", height: "32px", borderRadius: "8px",
+                  border: "none", background: "var(--color-surface-2)",
+                  color: "var(--color-muted)", cursor: "pointer",
+                  transition: "background 0.15s",
+                }}
+                aria-label="Close menu"
               >
-                <X size={20} />
+                <X size={18} />
               </button>
             </div>
 
-            <div className="flex-1 overflow-y-auto" onClick={closeDrawer}>
-              <Sidebar unreadCount={unreadNotifs.length} isMobileDrawer />
+            {/* Drawer nav */}
+            <div
+              style={{ flex: 1, overflowY: "auto" }}
+              onClick={closeDrawer}
+            >
+              <Sidebar unreadCount={unreadCount} isMobileDrawer />
             </div>
           </div>
         </div>
       )}
 
-      {/* Main content */}
+      {/* ── Main Content ─────────────────────────────────── */}
       <main className="mm-main">
         <div className="mm-content mm-page-animate">
           {isReady ? children : <ContentSkeleton />}
         </div>
       </main>
 
-      {/* Mobile Bottom Nav */}
-      <BottomNav unreadCount={unreadNotifs.length} />
-
-      {/* Drawer slide animation */}
-      <style jsx global>{`
-        @keyframes mm-drawer-slide {
-          from { transform: translateX(-100%); }
-          to   { transform: translateX(0); }
-        }
-      `}</style>
+      {/* ── Mobile Bottom Nav ─────────────────────────────── */}
+      <BottomNav unreadCount={unreadCount} />
     </div>
   );
 }

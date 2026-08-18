@@ -69,7 +69,7 @@ export default function RequestDetailPage() {
   }, [reqId]);
 
   if (loading) return <AppShell><LoadingState message="Loading request details..." /></AppShell>;
-  if (!req) return <AppShell><ErrorState message="Request not found." retry={() => router.push("/admin/requests")} /></AppShell>;
+  if (!req) return <AppShell><ErrorState message="Request not found." onRetry={() => router.push("/admin/requests")} /></AppShell>;
 
   // Approve Request
   const handleApprove = async () => {
@@ -126,7 +126,7 @@ export default function RequestDetailPage() {
 
   return (
     <AppShell>
-      <div className="space-y-6 max-w-3xl mx-auto">
+      <div className="space-y-6 max-w-5xl mx-auto w-full mm-page-animate">
         <Link href="/admin/requests" className="text-xs font-semibold text-slate-500 hover:text-blue-600 inline-flex items-center gap-1">
           <ArrowLeft size={14} /> Back to Requests
         </Link>

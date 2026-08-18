@@ -1,73 +1,79 @@
 "use client";
 
 // ============================================================
-// MentorMesh — Confirmation Dialog
+// MentorMesh — ConfirmDialog v2
 // ============================================================
 import React from "react";
-import { AlertTriangle } from "lucide-react";
+import { AlertTriangle, Trash2 } from "lucide-react";
+import { Modal } from "./Modal";
 import { Button } from "./Button";
 
-interface ConfirmDialogProps {
+export interface ConfirmDialogProps {
   open: boolean;
+  onClose?: () => void;
+  onCancel?: () => void;
+  onConfirm: () => void | Promise<void>;
   title: string;
   message: string;
   confirmLabel?: string;
   cancelLabel?: string;
-  variant?: "danger" | "warning" | "primary";
+  variant?: "danger" | "warning";
   loading?: boolean;
-  onConfirm: () => void;
-  onCancel: () => void;
 }
 
 export function ConfirmDialog({
   open,
+  onClose,
+  onCancel,
+  onConfirm,
   title,
   message,
   confirmLabel = "Confirm",
   cancelLabel = "Cancel",
   variant = "danger",
   loading = false,
-  onConfirm,
-  onCancel,
 }: ConfirmDialogProps) {
-  if (!open) return null;
+  const handleClose = onClose ?? onCancel ?? (() => {});
 
   return (
-    <div className="mm-overlay" role="dialog" aria-modal="true" aria-label={title}>
-      <div className="mm-modal" style={{ maxWidth: 440 }}>
-        <div className="p-6">
-          <div className="flex items-start gap-4">
-            <div
-              className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${
-                variant === "danger"
-                  ? "bg-red-100 text-red-600"
-                  : variant === "warning"
-                  ? "bg-amber-100 text-amber-600"
-                  : "bg-blue-100 text-blue-600"
-              }`}
-            >
-              <AlertTriangle size={20} />
-            </div>
-            <div className="flex-1">
-              <h3 className="text-base font-semibold text-slate-900 mb-1">{title}</h3>
-              <p className="text-sm text-slate-500 leading-relaxed">{message}</p>
-            </div>
-          </div>
+    <Modal open={open} onClose={handleClose} size="sm" closeOnBackdrop={!loading}>
+      <div style={{ textAlign: "center" }}>
+        {/* Icon */}
+        <div
+          className="mm-confirm-icon"
+          style={{
+            background: variant === "danger" ? "var(--color-danger-bg)" : "var(--color-warning-bg)",
+          }}
+        >
+          {variant === "danger" ? (
+            <Trash2 size={22} color="var(--color-danger)" />
+          ) : (
+            <AlertTriangle size={22} color="var(--color-warning)" />
+          )}
+        </div>
 
-          <div className="flex items-center justify-end gap-2 mt-6">
-            <Button variant="secondary" onClick={onCancel} disabled={loading}>
-              {cancelLabel}
-            </Button>
-            <Button
-              variant={variant === "danger" ? "danger" : "primary"}
-              onClick={onConfirm}
-              loading={loading}
-            >
-              {confirmLabel}
-            </Button>
-          </div>
+        <h3 style={{ fontSize: "1.0625rem", fontWeight: 700, marginBottom: "0.5rem" }}>{title}</h3>
+        <p style={{ fontSize: "0.875rem", color: "var(--color-muted)", lineHeight: 1.6, marginBottom: "1.5rem" }}>
+          {message}
+        </p>
+
+        <div style={{ display: "flex", gap: "0.75rem", justifyContent: "center" }}>
+          <Button
+            variant="secondary"
+            onClick={handleClose}
+            disabled={loading}
+          >
+            {cancelLabel}
+          </Button>
+          <Button
+            variant={variant === "danger" ? "danger" : "primary"}
+            onClick={onConfirm}
+            loading={loading}
+          >
+            {confirmLabel}
+          </Button>
         </div>
       </div>
-    </div>
+    </Modal>
   );
 }

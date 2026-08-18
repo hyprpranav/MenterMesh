@@ -1,124 +1,121 @@
 "use client";
 
 // ============================================================
-// MentorMesh — Modal Component (Reusable)
+// MentorMesh — Modal v2
 // ============================================================
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-interface ModalProps {
+type ModalSize = "sm" | "md" | "lg" | "xl";
+
+const SIZE_CLASS: Record<ModalSize, string> = {
+  sm: "",
+  md: "",
+  lg: "mm-modal-lg",
+  xl: "mm-modal-xl",
+};
+
+export interface ModalProps {
   open: boolean;
   onClose: () => void;
-  title?: React.ReactNode;
-  description?: string;
-  size?: "sm" | "md" | "lg" | "xl";
+  title?: string | React.ReactNode;
+  description?: string | React.ReactNode;
   children: React.ReactNode;
-  /** Footer slot — renders inside modal below content */
   footer?: React.ReactNode;
-  /** Hide the X close button */
-  hideClose?: boolean;
-  /** Additional class on the modal panel */
-  className?: string;
+  size?: ModalSize;
+  closeOnBackdrop?: boolean;
+  /** If true, the modal header title is rendered as a large centered element */
+  centered?: boolean;
 }
-
-const sizeMap = {
-  sm: "max-w-sm",
-  md: "max-w-lg",
-  lg: "max-w-2xl",
-  xl: "max-w-4xl",
-};
 
 export function Modal({
   open,
   onClose,
   title,
   description,
-  size = "md",
   children,
   footer,
-  hideClose = false,
-  className,
+  size = "md",
+  closeOnBackdrop = true,
+  centered = false,
 }: ModalProps) {
-  const overlayRef = useRef<HTMLDivElement>(null);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   // Close on Escape key
   useEffect(() => {
     if (!open) return;
-    const onKey = (e: KeyboardEvent) => {
+    const handler = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
     };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
   }, [open, onClose]);
 
-  // Lock body scroll when open
+  // Prevent body scroll when open
   useEffect(() => {
     if (open) {
       document.body.style.overflow = "hidden";
     } else {
       document.body.style.overflow = "";
     }
-    return () => {
-      document.body.style.overflow = "";
-    };
+    return () => { document.body.style.overflow = ""; };
   }, [open]);
 
-  if (!open) return null;
+  if (!open || !mounted) return null;
 
-  return (
+  const content = (
     <div
-      ref={overlayRef}
       className="mm-overlay"
+      onClick={closeOnBackdrop ? (e) => { if (e.target === e.currentTarget) onClose(); } : undefined}
       role="dialog"
       aria-modal="true"
-      aria-label={typeof title === "string" ? title : "Dialog"}
-      onClick={(e) => {
-        if (e.target === overlayRef.current) onClose();
-      }}
+      aria-label={typeof title === "string" ? title : undefined}
     >
-      <div
-        className={cn(
-          "mm-modal w-full flex flex-col",
-          sizeMap[size],
-          className
-        )}
-        onClick={(e) => e.stopPropagation()}
-      >
+      <div className={cn("mm-modal", SIZE_CLASS[size])}>
         {/* Header */}
-        {(title || !hideClose) && (
-          <div className="mm-modal-header">
-            <div className="flex-1 min-w-0">
-              {title && (
-                <h2 className="text-base font-bold text-slate-900 leading-snug">
-                  {title}
-                </h2>
-              )}
-              {description && (
-                <p className="text-xs text-slate-500 mt-0.5 leading-relaxed">
-                  {description}
-                </p>
-              )}
-            </div>
-            {!hideClose && (
-              <button
-                type="button"
-                onClick={onClose}
-                className="ml-3 shrink-0 p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors"
-                aria-label="Close"
-              >
-                <X size={18} />
-              </button>
+        {(title !== undefined || description !== undefined) && (
+          <div className="mm-modal-header" style={description ? { alignItems: "flex-start" } : undefined}>
+            {centered ? (
+              <div style={{ width: "100%", textAlign: "center" }}>
+                <p className="mm-modal-title">{title}</p>
+                {description && <p style={{ fontSize: "0.8125rem", color: "var(--color-muted)", marginTop: "4px" }}>{description}</p>}
+              </div>
+            ) : (
+              <div>
+                <p className="mm-modal-title">{title}</p>
+                {description && <p style={{ fontSize: "0.8125rem", color: "var(--color-muted)", marginTop: "4px" }}>{description}</p>}
+              </div>
             )}
+            <button
+              onClick={onClose}
+              className="mm-modal-close"
+              aria-label="Close dialog"
+            >
+              <X size={16} />
+            </button>
           </div>
         )}
 
         {/* Body */}
-        <div className="mm-modal-body">{children}</div>
+        <div className="mm-modal-body">
+          {children}
+        </div>
 
         {/* Footer */}
-        {footer && <div className="mm-modal-footer">{footer}</div>}
+        {footer && (
+          <div className="mm-modal-footer">
+            {footer}
+          </div>
+        )}
       </div>
     </div>
   );
+
+  return createPortal(content, document.body);
 }

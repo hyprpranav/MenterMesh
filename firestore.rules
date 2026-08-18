@@ -25,7 +25,7 @@ service cloud.firestore {
     }
 
     function isActive() {
-      return isAuthenticated() && getUserData().status == "active";
+      return isAuthenticated() && (getUserData().status == "active" || getUserData().status == "imported");
     }
 
     // Users Collection
@@ -51,16 +51,18 @@ service cloud.firestore {
 
     // Teams Collection
     match /teams/{teamId} {
-      allow read: if isActive();
-      allow create: if isActive();
-      allow update: if isActive() && (isStaff() || resource.data.leaderId == request.auth.uid || resource.data.memberIds.hasAny([request.auth.uid]));
-      allow delete: if isStaff();
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated();
+      allow update: if isStaff() || (isAuthenticated() && (resource.data.leaderId == request.auth.uid || resource.data.createdBy == request.auth.uid || resource.data.memberIds.hasAny([request.auth.uid])));
+      allow delete: if isStaff() || (isAuthenticated() && resource.data.createdBy == request.auth.uid);
     }
 
     // Events Collection
     match /events/{eventId} {
-      allow read: if isActive();
-      allow write: if isStaff();
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated();
+      allow update: if isStaff() || (isAuthenticated() && (resource.data.submittedBy == request.auth.uid || resource.data.createdBy == request.auth.uid));
+      allow delete: if isStaff();
     }
 
     // Posts / Achievements Collection

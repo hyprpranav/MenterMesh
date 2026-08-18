@@ -70,13 +70,33 @@ export async function getActiveStudents(): Promise<User[]> {
     const snap = await getDocs(
       query(collection(db, "users"), where("role", "==", "student"))
     );
-    const users = snap.docs
-      .map((d) => ({ uid: d.id, ...d.data() } as User))
-      .filter((u) => u.status === "active" || u.status === "imported");
-    return users.sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+    let users = snap.docs.map((d) => ({ uid: d.id, ...d.data() } as User));
+
+    // Fallback if role filter query returns nothing
+    if (users.length === 0) {
+      const allSnap = await getDocs(collection(db, "users"));
+      users = allSnap.docs
+        .map((d) => ({ uid: d.id, ...d.data() } as User))
+        .filter((u) => u.role !== "staff" && u.role !== "master");
+    }
+
+    const filtered = users.filter(
+      (u) => u.status === "active" || u.status === "imported" || !u.status
+    );
+    return (filtered.length > 0 ? filtered : users).sort((a, b) =>
+      (a.name || "").localeCompare(b.name || "")
+    );
   } catch (err) {
     console.error("getActiveStudents error:", err);
-    return [];
+    try {
+      const allSnap = await getDocs(collection(db, "users"));
+      return allSnap.docs
+        .map((d) => ({ uid: d.id, ...d.data() } as User))
+        .filter((u) => u.role !== "staff" && u.role !== "master")
+        .sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+    } catch {
+      return [];
+    }
   }
 }
 
@@ -255,6 +275,104 @@ export async function finalizeTeam(teamId: string): Promise<void> {
 export async function deleteTeam(teamId: string): Promise<void> {
   await updateDoc(doc(db, "teams", teamId), {
     status: "archived",
+    updatedAt: serverTimestamp(),
+  });
+}
+
+export async function reviewTeamProposal(
+  teamId: string,
+  reviewerId: string,
+  reviewerName: string,
+  decision: "approved" | "rejected",
+  feedback?: string
+): Promise<void> {
+  const teamRef = doc(db, "teams", teamId);
+  const snap = await getDoc(teamRef);
+  if (!snap.exists()) return;
+
+  const teamData = snap.data() as Team;
+  const now = serverTimestamp();
+
+  await updateDoc(teamRef, {
+    status: decision === "approved" ? "active" : "rejected",
+    reviewedBy: reviewerId,
+    reviewedByName: reviewerName,
+    reviewedAt: now,
+    reviewFeedback: feedback || undefined,
+    updatedAt: now,
+  });
+
+  // Notify team leader & members
+  const notifyIds = Array.from(
+    new Set([teamData.createdBy, teamData.leaderId, ...(teamData.memberIds || [])].filter(Boolean))
+  ) as string[];
+
+  for (const recipientId of notifyIds) {
+    const title =
+      decision === "approved"
+        ? `Team "${teamData.name}" Approved! 🎉`
+        : `Team Proposal "${teamData.name}" Update`;
+    const message =
+      decision === "approved"
+        ? `Your team proposal "${teamData.name}" has been approved by ${reviewerName}.`
+        : `Your team proposal "${teamData.name}" was rejected. ${
+            feedback ? `Feedback: ${feedback}` : ""
+          }`;
+
+    try {
+      await addDoc(collection(db, "notifications"), {
+        recipientId,
+        title,
+        message,
+        type: "team",
+        read: false,
+        priority: decision === "approved" ? "normal" : "high",
+        createdAt: now,
+      });
+    } catch (e) {
+      console.warn("Could not send team notification to", recipientId, e);
+    }
+  }
+}
+
+export async function addMemberToTeam(
+  teamId: string,
+  memberId: string,
+  memberName: string
+): Promise<void> {
+  const teamRef = doc(db, "teams", teamId);
+  const snap = await getDoc(teamRef);
+  if (!snap.exists()) return;
+  const teamData = snap.data() as Team;
+
+  const memberIds = Array.from(new Set([...(teamData.memberIds || []), memberId]));
+  const memberNames = Array.from(new Set([...(teamData.memberNames || []), memberName]));
+
+  await updateDoc(teamRef, {
+    memberIds,
+    memberNames,
+    updatedAt: serverTimestamp(),
+  });
+}
+
+export async function removeMemberFromTeam(
+  teamId: string,
+  memberId: string,
+  memberName: string
+): Promise<void> {
+  const teamRef = doc(db, "teams", teamId);
+  const snap = await getDoc(teamRef);
+  if (!snap.exists()) return;
+  const teamData = snap.data() as Team;
+
+  const memberIds = (teamData.memberIds || []).filter((id) => id !== memberId);
+  const memberNames = (teamData.memberNames || []).filter((n) => n !== memberName);
+
+  await updateDoc(teamRef, {
+    memberIds,
+    memberNames,
+    leaderId: teamData.leaderId === memberId ? undefined : teamData.leaderId,
+    leaderName: teamData.leaderId === memberId ? undefined : teamData.leaderName,
     updatedAt: serverTimestamp(),
   });
 }

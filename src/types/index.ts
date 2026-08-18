@@ -90,7 +90,7 @@ export interface RequestMessage {
 }
 
 // ─── Team ───────────────────────────────────────────────────
-export type TeamStatus = "draft" | "active" | "finalized" | "archived";
+export type TeamStatus = "draft" | "pending_approval" | "approved" | "active" | "finalized" | "rejected" | "archived";
 
 export interface Team {
   id: string;
@@ -108,6 +108,10 @@ export interface Team {
   driveLink?: string;
   linkedInPost?: string;
   result?: string;
+  reviewedBy?: string;
+  reviewedByName?: string;
+  reviewedAt?: string;
+  reviewFeedback?: string;
   createdBy: string;
   createdByName: string;
   createdAt: string;

@@ -64,7 +64,7 @@ export default function EventDetailPage() {
   }, [eventId]);
 
   if (loading) return <AppShell><LoadingState message="Loading event details..." /></AppShell>;
-  if (!event) return <AppShell><ErrorState message="Event not found." retry={() => router.push("/events")} /></AppShell>;
+  if (!event) return <AppShell><ErrorState message="Event not found." onRetry={() => router.push("/events")} /></AppShell>;
 
   const isStaff = user?.role === "staff" || user?.role === "master";
   const isPending = event.submissionStatus === "pending_review";
