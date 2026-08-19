@@ -12,7 +12,8 @@ import { createEvent, getUserTeams } from "@/lib/firebase/firestore";
 import type { Team } from "@/types";
 import { Button } from "@/components/ui/Button";
 import { useToast } from "@/components/ui/ToastProvider";
-import { ArrowLeft, Calendar, Users, Award, ExternalLink, FileText } from "lucide-react";
+import { ArrowLeft, Calendar, Users, Award, ExternalLink, FileText, X } from "lucide-react";
+import { CloudinaryImageUpload } from "@/components/ui/CloudinaryImageUpload";
 
 const EVENT_TYPES = [
   "Hackathon",
@@ -73,6 +74,8 @@ export default function CreateEventPage() {
   const [photosLink, setPhotosLink] = useState("");
   const [documentsLink, setDocumentsLink] = useState("");
   const [certificatesLink, setCertificatesLink] = useState("");
+  const [certificateFile, setCertificateFile] = useState("");
+  const [geotagPhotos, setGeotagPhotos] = useState<string[]>([]);
   const [driveLink, setDriveLink] = useState("");
   const [linkedInPost, setLinkedInPost] = useState("");
   const [githubUrl, setGithubUrl] = useState("");
@@ -102,8 +105,22 @@ export default function CreateEventPage() {
     }
   };
 
+  const handleGeotagUpload = (url: string) => {
+    if (geotagPhotos.length >= 5) {
+      error("Maximum 5 photos allowed.");
+      return;
+    }
+    setGeotagPhotos((prev) => [...prev, url]);
+  };
+
   const handleSave = async (asDraft = false) => {
     if (!name.trim() || !date || !user) return;
+
+    if (geotagPhotos.length < 1) {
+      error("Please upload at least one geotagged photo of the event.");
+      return;
+    }
+
     setSaving(true);
 
     try {
@@ -134,6 +151,8 @@ export default function CreateEventPage() {
         photosLink: photosLink.trim() || undefined,
         documentsLink: documentsLink.trim() || undefined,
         certificatesLink: certificatesLink.trim() || undefined,
+        certificateFile: certificateFile || undefined,
+        geotagPhotos: geotagPhotos.length > 0 ? geotagPhotos : undefined,
         driveLink: driveLink.trim() || undefined,
         linkedInPost: linkedInPost.trim() || undefined,
         githubUrl: githubUrl.trim() || undefined,
@@ -389,10 +408,58 @@ export default function CreateEventPage() {
               </div>
             </div>
 
+            {/* Event Specific Documents & Uploads */}
+            <div className="space-y-4 pt-4 border-t border-slate-100">
+              <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+                <FileText size={14} /> 4. Event Documents & Geotag Photos
+              </h3>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 bg-slate-50 p-4 rounded-xl border border-slate-200">
+                <div>
+                  <h4 className="font-semibold text-slate-800 text-sm mb-2">Event Certificate</h4>
+                  <CloudinaryImageUpload
+                    label="Upload Participation/Winner Certificate"
+                    buttonText="Select Certificate Image"
+                    existingUrl={certificateFile}
+                    onUploadSuccess={(url) => setCertificateFile(url)}
+                  />
+                </div>
+
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <h4 className="font-semibold text-slate-800 text-sm">Geotagged Photos *</h4>
+                    <span className="text-xs text-slate-500">{geotagPhotos.length} / 5</span>
+                  </div>
+                  <CloudinaryImageUpload
+                    label="Minimum 1, Maximum 5 Photos"
+                    buttonText="Upload Geotag Photo"
+                    onUploadSuccess={handleGeotagUpload}
+                  />
+
+                  {geotagPhotos.length > 0 && (
+                    <div className="flex flex-wrap gap-2 mt-3 block">
+                      {geotagPhotos.map((url, idx) => (
+                        <div key={idx} className="relative w-16 h-16 rounded overflow-hidden border border-slate-200 group">
+                          <img src={url} alt="Geotag" className="w-full h-full object-cover" />
+                          <button
+                            type="button"
+                            onClick={() => setGeotagPhotos(prev => prev.filter((_, i) => i !== idx))}
+                            className="absolute inset-0 bg-black/50 text-white opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity"
+                          >
+                            <X size={16} />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
             {/* Media & External Links */}
             <div className="space-y-4 pt-4 border-t border-slate-100">
               <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
-                <ExternalLink size={14} /> 4. Media & External Links
+                <ExternalLink size={14} /> 5. External Links (Optional)
               </h3>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -427,7 +494,7 @@ export default function CreateEventPage() {
                 </div>
 
                 <div>
-                  <label className="mm-label">Live Demo / Certificate Link</label>
+                  <label className="mm-label">Live Demo Link (if any)</label>
                   <input
                     className="mm-input"
                     placeholder="https://..."

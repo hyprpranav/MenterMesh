@@ -1,9 +1,9 @@
 "use client";
 
 // ============================================================
-// MentorMesh — Visual Team Builder Workspace (DnD + Randomizer)
+// MentorMesh — Visual Team Builder Workspace  (v2 – Side-by-Side + Touch DnD)
 // ============================================================
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import { AppShell } from "@/components/layout/AppShell";
 import { useAuth } from "@/contexts/AuthContext";
 import { getActiveStudents, getEvents, createTeam } from "@/lib/firebase/firestore";
@@ -13,13 +13,8 @@ import { Avatar } from "@/components/ui/Avatar";
 import { LoadingState } from "@/components/ui/States";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { useToast } from "@/components/ui/ToastProvider";
-import {
-  Shuffle, RefreshCw, Star, Lock, Save, Trash2, Plus, Users, Layers, AlertTriangle
-} from "lucide-react";
+import { Shuffle, RefreshCw, Star, Lock, Trash2, Layers, Search, GripVertical } from "lucide-react";
 import { shuffleArray, distributeEvenly } from "@/lib/utils";
-import {
-  DndContext, DragOverlay, useSensor, useSensors, PointerSensor, KeyboardSensor, DragEndEvent, DragStartEvent
-} from "@dnd-kit/core";
 
 interface BuilderTeam {
   id: string;
@@ -27,6 +22,9 @@ interface BuilderTeam {
   memberIds: string[];
   leaderId?: string;
 }
+
+// ── Drag state shared across components ──
+let _dragId: string | null = null;
 
 export default function TeamBuilderPage() {
   const { user } = useAuth();
@@ -36,126 +34,170 @@ export default function TeamBuilderPage() {
   const [events, setEvents] = useState<Event[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Configuration
+  // Config
   const [numTeams, setNumTeams] = useState(4);
   const [selectedEventId, setSelectedEventId] = useState("");
-
-  // Filters for pool
-  const [filterDept, setFilterDept] = useState("All");
-  const [filterYear, setFilterYear] = useState("All");
-  const [filterSec, setFilterSec] = useState("All");
   const [filterSearch, setFilterSearch] = useState("");
+  const [filterSec, setFilterSec] = useState("All");
+  const [filterDept, setFilterDept] = useState("All");
 
-  // Builder State
+  // Builder state
   const [teams, setTeams] = useState<BuilderTeam[]>([]);
   const [unassignedIds, setUnassignedIds] = useState<string[]>([]);
   const [activeDragId, setActiveDragId] = useState<string | null>(null);
+  const [dragTargetId, setDragTargetId] = useState<string | null>(null);
 
   // Dialogs
   const [clearOpen, setClearOpen] = useState(false);
+  const [randomizeConfirmOpen, setRandomizeConfirmOpen] = useState(false);
   const [finalizing, setFinalizing] = useState(false);
-
-  // DnD Sensors
-  const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
-    useSensor(KeyboardSensor)
-  );
 
   useEffect(() => {
     async function load() {
       try {
-        const [stList, evList] = await Promise.all([
-          getActiveStudents(),
-          getEvents(),
-        ]);
+        const [stList, evList] = await Promise.all([getActiveStudents(), getEvents()]);
         setStudents(stList);
         setEvents(evList);
-
-        // Initial setup
-        const initialUnassigned = stList.map((s) => s.uid);
-        setUnassignedIds(initialUnassigned);
-
-        // Initial teams
-        const initTeams: BuilderTeam[] = Array.from({ length: 4 }, (_, i) => ({
+        setUnassignedIds(stList.map((s) => s.uid));
+        setTeams(Array.from({ length: 4 }, (_, i) => ({
           id: `team_${i + 1}`,
           name: `Team ${String(i + 1).padStart(2, "0")}`,
           memberIds: [],
-        }));
-        setTeams(initTeams);
-      } catch (err) {
-        console.error(err);
-      } finally {
-        setLoading(false);
-      }
+        })));
+      } catch (err) { console.error(err); }
+      finally { setLoading(false); }
     }
     load();
   }, []);
 
-  // Update number of team columns
+  // ── Team Count ──
   const handleNumTeamsChange = (count: number) => {
-    const newCount = Math.max(1, Math.min(20, count));
-    setNumTeams(newCount);
-
+    const n = Math.max(1, Math.min(20, count));
+    setNumTeams(n);
     setTeams((prev) => {
-      if (newCount > prev.length) {
-        const added: BuilderTeam[] = Array.from({ length: newCount - prev.length }, (_, i) => ({
+      if (n > prev.length) {
+        const added: BuilderTeam[] = Array.from({ length: n - prev.length }, (_, i) => ({
           id: `team_${prev.length + i + 1}`,
           name: `Team ${String(prev.length + i + 1).padStart(2, "0")}`,
           memberIds: [],
         }));
         return [...prev, ...added];
       } else {
-        // Return unassigned members from removed columns
-        const removed = prev.slice(newCount);
+        const removed = prev.slice(n);
         const returnedIds = removed.flatMap((t) => t.memberIds);
         setUnassignedIds((un) => [...un, ...returnedIds]);
-        return prev.slice(0, newCount);
+        return prev.slice(0, n);
       }
     });
   };
 
-  // Randomize Distribution (#27 spec rule: Distribute all eligible students evenly)
+  // ── Move helpers ──
+  const handleMoveToTeam = useCallback((studentId: string, targetTeamId: string) => {
+    setUnassignedIds((prev) => prev.filter((id) => id !== studentId));
+    setTeams((prev) =>
+      prev.map((t) => {
+        if (t.id === targetTeamId) return t.memberIds.includes(studentId) ? t : { ...t, memberIds: [...t.memberIds, studentId] };
+        return { ...t, memberIds: t.memberIds.filter((id) => id !== studentId), leaderId: t.leaderId === studentId ? undefined : t.leaderId };
+      })
+    );
+  }, []);
+
+  const handleMoveToUnassigned = useCallback((studentId: string) => {
+    setTeams((prev) => prev.map((t) => ({
+      ...t, memberIds: t.memberIds.filter((id) => id !== studentId),
+      leaderId: t.leaderId === studentId ? undefined : t.leaderId,
+    })));
+    setUnassignedIds((prev) => [...prev.filter((id) => id !== studentId), studentId]);
+  }, []);
+
+  // ── Drop handler (shared) ──
+  const handleDrop = useCallback((e: React.DragEvent, targetId: string) => {
+    e.preventDefault();
+    setDragTargetId(null);
+    const studentId = e.dataTransfer.getData("text/plain");
+    if (!studentId) return;
+    if (targetId === "unassigned") handleMoveToUnassigned(studentId);
+    else handleMoveToTeam(studentId, targetId);
+  }, [handleMoveToUnassigned, handleMoveToTeam]);
+
+  // ── Touch DnD ──
+  // We use a ghost element approach for mobile
+  const ghostRef = React.useRef<HTMLDivElement | null>(null);
+  const touchStudentRef = React.useRef<string | null>(null);
+
+  const handleTouchStart = useCallback((e: React.TouchEvent, studentId: string, studentName: string) => {
+    touchStudentRef.current = studentId;
+    _dragId = studentId;
+    setActiveDragId(studentId);
+
+    // Create ghost
+    const ghost = document.createElement("div");
+    ghost.id = "mm-touch-ghost";
+    ghost.textContent = studentName;
+    ghost.style.cssText = `
+      position:fixed; z-index:9999; pointer-events:none;
+      background:#2563EB; color:#fff; font-size:13px; font-weight:700;
+      padding:8px 16px; border-radius:20px; white-space:nowrap;
+      box-shadow:0 8px 24px rgba(0,0,0,0.25); opacity:0.9;
+      transform:translate(-50%,-50%); top:-100px; left:-100px;
+    `;
+    document.body.appendChild(ghost);
+    ghostRef.current = ghost;
+  }, []);
+
+  const handleTouchMove = useCallback((e: React.TouchEvent) => {
+    if (!ghostRef.current) return;
+    e.preventDefault();
+    const touch = e.touches[0];
+    ghostRef.current.style.left = `${touch.clientX}px`;
+    ghostRef.current.style.top = `${touch.clientY}px`;
+
+    // Highlight drop target
+    ghostRef.current.style.display = "none";
+    const el = document.elementFromPoint(touch.clientX, touch.clientY);
+    ghostRef.current.style.display = "";
+    const dropZone = el?.closest("[data-dropzone]") as HTMLElement | null;
+
+    document.querySelectorAll("[data-dropzone]").forEach((z) => z.classList.remove("mm-drop-active"));
+    if (dropZone) { dropZone.classList.add("mm-drop-active"); setDragTargetId(dropZone.dataset.dropzone || null); }
+    else setDragTargetId(null);
+  }, []);
+
+  const handleTouchEnd = useCallback((e: React.TouchEvent) => {
+    const ghost = ghostRef.current;
+    if (ghost) { ghost.remove(); ghostRef.current = null; }
+
+    const studentId = touchStudentRef.current;
+    touchStudentRef.current = null;
+    _dragId = null;
+    setActiveDragId(null);
+    setDragTargetId(null);
+    document.querySelectorAll("[data-dropzone]").forEach((z) => z.classList.remove("mm-drop-active"));
+
+    if (!studentId || !dragTargetId) return;
+    const target = dragTargetId;
+    if (target === "unassigned") handleMoveToUnassigned(studentId);
+    else handleMoveToTeam(studentId, target);
+  }, [dragTargetId, handleMoveToUnassigned, handleMoveToTeam]);
+
+  // ── Randomize ──
   const handleRandomize = () => {
-    if (students.length === 0) return;
-
-    const allStudentIds = students.map((s) => s.uid);
-    const shuffled = shuffleArray(allStudentIds);
+    if (!students.length) return;
+    const shuffled = shuffleArray(students.map((s) => s.uid));
     const distributed = distributeEvenly(shuffled, teams.length);
-
-    const updatedTeams = teams.map((t, idx) => {
-      const assigned = distributed[idx] || [];
-      return {
-        ...t,
-        memberIds: assigned,
-        leaderId: assigned[0] || undefined, // auto assign first as leader
-      };
-    });
-
-    setTeams(updatedTeams);
+    setTeams(teams.map((t, idx) => ({ ...t, memberIds: distributed[idx] || [], leaderId: distributed[idx]?.[0] })));
     setUnassignedIds([]);
     success(`Randomized ${students.length} students into ${teams.length} teams.`);
   };
 
-  // Shuffle existing assignments
   const handleShuffle = () => {
     const allAssigned = teams.flatMap((t) => t.memberIds);
-    if (allAssigned.length === 0) {
-      warning("No assigned students to shuffle. Click Randomize to assign all students.");
-      return;
-    }
-    const shuffled = shuffleArray(allAssigned);
-    const distributed = distributeEvenly(shuffled, teams.length);
-
-    const updatedTeams = teams.map((t, idx) => ({
-      ...t,
-      memberIds: distributed[idx] || [],
-    }));
-
-    setTeams(updatedTeams);
+    if (!allAssigned.length) { warning("No assigned students to shuffle. Click Randomize first."); return; }
+    const distributed = distributeEvenly(shuffleArray(allAssigned), teams.length);
+    setTeams(teams.map((t, idx) => ({ ...t, memberIds: distributed[idx] || [] })));
     success("Shuffled team assignments.");
   };
 
-  // Clear all assignments
   const handleClear = () => {
     setTeams((prev) => prev.map((t) => ({ ...t, memberIds: [], leaderId: undefined })));
     setUnassignedIds(students.map((s) => s.uid));
@@ -163,450 +205,269 @@ export default function TeamBuilderPage() {
     success("Cleared team assignments.");
   };
 
-  // Assign Team Leader
   const handleToggleLeader = (teamId: string, memberId: string) => {
-    setTeams((prev) =>
-      prev.map((t) => {
-        if (t.id !== teamId) return t;
-        return {
-          ...t,
-          leaderId: t.leaderId === memberId ? undefined : memberId,
-        };
-      })
-    );
+    setTeams((prev) => prev.map((t) => t.id !== teamId ? t : { ...t, leaderId: t.leaderId === memberId ? undefined : memberId }));
   };
 
-  // Quick move to team
-  const handleMoveToTeam = (studentId: string, targetTeamId: string) => {
-    // Remove from unassigned
-    setUnassignedIds((prev) => prev.filter((id) => id !== studentId));
-    // Remove from current team if present
-    setTeams((prev) =>
-      prev.map((t) => {
-        if (t.id === targetTeamId) {
-          if (!t.memberIds.includes(studentId)) {
-            return { ...t, memberIds: [...t.memberIds, studentId] };
-          }
-        } else {
-          return {
-            ...t,
-            memberIds: t.memberIds.filter((id) => id !== studentId),
-            leaderId: t.leaderId === studentId ? undefined : t.leaderId,
-          };
-        }
-        return t;
-      })
-    );
-  };
-
-  // Move back to unassigned
-  const handleMoveToUnassigned = (studentId: string) => {
-    setTeams((prev) =>
-      prev.map((t) => ({
-        ...t,
-        memberIds: t.memberIds.filter((id) => id !== studentId),
-        leaderId: t.leaderId === studentId ? undefined : t.leaderId,
-      }))
-    );
-    setUnassignedIds((prev) => [...prev.filter((id) => id !== studentId), studentId]);
-  };
-
-  // Finalize All Teams to Firestore
   const handleFinalizeAll = async () => {
-    // Validation
     const emptyTeams = teams.filter((t) => t.memberIds.length === 0);
-    if (emptyTeams.length > 0) {
-      error(`Cannot finalize: ${emptyTeams.length} team(s) are empty.`);
-      return;
-    }
-
+    if (emptyTeams.length) { error(`Cannot finalize: ${emptyTeams.length} team(s) are empty.`); return; }
     setFinalizing(true);
     const selectedEv = events.find((ev) => ev.id === selectedEventId);
-
     try {
       for (const t of teams) {
-        const teamMemberNames = t.memberIds
-          .map((id) => students.find((s) => s.uid === id)?.name)
-          .filter(Boolean) as string[];
-
+        const memberNames = t.memberIds.map((id) => students.find((s) => s.uid === id)?.name).filter(Boolean) as string[];
         const leaderObj = students.find((s) => s.uid === t.leaderId);
-
         await createTeam({
-          name: t.name,
-          memberIds: t.memberIds,
-          memberNames: teamMemberNames,
-          leaderId: t.leaderId,
-          leaderName: leaderObj?.name,
-          eventId: selectedEventId || undefined,
-          eventName: selectedEv?.name || undefined,
-          status: "finalized",
-          createdBy: user?.uid || "",
-          createdByName: user?.name || "Staff",
+          name: t.name, memberIds: t.memberIds, memberNames,
+          leaderId: t.leaderId, leaderName: leaderObj?.name,
+          eventId: selectedEventId || undefined, eventName: selectedEv?.name || undefined,
+          status: "finalized", createdBy: user?.uid || "", createdByName: user?.name || "Staff",
         });
       }
-
-      success(`Successfully finalized and saved ${teams.length} teams to Firestore! 🎉`);
-    } catch (err) {
-      console.error(err);
-      error("Failed to finalize teams.");
-    } finally {
-      setFinalizing(false);
-    }
+      success(`Finalized and saved ${teams.length} teams! 🎉`);
+    } catch { error("Failed to finalize teams."); }
+    finally { setFinalizing(false); }
   };
-
-  // Drag Target Highlight State
-  const [dragTargetId, setDragTargetId] = useState<string | null>(null);
-  const [randomizeConfirmOpen, setRandomizeConfirmOpen] = useState(false);
 
   if (loading) return <AppShell><LoadingState message="Loading Team Builder Workspace..." /></AppShell>;
 
   const assignedCount = students.length - unassignedIds.length;
-
-  const handleRandomizeClick = () => {
-    if (assignedCount > 0) {
-      setRandomizeConfirmOpen(true);
-    } else {
-      handleRandomize();
+  const visibleUnassigned = unassignedIds.filter((uId) => {
+    const s = students.find((st) => st.uid === uId);
+    if (!s) return false;
+    if (filterDept !== "All" && s.department !== filterDept) return false;
+    if (filterSec !== "All" && s.section?.toUpperCase() !== filterSec.toUpperCase()) return false;
+    if (filterSearch.trim()) {
+      const q = filterSearch.toLowerCase();
+      return s.name.toLowerCase().includes(q) || (s.registerNumber && s.registerNumber.toLowerCase().includes(q));
     }
-  };
+    return true;
+  });
 
   return (
     <AppShell>
-      <div className="space-y-6">
-        {/* Header */}
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-          <div>
-            <div className="flex items-center gap-2">
-              <Layers className="text-blue-600" size={24} />
-              <h1 className="mm-page-title">Team Builder Workspace</h1>
-            </div>
-            <p className="mm-page-subtitle">
-              Visual drag-and-drop team generator. Assign leaders, randomize, and finalize group teams.
-            </p>
-          </div>
+      <style>{`
+        .mm-drop-active { border-color:#3B82F6 !important; background:rgba(59,130,246,0.08) !important; }
+        .mm-builder-layout { display:grid; grid-template-columns:260px 1fr; gap:1rem; height:calc(100dvh - 200px); min-height:500px; }
+        @media(max-width:768px){ .mm-builder-layout { grid-template-columns:1fr; height:auto; } }
+        .mm-pool-panel { display:flex; flex-direction:column; border:1.5px solid var(--color-border); border-radius:14px; background:var(--color-surface); overflow:hidden; min-height:0; }
+        .mm-pool-header { padding:0.75rem; border-bottom:1px solid var(--color-border); background:var(--color-bg); flex-shrink:0; }
+        .mm-pool-list { flex:1; overflow-y:auto; padding:0.5rem; min-height:0; }
+        @media(max-width:768px){ .mm-pool-list { max-height:220px; } }
+        .mm-teams-panel { display:flex; flex-direction:column; min-height:0; overflow:hidden; }
+        .mm-teams-grid { flex:1; overflow-y:auto; display:grid; grid-template-columns:repeat(auto-fill,minmax(200px,1fr)); gap:0.75rem; padding:0.25rem; align-content:start; }
+        @media(max-width:768px){ .mm-teams-grid { grid-template-columns:1fr 1fr; overflow-y:visible; } }
+        @media(max-width:480px){ .mm-teams-grid { grid-template-columns:1fr; } }
+        .mm-team-col { border:1.5px solid var(--color-border); border-radius:12px; background:var(--color-surface); display:flex; flex-direction:column; transition:all 0.15s; min-height:160px; }
+        .mm-team-col-header { padding:0.5rem 0.625rem; border-bottom:1px solid var(--color-border); background:var(--color-bg); display:flex; align-items:center; justify-content:space-between; border-radius:10px 10px 0 0; flex-shrink:0; }
+        .mm-team-col-body { padding:0.375rem; flex:1; overflow-y:auto; max-height:260px; }
+        .mm-drag-chip { display:flex; align-items:center; gap:0.5rem; padding:0.375rem 0.5rem; background:#fff; border:1px solid var(--color-border); border-radius:8px; cursor:grab; transition:all 0.1s; margin-bottom:3px; }
+        .mm-drag-chip:active { cursor:grabbing; opacity:0.5; transform:scale(0.97); }
+        .mm-drag-chip:hover { border-color:#93C5FD; background:#F0F9FF; }
+      `}</style>
 
-          {/* Action Buttons */}
-          <div className="flex items-center gap-2 flex-wrap">
-            <Button variant="outline" size="sm" icon={<RefreshCw size={14} />} onClick={handleRandomizeClick}>
-              Randomize
-            </Button>
-            <Button variant="outline" size="sm" icon={<Shuffle size={14} />} onClick={handleShuffle}>
-              Shuffle
-            </Button>
-            <Button variant="secondary" size="sm" icon={<Trash2 size={14} />} onClick={() => setClearOpen(true)}>
-              Clear
-            </Button>
-            <Button variant="primary" size="sm" icon={<Lock size={14} />} loading={finalizing} onClick={handleFinalizeAll}>
-              Finalize Teams
-            </Button>
+      <div style={{ display: "flex", flexDirection: "column", gap: "0.875rem", height: "100%" }}>
+        {/* Header */}
+        <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", gap: "0.75rem", flexShrink: 0 }}>
+          <div>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <Layers size={22} color="#2563EB" />
+              <h1 className="mm-page-title">Team Builder</h1>
+            </div>
+            <p className="mm-page-subtitle">Drag & drop students into teams. Works on mobile too.</p>
+          </div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem" }}>
+            <Button variant="outline" size="sm" icon={<RefreshCw size={14} />} onClick={() => assignedCount > 0 ? setRandomizeConfirmOpen(true) : handleRandomize()}>Randomize</Button>
+            <Button variant="outline" size="sm" icon={<Shuffle size={14} />} onClick={handleShuffle}>Shuffle</Button>
+            <Button variant="secondary" size="sm" icon={<Trash2 size={14} />} onClick={() => setClearOpen(true)}>Clear</Button>
+            <Button variant="primary" size="sm" icon={<Lock size={14} />} loading={finalizing} onClick={handleFinalizeAll}>Finalize Teams</Button>
           </div>
         </div>
 
-        {/* Configuration Bar */}
-        <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm flex flex-wrap items-center justify-between gap-4 text-xs">
-          <div className="flex flex-wrap items-center gap-4">
-            {/* Number of Teams */}
-            <div className="flex items-center gap-2">
-              <span className="font-semibold text-slate-700">Number of Teams:</span>
-              <input
-                type="number"
-                min={1}
-                max={20}
-                className="mm-input py-1 px-2 w-16 text-center"
-                value={numTeams}
-                onChange={(e) => handleNumTeamsChange(parseInt(e.target.value) || 1)}
-              />
+        {/* Config Bar */}
+        <div style={{ background: "var(--color-surface)", border: "1px solid var(--color-border)", borderRadius: 12, padding: "0.625rem 1rem", display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", gap: "0.75rem", flexShrink: 0 }}>
+          <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "1rem" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13 }}>
+              <span style={{ fontWeight: 600, color: "var(--color-text-2)" }}>Teams:</span>
+              <input type="number" min={1} max={20} className="mm-input" style={{ width: 60, padding: "4px 8px", textAlign: "center" }}
+                value={numTeams} onChange={(e) => handleNumTeamsChange(parseInt(e.target.value) || 1)} />
             </div>
-
-            {/* Event Selector */}
-            <div className="flex items-center gap-2">
-              <span className="font-semibold text-slate-700">Event:</span>
-              <select
-                className="mm-input py-1 px-2 mm-select w-auto"
-                value={selectedEventId}
-                onChange={(e) => setSelectedEventId(e.target.value)}
-              >
+            <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13 }}>
+              <span style={{ fontWeight: 600, color: "var(--color-text-2)" }}>Event:</span>
+              <select className="mm-input mm-select" style={{ padding: "4px 8px", width: "auto" }} value={selectedEventId} onChange={(e) => setSelectedEventId(e.target.value)}>
                 <option value="">General Project</option>
-                {events.map((ev) => (
-                  <option key={ev.id} value={ev.id}>{ev.name} ({ev.type})</option>
-                ))}
+                {events.map((ev) => <option key={ev.id} value={ev.id}>{ev.name}</option>)}
               </select>
             </div>
           </div>
-
-          {/* Status Indicator */}
-          <div className="flex items-center gap-2 bg-slate-50 px-3 py-1.5 rounded-lg border border-slate-200">
-            <span className="font-bold text-slate-900">{assignedCount} / {students.length}</span>
-            <span className="text-slate-500">students assigned</span>
-            {unassignedIds.length === 0 ? (
-              <span className="text-emerald-600 font-bold ml-1">✓ Complete</span>
-            ) : (
-              <span className="text-amber-600 font-medium ml-1">({unassignedIds.length} remaining)</span>
-            )}
+          <div style={{ display: "flex", alignItems: "center", gap: 6, background: "#F8FAFC", padding: "4px 12px", borderRadius: 8, border: "1px solid var(--color-border)", fontSize: 13 }}>
+            <span style={{ fontWeight: 800, color: "var(--color-text)" }}>{assignedCount}/{students.length}</span>
+            <span style={{ color: "var(--color-muted)" }}>assigned</span>
+            {unassignedIds.length === 0
+              ? <span style={{ color: "#16A34A", fontWeight: 700 }}>✓ Complete</span>
+              : <span style={{ color: "#D97706", fontWeight: 500 }}>({unassignedIds.length} left)</span>}
           </div>
         </div>
 
-        {/* Workspace Layout */}
-        <div className="mm-team-builder">
-          {/* Left Column: Unassigned Pool (Drop Zone for returning students) */}
-          <div
-            className={`mm-team-pool transition-all ${
-              dragTargetId === "unassigned" ? "border-blue-500 bg-blue-50/30" : ""
-            }`}
-            onDragOver={(e) => {
-              e.preventDefault();
-              e.dataTransfer.dropEffect = "move";
-              setDragTargetId("unassigned");
-            }}
+        {/* ── Main Builder Layout: Pool | Teams ── */}
+        <div className="mm-builder-layout">
+
+          {/* ── Left: Unassigned Pool ── */}
+          <div className="mm-pool-panel"
+            data-dropzone="unassigned"
+            style={{ borderColor: dragTargetId === "unassigned" ? "#3B82F6" : undefined, background: dragTargetId === "unassigned" ? "rgba(59,130,246,0.05)" : undefined }}
+            onDragOver={(e) => { e.preventDefault(); setDragTargetId("unassigned"); }}
             onDragLeave={() => setDragTargetId(null)}
-            onDrop={(e) => {
-              e.preventDefault();
-              setDragTargetId(null);
-              const studentId = e.dataTransfer.getData("text/plain");
-              if (studentId) handleMoveToUnassigned(studentId);
-            }}
+            onDrop={(e) => handleDrop(e, "unassigned")}
           >
-            <div className="mm-team-pool-header space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="font-bold text-slate-900 text-xs uppercase tracking-wider">
-                  Unassigned Pool ({unassignedIds.length})
+            <div className="mm-pool-header">
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "0.5rem" }}>
+                <span style={{ fontWeight: 700, fontSize: 12, color: "var(--color-text-2)", textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                  Unassigned ({unassignedIds.length})
                 </span>
               </div>
-
-              {/* Pool Filters */}
-              <div className="grid grid-cols-2 gap-1.5 pt-1">
-                <input
-                  type="text"
-                  placeholder="Search student..."
-                  className="col-span-2 text-[11px] px-2 py-1 bg-slate-50 border border-slate-200 rounded outline-none"
-                  value={filterSearch}
-                  onChange={(e) => setFilterSearch(e.target.value)}
-                />
-                <select
-                  className="text-[11px] px-1 py-1 bg-slate-50 border border-slate-200 rounded"
-                  value={filterSec}
-                  onChange={(e) => setFilterSec(e.target.value)}
-                >
-                  <option value="All">All Secs</option>
-                  {["A", "B", "C", "D", "E", "F", "VLSI-1", "VLSI-2", "Other"].map((s) => (
-                    <option key={s} value={s}>Sec {s}</option>
-                  ))}
-                </select>
-                <select
-                  className="text-[11px] px-1 py-1 bg-slate-50 border border-slate-200 rounded"
-                  value={filterDept}
-                  onChange={(e) => setFilterDept(e.target.value)}
-                >
-                  <option value="All">All Depts</option>
-                  {["ECE", "CSE", "EEE", "MECH", "CIVIL", "IT", "VLSI / Microelectronics", "AI & DS"].map((d) => (
-                    <option key={d} value={d}>{d}</option>
-                  ))}
-                </select>
+              {/* Mini Filters */}
+              <div style={{ display: "flex", flexDirection: "column", gap: "0.375rem" }}>
+                <div style={{ position: "relative" }}>
+                  <Search size={12} style={{ position: "absolute", left: 7, top: "50%", transform: "translateY(-50%)", color: "#9CA3AF" }} />
+                  <input type="text" placeholder="Search student..." style={{ width: "100%", paddingLeft: 26, paddingRight: 8, paddingTop: 5, paddingBottom: 5, fontSize: 11, border: "1px solid var(--color-border)", borderRadius: 7, outline: "none", background: "#F8FAFC", boxSizing: "border-box" }}
+                    value={filterSearch} onChange={(e) => setFilterSearch(e.target.value)} />
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.375rem" }}>
+                  <select style={{ fontSize: 11, padding: "4px 6px", border: "1px solid var(--color-border)", borderRadius: 7, background: "#F8FAFC", outline: "none" }} value={filterSec} onChange={(e) => setFilterSec(e.target.value)}>
+                    <option value="All">All Secs</option>
+                    {["A", "B", "C", "D", "E", "F", "VLSI-1", "VLSI-2"].map((s) => <option key={s} value={s}>Sec {s}</option>)}
+                  </select>
+                  <select style={{ fontSize: 11, padding: "4px 6px", border: "1px solid var(--color-border)", borderRadius: 7, background: "#F8FAFC", outline: "none" }} value={filterDept} onChange={(e) => setFilterDept(e.target.value)}>
+                    <option value="All">All Depts</option>
+                    {["ECE", "CSE", "EEE", "MECH", "IT", "AI & DS"].map((d) => <option key={d} value={d}>{d}</option>)}
+                  </select>
+                </div>
               </div>
             </div>
 
-            <div className="mm-team-pool-list">
-              {unassignedIds.length === 0 ? (
-                <div className="text-center py-10 text-xs text-slate-400">
-                  All students assigned to teams!
+            <div className="mm-pool-list">
+              {visibleUnassigned.length === 0 ? (
+                <div style={{ textAlign: "center", padding: "2rem 0.5rem", fontSize: 12, color: "var(--color-muted)" }}>
+                  {unassignedIds.length === 0 ? "All students assigned! 🎉" : "No matches"}
                 </div>
-              ) : (
-                unassignedIds
-                  .filter((uId) => {
-                    const s = students.find((st) => st.uid === uId);
-                    if (!s) return false;
-                    if (filterDept !== "All" && s.department !== filterDept) return false;
-                    if (filterSec !== "All" && s.section?.toUpperCase() !== filterSec.toUpperCase())
-                      return false;
-                    if (filterSearch.trim()) {
-                      const q = filterSearch.toLowerCase();
-                      return (
-                        s.name.toLowerCase().includes(q) ||
-                        (s.registerNumber && s.registerNumber.toLowerCase().includes(q))
-                      );
-                    }
-                    return true;
-                  })
-                  .map((uId) => {
-                  const s = students.find((st) => st.uid === uId);
-                  if (!s) return null;
-                  return (
-                    <div
-                      key={s.uid}
-                      draggable
-                      onDragStart={(e) => {
-                        e.dataTransfer.setData("text/plain", s.uid);
-                        setActiveDragId(s.uid);
-                      }}
-                      onDragEnd={() => setActiveDragId(null)}
-                      className={`mm-draggable-student justify-between group cursor-grab active:cursor-grabbing transition-all ${
-                        activeDragId === s.uid ? "opacity-40 scale-95 border-blue-400" : ""
-                      }`}
-                    >
-                      <div className="flex items-center gap-2 min-w-0">
-                        <Avatar name={s.name} photoUrl={s.profilePhoto} size="sm" />
-                        <div className="min-w-0">
-                          <p className="font-semibold text-slate-900 text-xs truncate">{s.name}</p>
-                          <p className="text-[10px] text-slate-400">{s.department} • {s.registerNumber}</p>
-                        </div>
-                      </div>
-
-                      {/* Quick Assign Dropdown Fallback */}
-                      <select
-                        className="text-[10px] bg-slate-100 border border-slate-200 rounded px-1 py-0.5 cursor-pointer"
-                        onChange={(e) => {
-                          if (e.target.value) handleMoveToTeam(s.uid, e.target.value);
-                        }}
-                        defaultValue=""
-                      >
-                        <option value="" disabled>Move to...</option>
-                        {teams.map((t) => (
-                          <option key={t.id} value={t.id}>{t.name}</option>
-                        ))}
-                      </select>
+              ) : visibleUnassigned.map((uId) => {
+                const s = students.find((st) => st.uid === uId);
+                if (!s) return null;
+                const isDragging = activeDragId === s.uid;
+                return (
+                  <div key={s.uid}
+                    className="mm-drag-chip"
+                    draggable
+                    onDragStart={(e) => { e.dataTransfer.setData("text/plain", s.uid); setActiveDragId(s.uid); }}
+                    onDragEnd={() => setActiveDragId(null)}
+                    onTouchStart={(e) => handleTouchStart(e, s.uid, s.name)}
+                    onTouchMove={handleTouchMove}
+                    onTouchEnd={handleTouchEnd}
+                    style={{ opacity: isDragging ? 0.35 : 1 }}
+                  >
+                    <GripVertical size={12} color="#94A3B8" style={{ flexShrink: 0 }} />
+                    <Avatar name={s.name} photoUrl={s.profilePhoto} size="xs" />
+                    <div style={{ minWidth: 0, flex: 1 }}>
+                      <p style={{ fontSize: 12, fontWeight: 600, color: "var(--color-text)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{s.name}</p>
+                      <p style={{ fontSize: 10, color: "var(--color-muted)" }}>{s.department} · {s.registerNumber}</p>
                     </div>
-                  );
-                })
-              )}
+                    {/* Quick assign */}
+                    <select defaultValue="" style={{ fontSize: 10, border: "1px solid var(--color-border)", borderRadius: 6, padding: "2px 4px", background: "#F1F5F9", cursor: "pointer", flexShrink: 0, outline: "none" }}
+                      onChange={(e) => { if (e.target.value) { handleMoveToTeam(s.uid, e.target.value); e.target.value = ""; } }}>
+                      <option value="" disabled>→</option>
+                      {teams.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+                    </select>
+                  </div>
+                );
+              })}
             </div>
           </div>
 
-          {/* Right Area: Team Columns (Drop Zones) */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {teams.map((team) => {
-              const isTarget = dragTargetId === team.id;
-              return (
-                <div
-                  key={team.id}
-                  className={`mm-team-column transition-all duration-150 ${
-                    isTarget ? "border-blue-500 bg-blue-50/40 shadow-md ring-2 ring-blue-400/20" : ""
-                  }`}
-                  onDragOver={(e) => {
-                    e.preventDefault();
-                    e.dataTransfer.dropEffect = "move";
-                    setDragTargetId(team.id);
-                  }}
-                  onDragLeave={() => setDragTargetId(null)}
-                  onDrop={(e) => {
-                    e.preventDefault();
-                    setDragTargetId(null);
-                    const studentId = e.dataTransfer.getData("text/plain");
-                    if (studentId) handleMoveToTeam(studentId, team.id);
-                  }}
-                >
-                  {/* Column Header */}
-                  <div className="p-3 border-b border-slate-200 bg-slate-50 flex items-center justify-between">
-                    <input
-                      className="font-bold text-slate-900 text-sm bg-transparent border-none focus:outline-none focus:bg-white focus:px-1 rounded"
-                      value={team.name}
-                      onChange={(e) => {
-                        const newName = e.target.value;
-                        setTeams((prev) => prev.map((t) => (t.id === team.id ? { ...t, name: newName } : t)));
-                      }}
-                    />
-                    <span className="text-xs font-semibold text-slate-500 bg-white px-2 py-0.5 rounded border border-slate-200">
-                      {team.memberIds.length} members
-                    </span>
-                  </div>
+          {/* ── Right: Teams Grid ── */}
+          <div className="mm-teams-panel">
+            <div className="mm-teams-grid">
+              {teams.map((team) => {
+                const isTarget = dragTargetId === team.id;
+                return (
+                  <div key={team.id}
+                    className="mm-team-col"
+                    data-dropzone={team.id}
+                    style={{ borderColor: isTarget ? "#3B82F6" : undefined, boxShadow: isTarget ? "0 0 0 3px rgba(59,130,246,0.15)" : undefined }}
+                    onDragOver={(e) => { e.preventDefault(); setDragTargetId(team.id); }}
+                    onDragLeave={() => setDragTargetId(null)}
+                    onDrop={(e) => handleDrop(e, team.id)}
+                  >
+                    {/* Team Header */}
+                    <div className="mm-team-col-header">
+                      <input
+                        style={{ fontWeight: 700, fontSize: 13, color: "var(--color-text)", background: "transparent", border: "none", outline: "none", minWidth: 0, flex: 1 }}
+                        value={team.name}
+                        onChange={(e) => setTeams((prev) => prev.map((t) => t.id === team.id ? { ...t, name: e.target.value } : t))}
+                      />
+                      <span style={{ fontSize: 11, fontWeight: 600, color: "var(--color-muted)", background: "var(--color-surface)", border: "1px solid var(--color-border)", borderRadius: 99, padding: "2px 7px", flexShrink: 0 }}>
+                        {team.memberIds.length}
+                      </span>
+                    </div>
 
-                  {/* Team Member List */}
-                  <div className="p-2 flex-1 space-y-1.5 overflow-y-auto max-h-[400px] min-h-[140px]">
-                    {team.memberIds.length === 0 ? (
-                      <div className={`text-center py-8 text-xs rounded-lg border border-dashed transition-colors flex flex-col items-center justify-center gap-1 ${
-                        isTarget ? "border-blue-400 text-blue-600 font-bold bg-blue-50/50" : "border-slate-200 text-slate-400"
-                      }`}>
-                        <span>Drop student here</span>
-                      </div>
-                    ) : (
-                      team.memberIds.map((mId) => {
-                        const s = students.find((st) => st.uid === mId);
-                        if (!s) return null;
-                        const isLeader = team.leaderId === s.uid;
-
-                        return (
-                          <div
-                            key={s.uid}
-                            draggable
-                            onDragStart={(e) => {
-                              e.dataTransfer.setData("text/plain", s.uid);
-                              setActiveDragId(s.uid);
-                            }}
-                            onDragEnd={() => setActiveDragId(null)}
-                            className={`flex items-center justify-between p-2 bg-white rounded-lg border text-xs cursor-grab active:cursor-grabbing transition-all ${
-                              isLeader ? "border-amber-300 bg-amber-50/30" : "border-slate-200"
-                            } ${activeDragId === s.uid ? "opacity-40 scale-95" : ""}`}
-                          >
-                            <div className="flex items-center gap-2 min-w-0">
-                              <Avatar name={s.name} photoUrl={s.profilePhoto} size="sm" />
-                              <div className="min-w-0">
-                                <div className="flex items-center gap-1">
-                                  <p className="font-semibold text-slate-900 truncate">{s.name}</p>
-                                  {isLeader && (
-                                    <span className="text-[10px] text-amber-700 font-bold bg-amber-100 px-1 py-0.2 rounded shrink-0">
-                                      Leader
-                                    </span>
-                                  )}
-                                </div>
-                                <p className="text-[10px] text-slate-400">{s.department}</p>
+                    {/* Members */}
+                    <div className="mm-team-col-body"
+                      style={{ background: isTarget ? "rgba(59,130,246,0.04)" : undefined }}>
+                      {team.memberIds.length === 0 ? (
+                        <div style={{ border: "1.5px dashed", borderColor: isTarget ? "#3B82F6" : "#D1D5DB", borderRadius: 8, minHeight: 80, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, color: isTarget ? "#2563EB" : "#9CA3AF", fontWeight: isTarget ? 700 : 400, margin: "4px" }}>
+                          Drop here
+                        </div>
+                      ) : (
+                        team.memberIds.map((mId) => {
+                          const s = students.find((st) => st.uid === mId);
+                          if (!s) return null;
+                          const isLeader = team.leaderId === s.uid;
+                          const isDragging = activeDragId === s.uid;
+                          return (
+                            <div key={s.uid}
+                              className="mm-drag-chip"
+                              draggable
+                              onDragStart={(e) => { e.dataTransfer.setData("text/plain", s.uid); setActiveDragId(s.uid); }}
+                              onDragEnd={() => setActiveDragId(null)}
+                              onTouchStart={(e) => handleTouchStart(e, s.uid, s.name)}
+                              onTouchMove={handleTouchMove}
+                              onTouchEnd={handleTouchEnd}
+                              style={{ opacity: isDragging ? 0.35 : 1, borderColor: isLeader ? "#FDE68A" : undefined, background: isLeader ? "#FFFBEB" : undefined }}
+                            >
+                              <GripVertical size={11} color="#94A3B8" style={{ flexShrink: 0 }} />
+                              <Avatar name={s.name} photoUrl={s.profilePhoto} size="xs" />
+                              <div style={{ minWidth: 0, flex: 1 }}>
+                                <p style={{ fontSize: 11, fontWeight: isLeader ? 700 : 600, color: "var(--color-text)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{s.name}</p>
+                                {isLeader && <p style={{ fontSize: 10, color: "#D97706", fontWeight: 700 }}>★ Leader</p>}
+                              </div>
+                              <div style={{ display: "flex", gap: 2, flexShrink: 0 }}>
+                                <button title={isLeader ? "Remove Leader" : "Set as Leader"} onClick={() => handleToggleLeader(team.id, s.uid)}
+                                  style={{ border: "none", background: "none", cursor: "pointer", padding: 3, color: isLeader ? "#F59E0B" : "#CBD5E1", borderRadius: 4 }}>
+                                  <Star size={12} fill={isLeader ? "currentColor" : "none"} />
+                                </button>
+                                <button title="Remove from team" onClick={() => handleMoveToUnassigned(s.uid)}
+                                  style={{ border: "none", background: "none", cursor: "pointer", padding: 3, color: "#CBD5E1", borderRadius: 4 }}>
+                                  <Trash2 size={11} />
+                                </button>
                               </div>
                             </div>
-
-                            <div className="flex items-center gap-1">
-                              {/* Leader Toggle */}
-                              <button
-                                title={isLeader ? "Remove Leader status" : "Set as Team Leader"}
-                                onClick={() => handleToggleLeader(team.id, s.uid)}
-                                className={`p-1 rounded transition-colors ${
-                                  isLeader ? "text-amber-500 bg-amber-50" : "text-slate-300 hover:text-amber-500"
-                                }`}
-                              >
-                                <Star size={14} fill={isLeader ? "currentColor" : "none"} />
-                              </button>
-
-                              {/* Move to unassigned */}
-                              <button
-                                title="Remove from team"
-                                onClick={() => handleMoveToUnassigned(s.uid)}
-                                className="text-slate-300 hover:text-red-500 p-1 transition-colors"
-                              >
-                                <Trash2 size={14} />
-                              </button>
-                            </div>
-                          </div>
-                        );
-                      })
-                    )}
+                          );
+                        })
+                      )}
+                    </div>
                   </div>
-                </div>
-              );
-            })}
+                );
+              })}
+            </div>
           </div>
         </div>
       </div>
 
-      {/* Confirm Clear */}
-      <ConfirmDialog
-        open={clearOpen}
-        title="Clear Current Team Arrangements?"
-        message="This will return all assigned students back to the unassigned pool."
-        confirmLabel="Clear Arrangements"
-        onConfirm={handleClear}
-        onCancel={() => setClearOpen(false)}
-      />
-
-      {/* Confirm Randomize */}
-      <ConfirmDialog
-        open={randomizeConfirmOpen}
-        title="Randomize Teams?"
-        message="Randomizing will replace the current team arrangement. Continue?"
-        confirmLabel="Randomize"
-        onConfirm={() => {
-          setRandomizeConfirmOpen(false);
-          handleRandomize();
-        }}
-        onCancel={() => setRandomizeConfirmOpen(false)}
-      />
+      <ConfirmDialog open={clearOpen} title="Clear Team Arrangements?" message="All assigned students will return to the unassigned pool." confirmLabel="Clear" onConfirm={handleClear} onCancel={() => setClearOpen(false)} />
+      <ConfirmDialog open={randomizeConfirmOpen} title="Randomize Teams?" message="This will replace the current arrangement. Continue?" confirmLabel="Randomize"
+        onConfirm={() => { setRandomizeConfirmOpen(false); handleRandomize(); }}
+        onCancel={() => setRandomizeConfirmOpen(false)} />
     </AppShell>
   );
 }
-

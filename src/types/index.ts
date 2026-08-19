@@ -160,7 +160,9 @@ export interface Event {
   driveLink?: string;
   photosLink?: string;
   documentsLink?: string;
-  certificatesLink?: string;
+  certificatesLink?: string; // Legacy
+  certificateFile?: string; // New Cloudinary uploaded file
+  geotagPhotos?: string[]; // New Cloudinary geotagged multiple photos (Max 5)
   linkedInPost?: string;
   githubUrl?: string;
   liveUrl?: string;

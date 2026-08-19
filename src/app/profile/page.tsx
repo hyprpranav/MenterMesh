@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/Button";
 import { LoadingState } from "@/components/ui/States";
 import { useToast } from "@/components/ui/ToastProvider";
 import { ArrowLeft, Check, Pencil, Save, X } from "lucide-react";
+import { CloudinaryImageUpload } from "@/components/ui/CloudinaryImageUpload";
 
 const initialProfileForm = (user: User | null) => ({
   uid: user?.uid ?? "",
@@ -35,6 +36,7 @@ const initialProfileForm = (user: User | null) => ({
   portfolio: user?.portfolio ?? "",
   bio: user?.bio ?? "",
   skills: (user?.skills ?? []).join(", "),
+  profilePhoto: user?.profilePhoto ?? "",
 });
 
 export default function ProfilePage() {
@@ -65,6 +67,7 @@ export default function ProfilePage() {
     portfolio: "",
     bio: "",
     skills: "",
+    profilePhoto: "",
   });
 
   useEffect(() => {
@@ -111,6 +114,7 @@ export default function ProfilePage() {
         github: form.github.trim() || undefined,
         linkedIn: form.linkedIn.trim() || undefined,
         portfolio: form.portfolio.trim() || undefined,
+        profilePhoto: form.profilePhoto.trim() || undefined,
         bio: form.bio.trim() || undefined,
         skills: form.skills
           .split(",")
@@ -241,6 +245,16 @@ export default function ProfilePage() {
           <div style={{ display: "grid", gap: "1.25rem" }}>
             <div className="mm-card">
               <p className="mm-profile-section-title">Edit Profile</p>
+
+              <div className="mb-6 pt-2 pb-4 border-b border-slate-100">
+                <CloudinaryImageUpload
+                  label="Profile Photo"
+                  buttonText="Upload New Photo"
+                  existingUrl={form.profilePhoto}
+                  onUploadSuccess={(url) => handleChange("profilePhoto", url)}
+                />
+              </div>
+
               <div className="mm-profile-fields" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))" }}>
                 <label className="mm-field">
                   <span>Name</span>

@@ -20,13 +20,13 @@ import { useToast } from "@/components/ui/ToastProvider";
 import { ArrowLeft, Copy, UsersRound } from "lucide-react";
 
 export default function StudentProfilePage() {
-  const { uid }         = useParams() as { uid: string };
-  const { user: me }    = useAuth();
-  const router          = useRouter();
+  const { uid } = useParams() as { uid: string };
+  const { user: me } = useAuth();
+  const router = useRouter();
   const { success, error: toastError } = useToast();
 
   const [student, setStudent] = useState<User | null>(null);
-  const [teams,   setTeams]   = useState<Team[]>([]);
+  const [teams, setTeams] = useState<Team[]>([]);
   const [staffMembers, setStaffMembers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [pageErr, setPageErr] = useState("");
@@ -50,11 +50,11 @@ export default function StudentProfilePage() {
   if (pageErr || !student) return <AppShell><ErrorState title="Profile Error" message={pageErr || "Student record not found."} onRetry={() => router.push("/students")} /></AppShell>;
 
   // ── Privacy access levels ─────────────────────────────────
-  const isSelf          = me?.uid === student.uid;
-  const isStaff         = me?.role === "staff";
-  const isMaster        = me?.role === "master";
-  const isPrivileged    = isStaff || isMaster || isSelf;   // sees phone, personal email
-  const isSuperPriv     = isMaster || isSelf;              // sees DOB, Aadhaar, address
+  const isSelf = me?.uid === student.uid;
+  const isStaff = me?.role === "staff";
+  const isMaster = me?.role === "master";
+  const isPrivileged = isStaff || isMaster || isSelf;   // sees phone, personal email
+  const isSuperPriv = isMaster || isSelf;              // sees DOB, Aadhaar, address
 
   // ── Copy all visible fields ───────────────────────────────
   const handleCopyAll = useCallback(async () => {
@@ -67,11 +67,11 @@ export default function StudentProfilePage() {
     ];
     if (isPrivileged) {
       if (student.personalEmail) lines.push(`Personal Email: ${student.personalEmail}`);
-      if (student.phone)         lines.push(`Phone: ${student.phone}`);
+      if (student.phone) lines.push(`Phone: ${student.phone}`);
     }
     if (isSuperPriv) {
-      if (student.dateOfBirth)   lines.push(`Date of Birth: ${student.dateOfBirth}`);
-      if (student.bloodGroup)    lines.push(`Blood Group: ${student.bloodGroup}`);
+      if (student.dateOfBirth) lines.push(`Date of Birth: ${student.dateOfBirth}`);
+      if (student.bloodGroup) lines.push(`Blood Group: ${student.bloodGroup}`);
     }
 
     try {
@@ -142,15 +142,24 @@ export default function StudentProfilePage() {
               </div>
             )}
 
-            {/* Copy All button */}
-            <Button
-              variant="secondary"
-              size="sm"
-              icon={<Copy size={14} />}
-              onClick={handleCopyAll}
-            >
-              Copy All Info
-            </Button>
+            {/* Action Buttons */}
+            <div className="flex items-center gap-2 mt-2">
+              <Button
+                variant="secondary"
+                size="sm"
+                icon={<Copy size={14} />}
+                onClick={handleCopyAll}
+              >
+                Copy All Info
+              </Button>
+              {student.profilePhoto && (
+                <CopyButton
+                  value={student.profilePhoto}
+                  className="bg-slate-50 border border-slate-200 text-slate-700 hover:bg-slate-100 rounded-lg px-3 py-1.5 text-xs font-semibold h-[34px] flex items-center justify-center transition-colors"
+                  label="Profile Image Link"
+                />
+              )}
+            </div>
           </div>
         </div>
 
@@ -190,8 +199,8 @@ export default function StudentProfilePage() {
             <p className="mm-profile-section-title">Personal Information</p>
             <div className="mm-profile-fields">
               {student.dateOfBirth && <CopyField label="Date of Birth" value={student.dateOfBirth} />}
-              {student.bloodGroup   && <CopyField label="Blood Group" value={student.bloodGroup} />}
-              {student.address      && <CopyField label="Address" value={student.address} />}
+              {student.bloodGroup && <CopyField label="Blood Group" value={student.bloodGroup} />}
+              {student.address && <CopyField label="Address" value={student.address} />}
               {student.aadhaarNumber && (
                 <CopyField label="Aadhaar Number" value={student.aadhaarNumber} masked />
               )}

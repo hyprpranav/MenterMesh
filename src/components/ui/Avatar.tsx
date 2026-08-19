@@ -48,28 +48,43 @@ interface AvatarProps {
 
 export function Avatar({ name, photoUrl, size = "md", className, style }: AvatarProps) {
   const [imgError, setImgError] = useState(false);
+  const [imgLoaded, setImgLoaded] = useState(false);
+
   const showImage = photoUrl && !imgError;
+  const showInitials = !showImage || !imgLoaded;
+
   const initials = getInitials(name);
   const bgColor = getAvatarColor(name);
 
   return (
     <div
-      className={cn("mm-avatar", SIZE_CLASS[size], className)}
+      className={cn("mm-avatar relative overflow-hidden", SIZE_CLASS[size], className)}
       style={{
-        background: showImage ? "transparent" : bgColor,
+        background: bgColor,
         ...style,
       }}
       aria-label={name}
+      title={name}
     >
-      {showImage ? (
+      {/* Fallback Initials (always behind, or visible while loading/error) */}
+      {showInitials && (
+        <div className="absolute inset-0 flex items-center justify-center text-white z-0">
+          {initials}
+        </div>
+      )}
+
+      {/* Image Overlay */}
+      {showImage && (
         <img
           src={photoUrl}
           alt={name}
+          onLoad={() => setImgLoaded(true)}
           onError={() => setImgError(true)}
-          style={{ width: "100%", height: "100%", objectFit: "cover" }}
+          className={cn(
+            "absolute inset-0 w-full h-full object-cover z-10 transition-opacity duration-300",
+            imgLoaded ? "opacity-100" : "opacity-0"
+          )}
         />
-      ) : (
-        initials
       )}
     </div>
   );
