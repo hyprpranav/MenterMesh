@@ -52,17 +52,17 @@ const SECTIONS = [
 ];
 
 const schema = z.object({
-  name:            z.string().min(2, "Name must be at least 2 characters.").max(100),
-  email:           z.string().email("Please enter a valid email address."),
-  password:        z.string().min(6, "Password must be at least 6 characters."),
+  name: z.string().min(2, "Name must be at least 2 characters.").max(100),
+  email: z.string().email("Please enter a valid email address."),
+  password: z.string().min(6, "Password must be at least 6 characters."),
   confirmPassword: z.string(),
-  registerNumber:  z.string().min(3, "Register number is required.").trim(),
-  rollNumber:      z.string().optional(),
-  department:      z.string().min(1, "Please select your department."),
-  year:            z.string().min(1, "Please select your year."),
-  section:         z.string().min(1, "Please select your section."),
-  phone:           z.string().min(10, "Please enter a valid phone number.").max(15),
-  message:         z.string().max(300).optional(),
+  registerNumber: z.string().min(3, "Register number is required.").trim(),
+  rollNumber: z.string().optional(),
+  department: z.string().min(1, "Please select your department."),
+  year: z.string().min(1, "Please select your year."),
+  section: z.string().min(1, "Please select your section."),
+  phone: z.string().min(10, "Please enter a valid phone number.").max(15),
+  message: z.string().max(300).optional(),
 }).refine((d) => d.password === d.confirmPassword, {
   message: "Passwords do not match.",
   path: ["confirmPassword"],
@@ -117,16 +117,16 @@ export default function RegisterPage() {
     setAuthError("");
     try {
       await signUp({
-        name:           data.name.trim(),
-        email:          data.email.trim().toLowerCase(),
-        password:       data.password,
+        name: data.name.trim(),
+        email: data.email.trim().toLowerCase(),
+        password: data.password,
         registerNumber: data.registerNumber.trim().toUpperCase(),
-        rollNumber:     data.rollNumber?.trim(),
-        department:     data.department,
-        year:           data.year,
-        section:        data.section,
-        phone:          data.phone.trim(),
-        message:        data.message,
+        rollNumber: data.rollNumber?.trim(),
+        department: data.department,
+        year: data.year,
+        section: data.section,
+        phone: data.phone.trim(),
+        message: data.message,
       });
       router.push("/pending");
     } catch (err: unknown) {
@@ -141,7 +141,7 @@ export default function RegisterPage() {
       display: "flex",
       alignItems: "center",
       justifyContent: "center",
-      background: "var(--color-bg)",
+      background: "transparent",
       padding: "1.5rem",
     }}>
       <div style={{ width: "100%", maxWidth: "600px" }}>

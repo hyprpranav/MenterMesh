@@ -33,8 +33,8 @@ export function CloudinaryImageUpload({
             const url = await uploadToCloudinary(file);
             onUploadSuccess(url);
             success("Image uploaded successfully!");
-        } catch (err: any) {
-            error(err.message || "Failed to upload image");
+        } catch (err: unknown) {
+            error(err instanceof Error ? err.message : "Failed to upload image");
         } finally {
             setUploading(false);
             // Reset input
@@ -47,11 +47,11 @@ export function CloudinaryImageUpload({
             <label className="text-sm font-semibold text-slate-700">{label}</label>
             <div className="flex items-center gap-3">
                 <label className={`
-          flex items-center justify-center gap-2 px-4 py-2 border rounded-lg cursor-pointer
-          text-sm font-medium transition-all
-          ${uploading ? "bg-slate-100 border-slate-200 text-slate-400 cursor-not-allowed" : "bg-white border-blue-200 text-blue-700 hover:bg-blue-50 hover:border-blue-300"}
+          flex items-center justify-center gap-2 px-6 py-4 border-2 rounded-xl cursor-pointer
+          text-[15px] font-bold transition-all w-full sm:w-auto min-h-[56px] shadow-sm
+          ${uploading ? "bg-slate-100 border-slate-300 text-slate-400 cursor-not-allowed" : "bg-blue-50 border-blue-300 text-blue-700 hover:bg-blue-100 hover:border-blue-400"}
         `}>
-                    {uploading ? <Loader2 size={16} className="animate-spin" /> : <UploadCloud size={16} />}
+                    {uploading ? <Loader2 size={20} className="animate-spin" /> : <UploadCloud size={20} />}
                     {uploading ? "Uploading..." : buttonText}
                     <input
                         type="file"

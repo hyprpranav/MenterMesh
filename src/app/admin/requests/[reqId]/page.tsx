@@ -143,13 +143,13 @@ export default function RequestDetailPage() {
             </div>
 
             {req.status === "pending" && (
-              <div className="flex gap-2">
-                <Button variant="destructive" size="sm" icon={<X size={16} />} onClick={() => setRejectModal(true)}>
-                  Reject Request
+              <div className="flex flex-col sm:flex-row w-full sm:w-auto gap-3 mt-4 sm:mt-0">
+                <Button variant="destructive" size="md" className="w-full sm:w-auto flex-1 justify-center" icon={<X size={16} />} onClick={() => setRejectModal(true)}>
+                  Reject
                 </Button>
 
-                <Button variant="primary" size="sm" icon={<Check size={16} />} loading={approving} onClick={handleApprove}>
-                  Approve Request
+                <Button variant="primary" size="md" className="w-full sm:w-auto flex-1 justify-center" icon={<Check size={16} />} loading={approving} onClick={handleApprove}>
+                  Approve Submit
                 </Button>
               </div>
             )}

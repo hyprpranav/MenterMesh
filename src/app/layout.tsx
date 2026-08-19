@@ -13,7 +13,10 @@ export const metadata: Metadata = {
     "One Mentor. One Community. Every Team. Every Journey. — A centralized platform for mentor-student collaboration.",
   manifest: "/manifest.json",
   icons: {
-    icon: "/favicon.ico",
+    icon: [
+      { url: "/favicon.jpeg", type: "image/jpeg" },
+      { url: "/favicon.ico", sizes: "any" } // fallback
+    ],
     apple: "/icons/apple-touch-icon.png",
   },
   keywords: ["mentor", "students", "teams", "hackathon", "community", "education"],

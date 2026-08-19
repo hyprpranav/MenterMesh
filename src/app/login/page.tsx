@@ -15,15 +15,15 @@ import { Button } from "@/components/ui/Button";
 import { firebaseErrorToMessage } from "@/lib/utils";
 
 const schema = z.object({
-  email:    z.string().email("Please enter a valid email address."),
+  email: z.string().email("Please enter a valid email address."),
   password: z.string().min(1, "Password is required."),
 });
 type FormData = z.infer<typeof schema>;
 
 const FEATURES = [
-  { icon: Users,  text: "Centralized student & mentor hub" },
-  { icon: Star,   text: "Smart team building & project tracking" },
-  { icon: Zap,    text: "Real-time announcements & community" },
+  { icon: Users, text: "Centralized student & mentor hub" },
+  { icon: Star, text: "Smart team building & project tracking" },
+  { icon: Zap, text: "Real-time announcements & community" },
   { icon: Shield, text: "Secure role-based access control" },
 ];
 
@@ -41,9 +41,9 @@ export default function LoginPage() {
 
   useEffect(() => {
     if (!loading && user) {
-      if (user.status === "pending")  { router.push("/pending");   return; }
-      if (user.status === "rejected") { router.push("/rejected");  return; }
-      if (user.status === "inactive") { router.push("/inactive");  return; }
+      if (user.status === "pending") { router.push("/pending"); return; }
+      if (user.status === "rejected") { router.push("/rejected"); return; }
+      if (user.status === "inactive") { router.push("/inactive"); return; }
       router.push("/dashboard");
     }
   }, [user, loading, router]);
@@ -62,7 +62,7 @@ export default function LoginPage() {
     <div style={{
       minHeight: "100dvh",
       display: "flex",
-      background: "var(--color-bg)",
+      background: "transparent",
     }}>
       {/* ── Left Brand Panel (desktop only) ──────────────── */}
       <div style={{
@@ -76,8 +76,8 @@ export default function LoginPage() {
         position: "relative",
         overflow: "hidden",
       }}
-      className="mm-hide-mobile"
-      id="login-brand-panel"
+        className="mm-hide-mobile"
+        id="login-brand-panel"
       >
         {/* Decorative circles */}
         <div style={{ position: "absolute", top: "-60px", right: "-60px", width: "220px", height: "220px", borderRadius: "50%", background: "rgb(255 255 255 / 0.06)" }} />
