@@ -5,7 +5,7 @@
 // ============================================================
 import React, { useState } from "react";
 import { AppShell } from "@/components/layout/AppShell";
-import { getActiveStudents, getTeams, getEvents } from "@/lib/firebase/firestore";
+import { getActiveStudents, getTeams, getEvents, getAllUsers } from "@/lib/firebase/firestore";
 import { Button } from "@/components/ui/Button";
 import { Download, Users, UsersRound, Calendar, FileSpreadsheet } from "lucide-react";
 import { useToast } from "@/components/ui/ToastProvider";
@@ -61,6 +61,30 @@ function ExportCenterContent() {
       success("Student export generated!");
     } catch {
       error("Export failed.");
+    } finally {
+      setExporting(null);
+    }
+  };
+
+  // Overall System Data Export
+  const handleExportOverallSystem = async () => {
+    setExporting("overall");
+    try {
+      const users = await getAllUsers();
+
+      let headers: string[] = ["UID", "Name", "Role", "Status", "College Email", "Personal Email", "Phone Number", "Register Number", "Roll Number", "Department", "Year", "Section", "Address"];
+      let rows: string[][] = users.map((u) => [
+        u.uid, u.name, u.role, u.status || "active",
+        u.email, u.personalEmail || "", u.phone || "",
+        u.registerNumber || "", u.rollNumber || "",
+        u.department || "", u.year || "", u.section || "",
+        u.address || ""
+      ]);
+
+      downloadCSV("mentormesh_overall_system_database", [headers, ...rows]);
+      success("Overall system database exported successfully!");
+    } catch {
+      error("Export failed. Please try again.");
     } finally {
       setExporting(null);
     }
@@ -219,6 +243,30 @@ function ExportCenterContent() {
               onClick={handleExportEvents}
             >
               Full Events Summary (CSV)
+            </Button>
+          </div>
+        </div>
+
+        {/* Developer Override Card */}
+        <div className="mm-card space-y-4 md:col-span-3 mt-2 border-slate-300 bg-slate-50">
+          <div className="flex items-center justify-between border-b border-slate-200 pb-3 flex-wrap gap-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-slate-800 text-slate-100 flex items-center justify-center">
+                <FileSpreadsheet size={20} />
+              </div>
+              <div>
+                <h2 className="font-bold text-slate-900 text-base">Overall System Database</h2>
+                <p className="text-xs text-slate-500">Master extraction including developers and staff details</p>
+              </div>
+            </div>
+            <Button
+              variant="primary"
+              size="sm"
+              icon={<Download size={14} />}
+              loading={exporting === "overall"}
+              onClick={handleExportOverallSystem}
+            >
+              Export Every Data Row (CSV)
             </Button>
           </div>
         </div>

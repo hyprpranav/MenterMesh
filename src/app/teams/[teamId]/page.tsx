@@ -19,6 +19,7 @@ import {
   removeMemberFromTeam,
   reviewTeamProposal,
 } from "@/lib/firebase/firestore";
+import { deleteDoc, doc, getDocs } from "firebase/firestore";
 import type { Team, User } from "@/types";
 import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
@@ -73,6 +74,7 @@ export default function TeamDetailPage() {
 
   // Dialogs
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleteSecurityCode, setDeleteSecurityCode] = useState("");
   const [deleting, setDeleting] = useState(false);
   const [finalizing, setFinalizing] = useState(false);
 
@@ -244,13 +246,23 @@ export default function TeamDetailPage() {
 
   // Delete/Archive
   const handleDelete = async () => {
+    if (deleteSecurityCode !== "927624") {
+      error("Invalid security code.");
+      return;
+    }
     setDeleting(true);
     try {
-      await deleteTeam(team.id);
-      success("Team archived.");
+      // Delete team chat messages first
+      try {
+        const snap = await getDocs(collection(db, "teamChats", team.id, "messages"));
+        await Promise.all(snap.docs.map((d) => deleteDoc(doc(db, "teamChats", team.id, "messages", d.id))));
+      } catch { /* no chat */ }
+      // Delete doc completely
+      await deleteDoc(doc(db, "teams", team.id));
+      success("Team completely deleted.");
       router.push("/teams");
     } catch {
-      error("Failed to archive team.");
+      error("Failed to delete team.");
     } finally {
       setDeleting(false);
     }
@@ -325,9 +337,9 @@ export default function TeamDetailPage() {
                 variant="danger"
                 size="sm"
                 icon={<Trash2 size={14} />}
-                onClick={() => setDeleteOpen(true)}
+                onClick={() => { setDeleteOpen(true); setDeleteSecurityCode(""); }}
               >
-                Archive Team
+                Delete Team
               </Button>
             )}
           </div>
@@ -702,16 +714,40 @@ export default function TeamDetailPage() {
         </div>
       </Modal>
 
-      {/* Confirm Delete */}
-      <ConfirmDialog
+      {/* Confirm Delete Security Modal */}
+      <Modal
         open={deleteOpen}
-        title={`Archive Team "${team.name}"?`}
-        message="This team will be archived and hidden from active team lists."
-        confirmLabel="Archive Team"
-        loading={deleting}
-        onConfirm={handleDelete}
-        onCancel={() => setDeleteOpen(false)}
-      />
+        onClose={() => { setDeleteOpen(false); setDeleteSecurityCode(""); }}
+        title={`Delete Team: ${team.name}`}
+        description="This action is permanent and cannot be undone. Enter the 6-digit security code to confirm."
+        size="sm"
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => { setDeleteOpen(false); setDeleteSecurityCode(""); }}>Cancel</Button>
+            <Button variant="destructive" loading={deleting} onClick={handleDelete} disabled={deleteSecurityCode.length !== 6}>
+              Permanently Delete
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-3">
+          <div style={{ padding: "0.75rem", background: "var(--red-50)", border: "1px solid var(--red-100)", borderRadius: "10px" }}>
+            <p style={{ fontSize: "0.8125rem", color: "var(--red-700)", fontWeight: 600 }}>
+              ⚠️ This will completely delete the team and all chat messages from the database. This action cannot be reversed.
+            </p>
+          </div>
+          <label className="mm-label">Security Code <span style={{ color: "var(--color-danger)" }}>*</span></label>
+          <input
+            className="mm-input"
+            type="password"
+            placeholder="Enter 6-digit PIN"
+            value={deleteSecurityCode}
+            onChange={(e) => setDeleteSecurityCode(e.target.value)}
+            maxLength={6}
+            style={{ fontFamily: "monospace", letterSpacing: "0.2em", textAlign: "center", fontSize: "1.25rem" }}
+          />
+        </div>
+      </Modal>
     </AppShell>
   );
 }

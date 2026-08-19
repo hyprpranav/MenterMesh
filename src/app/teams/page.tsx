@@ -91,6 +91,11 @@ function TeamsContent() {
   const [infoTeam, setInfoTeam] = useState<Team | null>(null);   // modal card
   const [chatTeam, setChatTeam] = useState<Team | null>(null);   // full-screen chat
 
+  // Delete Team
+  const [deletingTeam, setDeletingTeam] = useState<Team | null>(null);
+  const [deleteSecurityCode, setDeleteSecurityCode] = useState("");
+  const [deleteLoading, setDeleteLoading] = useState(false);
+
   const isStaff = user?.role === "staff" || user?.role === "master";
 
   const loadData = async () => {
@@ -160,6 +165,31 @@ function TeamsContent() {
       success(`Team "${rejectingTeam.name}" rejected.`); setRejectingTeam(null); setRejectReason(""); await loadData();
     } catch { error("Failed to reject team."); }
     finally { setActionLoading(false); }
+  };
+
+  const handleDeleteTeam = async () => {
+    if (!deletingTeam || deleteSecurityCode !== "927624") {
+      error("Invalid security code. Please enter the correct 6-digit code.");
+      return;
+    }
+    setDeleteLoading(true);
+    try {
+      // Delete team chat messages first
+      try {
+        const snap = await getDocs(collection(db, "teamChats", deletingTeam.id, "messages"));
+        await Promise.all(snap.docs.map((d) => deleteDoc(doc(db, "teamChats", deletingTeam.id, "messages", d.id))));
+      } catch { /* no chat to delete */ }
+      // Delete the team document
+      await deleteDoc(doc(db, "teams", deletingTeam.id));
+      success(`Team "${deletingTeam.name}" has been permanently deleted.`);
+      setDeletingTeam(null);
+      setDeleteSecurityCode("");
+      await loadData();
+    } catch {
+      error("Failed to delete team.");
+    } finally {
+      setDeleteLoading(false);
+    }
   };
 
   const filteredAvailableStudents = useMemo(() => {
@@ -235,6 +265,7 @@ function TeamsContent() {
           isStaff={isStaff}
           onClose={() => setInfoTeam(null)}
           onOpenChat={() => { setChatTeam(infoTeam); setInfoTeam(null); }}
+          onDeleteTeam={() => { setDeletingTeam(infoTeam); setInfoTeam(null); setDeleteSecurityCode(""); }}
         />
       )}
 
@@ -364,6 +395,41 @@ function TeamsContent() {
           <textarea className="mm-input resize-none" rows={3} placeholder="e.g. Please add 1 more student from ECE..." value={rejectReason} onChange={(e) => setRejectReason(e.target.value)} />
         </div>
       </Modal>
+
+      {/* ── Delete Team Security Modal ── */}
+      <Modal
+        open={!!deletingTeam}
+        onClose={() => { setDeletingTeam(null); setDeleteSecurityCode(""); }}
+        title={deletingTeam ? `Delete Team: ${deletingTeam.name}` : "Delete Team"}
+        description="This action is permanent and cannot be undone. Enter the 6-digit security code to confirm."
+        size="sm"
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => { setDeletingTeam(null); setDeleteSecurityCode(""); }}>Cancel</Button>
+            <Button variant="destructive" loading={deleteLoading} onClick={handleDeleteTeam} disabled={deleteSecurityCode.length !== 6}>
+              Permanently Delete
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-3">
+          <div style={{ padding: "0.75rem", background: "var(--red-50)", border: "1px solid var(--red-100)", borderRadius: "10px" }}>
+            <p style={{ fontSize: "0.8125rem", color: "var(--red-700)", fontWeight: 600 }}>
+              ⚠️ This will permanently delete the team and all its chat messages. This cannot be undone.
+            </p>
+          </div>
+          <label className="mm-label">Security Code <span style={{ color: "var(--color-danger)" }}>*</span></label>
+          <input
+            className="mm-input"
+            type="password"
+            placeholder="Enter 6-digit security code"
+            value={deleteSecurityCode}
+            onChange={(e) => setDeleteSecurityCode(e.target.value)}
+            maxLength={6}
+            style={{ fontFamily: "monospace", letterSpacing: "0.2em", textAlign: "center", fontSize: "1.25rem" }}
+          />
+        </div>
+      </Modal>
     </>
   );
 }
@@ -422,8 +488,8 @@ function TeamCard({ team, currentUserId, isStaff, onApprove, onReject, onViewInf
 }
 
 // ── TeamInfoModal — centered card ──────────────────────────────
-function TeamInfoModal({ team, isStaff, onClose, onOpenChat }: {
-  team: Team; isStaff: boolean; onClose: () => void; onOpenChat: () => void;
+function TeamInfoModal({ team, isStaff, onClose, onOpenChat, onDeleteTeam }: {
+  team: Team; isStaff: boolean; onClose: () => void; onOpenChat: () => void; onDeleteTeam?: () => void;
 }) {
   return (
     <div
@@ -537,6 +603,14 @@ function TeamInfoModal({ team, isStaff, onClose, onOpenChat }: {
               </div>
               <ChevronRight size={18} />
             </button>
+
+            {/* Delete Team (Staff/Developer only) */}
+            {isStaff && onDeleteTeam && (
+              <button onClick={onDeleteTeam} style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: "0.5rem", padding: "0.75rem 1rem", background: "var(--red-50)", border: "1px solid var(--red-100)", borderRadius: 12, cursor: "pointer", color: "var(--red-600)", fontWeight: 700, fontSize: 13, transition: "all 0.15s" }}>
+                <Trash2 size={15} />
+                Delete This Team
+              </button>
+            )}
           </div>
         </div>
       </div>

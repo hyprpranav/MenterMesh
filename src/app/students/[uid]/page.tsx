@@ -1,15 +1,15 @@
 "use client";
 
 // ============================================================
-// MentorMesh — Student Profile Detail v2 (Copy-First, Role Privacy)
+// MentorMesh — Student Profile Detail v3 (Open Data, Expanded Card)
 // ============================================================
 import React, { useEffect, useState, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { AppShell } from "@/components/layout/AppShell";
 import { useAuth } from "@/contexts/AuthContext";
-import { getAllUsers, getUser, getUserTeams } from "@/lib/firebase/firestore";
-import type { User, Team } from "@/types";
+import { getAllUsers, getUser, getUserTeams, getStudentEvents } from "@/lib/firebase/firestore";
+import type { User, Team, Event } from "@/types";
 import { Avatar } from "@/components/ui/Avatar";
 import { CopyField } from "@/components/ui/CopyField";
 import { CopyButton } from "@/components/ui/CopyButton";
@@ -17,7 +17,11 @@ import { Badge, teamStatusBadge } from "@/components/ui/Badge";
 import { LoadingState, ErrorState } from "@/components/ui/States";
 import { Button } from "@/components/ui/Button";
 import { useToast } from "@/components/ui/ToastProvider";
-import { ArrowLeft, Copy, UsersRound } from "lucide-react";
+import {
+  ArrowLeft, Copy, UsersRound, ChevronDown, ChevronUp,
+  Calendar, Award, BookOpen, Megaphone, Star, Hash,
+  Image as ImageIcon,
+} from "lucide-react";
 
 export default function StudentProfilePage() {
   const { uid } = useParams() as { uid: string };
@@ -27,18 +31,21 @@ export default function StudentProfilePage() {
 
   const [student, setStudent] = useState<User | null>(null);
   const [teams, setTeams] = useState<Team[]>([]);
+  const [events, setEvents] = useState<Event[]>([]);
   const [staffMembers, setStaffMembers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [pageErr, setPageErr] = useState("");
+  const [showExpanded, setShowExpanded] = useState(false);
 
   useEffect(() => {
     if (!uid) return;
-    Promise.all([getUser(uid), getUserTeams(uid), getAllUsers()])
-      .then(([u, t, allUsers]) => {
+    Promise.all([getUser(uid), getUserTeams(uid), getAllUsers(), getStudentEvents(uid)])
+      .then(([u, t, allUsers, evts]) => {
         if (!u) setPageErr("Student record not found.");
         else {
           setStudent(u);
           setTeams(t);
+          setEvents(evts);
           setStaffMembers((allUsers || []).filter((member) => member.role === "staff" || member.role === "master"));
         }
       })
@@ -49,15 +56,8 @@ export default function StudentProfilePage() {
   if (loading) return <AppShell><LoadingState message="Loading student profile…" /></AppShell>;
   if (pageErr || !student) return <AppShell><ErrorState title="Profile Error" message={pageErr || "Student record not found."} onRetry={() => router.push("/students")} /></AppShell>;
 
-  // ── Privacy access levels ─────────────────────────────────
-  const isSelf = me?.uid === student.uid;
-  const isStaff = me?.role === "staff";
-  const isMaster = me?.role === "master";
-  const isPrivileged = isStaff || isMaster || isSelf;   // sees phone, personal email
-  const isSuperPriv = isMaster || isSelf;              // sees DOB, Aadhaar, address
-
   // ── Copy all visible fields ───────────────────────────────
-  const handleCopyAll = useCallback(async () => {
+  const handleCopyAll = async () => {
     const lines: string[] = [
       `Name: ${student.name}`,
       `Register No: ${student.registerNumber || "N/A"}`,
@@ -65,14 +65,13 @@ export default function StudentProfilePage() {
       `Department: ${student.department || "N/A"} · ${student.year} Year · Sec ${student.section}`,
       `College Email: ${student.email || "N/A"}`,
     ];
-    if (isPrivileged) {
-      if (student.personalEmail) lines.push(`Personal Email: ${student.personalEmail}`);
-      if (student.phone) lines.push(`Phone: ${student.phone}`);
-    }
-    if (isSuperPriv) {
-      if (student.dateOfBirth) lines.push(`Date of Birth: ${student.dateOfBirth}`);
-      if (student.bloodGroup) lines.push(`Blood Group: ${student.bloodGroup}`);
-    }
+    if (student.personalEmail) lines.push(`Personal Email: ${student.personalEmail}`);
+    if (student.phone) lines.push(`Phone: ${student.phone}`);
+    if (student.dateOfBirth) lines.push(`Date of Birth: ${student.dateOfBirth}`);
+    if (student.bloodGroup) lines.push(`Blood Group: ${student.bloodGroup}`);
+    if (student.aadhaarNumber) lines.push(`Aadhaar: ${student.aadhaarNumber}`);
+    if (student.parentPhoneNumber) lines.push(`Parent Phone: ${student.parentPhoneNumber}`);
+    if (student.address) lines.push(`Address: ${student.address}`);
 
     try {
       await navigator.clipboard.writeText(lines.join("\n"));
@@ -80,9 +79,23 @@ export default function StudentProfilePage() {
     } catch {
       toastError("Failed to copy. Please try again.");
     }
-  }, [student, isPrivileged, isSuperPriv, success, toastError]);
+  };
+
+  const handleCopyProfilePic = async () => {
+    if (!student.profilePhoto) return;
+    try {
+      await navigator.clipboard.writeText(student.profilePhoto);
+      success("Profile picture URL copied!");
+    } catch {
+      toastError("Failed to copy profile picture URL.");
+    }
+  };
 
   const meta = [student.department, student.year && `${student.year} Year`, student.section && `Sec ${student.section}`].filter(Boolean).join(" · ");
+
+  // ── Expanded card data ─────────────────────────────────────
+  const hackathonEvents = events.filter(e => e.type?.toLowerCase().includes("hackathon"));
+  const otherEvents = events.filter(e => !e.type?.toLowerCase().includes("hackathon"));
 
   return (
     <AppShell>
@@ -104,7 +117,26 @@ export default function StudentProfilePage() {
 
           {/* Hero content */}
           <div style={{ padding: "1.5rem", display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center", gap: "0.875rem" }}>
-            <Avatar name={student.name} photoUrl={student.profilePhoto} size="xl" />
+            <div style={{ position: "relative" }}>
+              <Avatar name={student.name} photoUrl={student.profilePhoto} size="xl" />
+              {/* Copy profile pic button */}
+              {student.profilePhoto && (
+                <button
+                  onClick={handleCopyProfilePic}
+                  title="Copy profile picture URL"
+                  style={{
+                    position: "absolute", bottom: -4, right: -4,
+                    width: 28, height: 28, borderRadius: "50%",
+                    background: "var(--color-surface)", border: "1.5px solid var(--color-border)",
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    cursor: "pointer", boxShadow: "var(--shadow-sm)",
+                    transition: "all 0.15s",
+                  }}
+                >
+                  <ImageIcon size={13} color="var(--color-primary)" />
+                </button>
+              )}
+            </div>
             <div>
               <h1 style={{ fontSize: "1.375rem", fontWeight: 700, letterSpacing: "-0.02em" }}>{student.name}</h1>
               <p style={{ fontSize: "0.875rem", color: "var(--color-muted)", fontWeight: 500, marginTop: "2px" }}>{meta}</p>
@@ -143,7 +175,7 @@ export default function StudentProfilePage() {
             )}
 
             {/* Action Buttons */}
-            <div className="flex items-center gap-2 mt-2">
+            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginTop: "0.5rem", flexWrap: "wrap", justifyContent: "center" }}>
               <Button
                 variant="secondary"
                 size="sm"
@@ -153,11 +185,14 @@ export default function StudentProfilePage() {
                 Copy All Info
               </Button>
               {student.profilePhoto && (
-                <CopyButton
-                  value={student.profilePhoto}
-                  className="bg-slate-50 border border-slate-200 text-slate-700 hover:bg-slate-100 rounded-lg px-3 py-1.5 text-xs font-semibold h-[34px] flex items-center justify-center transition-colors"
-                  label="Profile Image Link"
-                />
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  icon={<ImageIcon size={14} />}
+                  onClick={handleCopyProfilePic}
+                >
+                  Copy Photo URL
+                </Button>
               )}
             </div>
           </div>
@@ -175,39 +210,28 @@ export default function StudentProfilePage() {
           </div>
         </div>
 
-        {/* Contact Section */}
+        {/* Contact Section — all open, no privacy */}
         <div className="mm-card">
           <p className="mm-profile-section-title">Contact</p>
           <div className="mm-profile-fields">
             <CopyField label="College Email" value={student.email} />
-            <CopyField label="Personal Email" value={student.personalEmail} sensitive={!isPrivileged} />
-            <CopyField label="Phone" value={student.phone} sensitive={!isPrivileged} />
-            {student.alternateEmail && (
-              <CopyField label="Alternate Email" value={student.alternateEmail} sensitive={!isPrivileged} />
-            )}
+            <CopyField label="Personal Email" value={student.personalEmail} />
+            <CopyField label="Phone" value={student.phone} />
+            {student.alternateEmail && <CopyField label="Alternate Email" value={student.alternateEmail} />}
+            {student.parentPhoneNumber && <CopyField label="Parent/Guardian Phone" value={student.parentPhoneNumber} />}
           </div>
-          {!isPrivileged && (
-            <p style={{ fontSize: "0.75rem", color: "var(--color-muted)", marginTop: "0.75rem", display: "flex", alignItems: "center", gap: "0.375rem" }}>
-              🔒 Phone and personal email visible to staff and mentors only.
-            </p>
-          )}
         </div>
 
-        {/* Personal Info (Privileged) */}
-        {isSuperPriv && (
+        {/* Personal Info — all open, no masking */}
+        {(student.dateOfBirth || student.bloodGroup || student.address || student.aadhaarNumber) && (
           <div className="mm-card">
             <p className="mm-profile-section-title">Personal Information</p>
             <div className="mm-profile-fields">
               {student.dateOfBirth && <CopyField label="Date of Birth" value={student.dateOfBirth} />}
               {student.bloodGroup && <CopyField label="Blood Group" value={student.bloodGroup} />}
               {student.address && <CopyField label="Address" value={student.address} />}
-              {student.aadhaarNumber && (
-                <CopyField label="Aadhaar Number" value={student.aadhaarNumber} masked />
-              )}
+              {student.aadhaarNumber && <CopyField label="Aadhaar Number" value={student.aadhaarNumber} />}
             </div>
-            <p style={{ fontSize: "0.75rem", color: "var(--color-muted)", marginTop: "0.75rem" }}>
-              🔒 Sensitive details visible to Master and self only.
-            </p>
           </div>
         )}
 
@@ -247,15 +271,9 @@ export default function StudentProfilePage() {
               {staffMembers.map((member) => (
                 <Link key={member.uid} href={`/students/${member.uid}`} style={{ textDecoration: "none" }}>
                   <div style={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    gap: "0.75rem",
-                    padding: "0.8rem 0.9rem",
-                    borderRadius: "12px",
-                    border: "1px solid rgba(148,163,184,0.3)",
-                    background: "rgba(30,41,59,0.7)",
-                    color: "#F8FAFC",
+                    display: "flex", alignItems: "center", justifyContent: "space-between",
+                    gap: "0.75rem", padding: "0.8rem 0.9rem", borderRadius: "12px",
+                    border: "1px solid rgba(148,163,184,0.3)", background: "rgba(30,41,59,0.7)", color: "#F8FAFC",
                   }}>
                     <div style={{ display: "flex", alignItems: "center", gap: "0.625rem", minWidth: 0 }}>
                       <Avatar name={member.name} photoUrl={member.profilePhoto} size="sm" />
@@ -271,6 +289,143 @@ export default function StudentProfilePage() {
                 </Link>
               ))}
             </div>
+          </div>
+        )}
+
+        {/* ── Expanded Details Button + Card ────────────────── */}
+        <Button
+          variant="primary"
+          size="lg"
+          onClick={() => setShowExpanded(!showExpanded)}
+          icon={showExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+          style={{ width: "100%", justifyContent: "center" }}
+        >
+          {showExpanded ? "Hide Full Overview" : "View Full Overview (Teams, Events, Skills & More)"}
+        </Button>
+
+        {showExpanded && (
+          <div className="mm-student-expanded-card">
+            <h3 style={{ fontWeight: 700, fontSize: "1.125rem", marginBottom: "1.25rem", color: "var(--color-text)", textAlign: "center" }}>
+              📋 {student.name} — Full Overview
+            </h3>
+
+            {/* Teams Overview */}
+            <div className="mm-expanded-section">
+              <div className="mm-expanded-section-title">
+                <UsersRound size={13} /> Teams ({teams.length})
+              </div>
+              {teams.length > 0 ? (
+                <div className="mm-expanded-tags">
+                  {teams.map((t) => (
+                    <span key={t.id} className="mm-expanded-tag">
+                      <UsersRound size={11} style={{ marginRight: 4 }} />
+                      {t.name} {t.eventName ? `(${t.eventName})` : ""}
+                    </span>
+                  ))}
+                </div>
+              ) : (
+                <p style={{ fontSize: "0.8125rem", color: "var(--color-muted)" }}>Not part of any team yet.</p>
+              )}
+            </div>
+
+            {/* Events Attended */}
+            <div className="mm-expanded-section">
+              <div className="mm-expanded-section-title">
+                <Calendar size={13} /> Events Attended ({events.length})
+              </div>
+              {events.length > 0 ? (
+                <>
+                  {hackathonEvents.length > 0 && (
+                    <div style={{ marginBottom: "0.5rem" }}>
+                      <p style={{ fontSize: "0.6875rem", fontWeight: 700, color: "var(--amber-600)", marginBottom: "0.375rem", textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                        🏆 Hackathons ({hackathonEvents.length})
+                      </p>
+                      <div className="mm-expanded-tags">
+                        {hackathonEvents.map((e) => (
+                          <span key={e.id} className="mm-expanded-tag" style={{ background: "var(--amber-50)", borderColor: "var(--amber-100)", color: "var(--amber-600)" }}>
+                            {e.name} {e.result ? `· ${e.result}` : ""}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {otherEvents.length > 0 && (
+                    <div>
+                      <p style={{ fontSize: "0.6875rem", fontWeight: 700, color: "var(--color-muted)", marginBottom: "0.375rem", textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                        Other Events ({otherEvents.length})
+                      </p>
+                      <div className="mm-expanded-tags">
+                        {otherEvents.map((e) => (
+                          <span key={e.id} className="mm-expanded-tag">
+                            {e.name} ({e.type})
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </>
+              ) : (
+                <p style={{ fontSize: "0.8125rem", color: "var(--color-muted)" }}>No events attended yet.</p>
+              )}
+            </div>
+
+            {/* Skills */}
+            <div className="mm-expanded-section">
+              <div className="mm-expanded-section-title">
+                <Star size={13} /> Skills
+              </div>
+              {student.skills && student.skills.length > 0 ? (
+                <div className="mm-expanded-tags">
+                  {student.skills.map((sk) => (
+                    <span key={sk} className="mm-expanded-tag" style={{ background: "var(--blue-50)", borderColor: "var(--blue-100)", color: "var(--blue-700)" }}>
+                      {sk}
+                    </span>
+                  ))}
+                </div>
+              ) : (
+                <p style={{ fontSize: "0.8125rem", color: "var(--color-muted)" }}>No skills added yet.</p>
+              )}
+            </div>
+
+            {/* Bio */}
+            {student.bio && (
+              <div className="mm-expanded-section">
+                <div className="mm-expanded-section-title">
+                  <BookOpen size={13} /> Bio
+                </div>
+                <p style={{ fontSize: "0.875rem", color: "var(--color-text-2)", lineHeight: 1.6 }}>{student.bio}</p>
+              </div>
+            )}
+
+            {/* Achievements from events */}
+            {events.filter(e => e.result && e.result !== "Participant").length > 0 && (
+              <div className="mm-expanded-section">
+                <div className="mm-expanded-section-title">
+                  <Award size={13} /> Achievements
+                </div>
+                <div className="mm-expanded-tags">
+                  {events.filter(e => e.result && e.result !== "Participant").map((e) => (
+                    <span key={e.id} className="mm-expanded-tag" style={{ background: "var(--green-50)", borderColor: "var(--green-100)", color: "var(--green-700)" }}>
+                      🏅 {e.result} — {e.name}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Links */}
+            {(student.github || student.linkedIn || student.portfolio) && (
+              <div className="mm-expanded-section">
+                <div className="mm-expanded-section-title">
+                  <Hash size={13} /> Links & Profiles
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: "0.375rem" }}>
+                  {student.github && <span className="mm-expanded-tag">GitHub: {student.github}</span>}
+                  {student.linkedIn && <span className="mm-expanded-tag">LinkedIn: {student.linkedIn}</span>}
+                  {student.portfolio && <span className="mm-expanded-tag">Portfolio: {student.portfolio}</span>}
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>

@@ -10,6 +10,7 @@ import {
   LayoutDashboard, Users, UsersRound, Calendar,
   Bell, Megaphone, BookOpen, Download, Settings,
   LogOut, UserCheck, ShieldCheck, Layers, User,
+  AlertTriangle,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { Avatar } from "@/components/ui/Avatar";
@@ -74,6 +75,12 @@ const NAV_ITEMS: NavItem[] = [
     roles: ["student", "staff", "master"],
     badgeKey: "notifications",
   },
+  {
+    label: "Export Data",
+    href: "/export",
+    icon: <Download size={17} />,
+    roles: ["student"],
+  },
 ];
 
 const ADMIN_ITEMS: NavItem[] = [
@@ -137,7 +144,7 @@ export function Sidebar({
     }
   };
 
-  const filteredNav   = NAV_ITEMS.filter((item) => item.roles.includes(role));
+  const filteredNav = NAV_ITEMS.filter((item) => item.roles.includes(role));
   const filteredAdmin = ADMIN_ITEMS.filter((item) => item.roles.includes(role));
 
   const isActive = (href: string) =>
@@ -296,6 +303,21 @@ export function Sidebar({
           <LogOut size={17} />
           <span>{loggingOut ? "Signing out…" : "Sign Out"}</span>
         </button>
+
+        {/* Facing Issues */}
+        <Link
+          href="/facing-issues"
+          className="mm-facing-issues-link"
+          style={{ marginTop: "0.5rem" }}
+        >
+          <AlertTriangle size={13} />
+          <span>Facing Issues?</span>
+        </Link>
+      </div>
+
+      {/* ── Developer Credit ─────────────────────────────── */}
+      <div className="mm-dev-credit">
+        Crafted by <a href="mailto:harishpranavs259@gmail.com">HARISH PRANAV S</a>
       </div>
     </aside>
   );

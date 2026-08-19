@@ -18,6 +18,8 @@ import { LoadingState, EmptyState } from "@/components/ui/States";
 import { useToast } from "@/components/ui/ToastProvider";
 import { CopyButton } from "@/components/ui/CopyButton";
 import { Avatar } from "@/components/ui/Avatar";
+import { deleteDoc, doc } from "firebase/firestore";
+import { db } from "@/lib/firebase/config";
 
 export default function AdminStudentsPage() {
   return (
@@ -43,6 +45,11 @@ function AdminStudentsContent() {
   const [editYear, setEditYear] = useState("");
   const [editSection, setEditSection] = useState("");
   const [saving, setSaving] = useState(false);
+
+  // Delete User State
+  const [deletingUser, setDeletingUser] = useState<User | null>(null);
+  const [deleteSecurityCode, setDeleteSecurityCode] = useState("");
+  const [deleteLoading, setDeleteLoading] = useState(false);
 
   useEffect(() => {
     async function load() {
@@ -95,13 +102,13 @@ function AdminStudentsContent() {
         prev.map((u) =>
           u.uid === editingUser.uid
             ? {
-                ...u,
-                role: editRole,
-                status: editStatus,
-                department: editDept || u.department,
-                year: editYear || u.year,
-                section: editSection || u.section,
-              }
+              ...u,
+              role: editRole,
+              status: editStatus,
+              department: editDept || u.department,
+              year: editYear || u.year,
+              section: editSection || u.section,
+            }
             : u
         )
       );
@@ -111,6 +118,25 @@ function AdminStudentsContent() {
       error("Failed to update user.");
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleDeleteUser = async () => {
+    if (!deletingUser || deleteSecurityCode !== "927624") {
+      error("Invalid security code.");
+      return;
+    }
+    setDeleteLoading(true);
+    try {
+      await deleteDoc(doc(db, "users", deletingUser.uid));
+      setUsers((prev) => prev.filter((u) => u.uid !== deletingUser.uid));
+      success(`User account "${deletingUser.name}" completely deleted.`);
+      setDeletingUser(null);
+      setDeleteSecurityCode("");
+    } catch {
+      error("Failed to delete user account.");
+    } finally {
+      setDeleteLoading(false);
     }
   };
 
@@ -207,14 +233,18 @@ function AdminStudentsContent() {
                     </Badge>
                   </td>
                   <td>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      icon={<Edit2 size={14} />}
-                      onClick={() => handleOpenEdit(u)}
-                    >
-                      Edit
-                    </Button>
+                    {u.role !== "master" || isMaster ? (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        icon={<Edit2 size={14} />}
+                        onClick={() => handleOpenEdit(u)}
+                      >
+                        Edit
+                      </Button>
+                    ) : (
+                      <span className="text-xs text-slate-400 italic">Protected</span>
+                    )}
                   </td>
                 </tr>
               ))}
@@ -230,14 +260,24 @@ function AdminStudentsContent() {
         title={editingUser ? `Manage Account: ${editingUser.name}` : "Manage Account"}
         size="sm"
         footer={
-          <>
-            <Button variant="secondary" onClick={() => setEditingUser(null)}>
-              Cancel
-            </Button>
-            <Button variant="primary" loading={saving} onClick={handleSaveEdit}>
-              Save Changes
-            </Button>
-          </>
+          <div style={{ display: "flex", justifyContent: "space-between", width: "100%" }}>
+            <div>
+              <Button
+                variant="destructive"
+                onClick={() => { setEditingUser(null); setDeletingUser(editingUser); setDeleteSecurityCode(""); }}
+              >
+                Delete Account
+              </Button>
+            </div>
+            <div style={{ display: "flex", gap: "0.75rem" }}>
+              <Button variant="secondary" onClick={() => setEditingUser(null)}>
+                Cancel
+              </Button>
+              <Button variant="primary" loading={saving} onClick={handleSaveEdit}>
+                Save Changes
+              </Button>
+            </div>
+          </div>
         }
       >
         <div className="space-y-4">
@@ -331,6 +371,41 @@ function AdminStudentsContent() {
               </select>
             </div>
           </div>
+        </div>
+      </Modal>
+
+      {/* Delete User Security Modal */}
+      <Modal
+        open={!!deletingUser}
+        onClose={() => { setDeletingUser(null); setDeleteSecurityCode(""); }}
+        title={deletingUser ? `Delete User: ${deletingUser.name}` : "Delete User"}
+        description="This action is permanent and cannot be undone. Enter the 6-digit security code to confirm deletion."
+        size="sm"
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => { setDeletingUser(null); setDeleteSecurityCode(""); }}>Cancel</Button>
+            <Button variant="destructive" loading={deleteLoading} onClick={handleDeleteUser} disabled={deleteSecurityCode.length !== 6}>
+              Permanently Delete
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-3">
+          <div style={{ padding: "0.75rem", background: "var(--red-50)", border: "1px solid var(--red-100)", borderRadius: "10px" }}>
+            <p style={{ fontSize: "0.8125rem", color: "var(--red-700)", fontWeight: 600 }}>
+              ⚠️ This will completely delete the user's account from the database. This action cannot be reversed.
+            </p>
+          </div>
+          <label className="mm-label">Security Code <span style={{ color: "var(--color-danger)" }}>*</span></label>
+          <input
+            className="mm-input"
+            type="password"
+            placeholder="Enter 6-digit security code"
+            value={deleteSecurityCode}
+            onChange={(e) => setDeleteSecurityCode(e.target.value)}
+            maxLength={6}
+            style={{ fontFamily: "monospace", letterSpacing: "0.2em", textAlign: "center", fontSize: "1.25rem" }}
+          />
         </div>
       </Modal>
     </div>

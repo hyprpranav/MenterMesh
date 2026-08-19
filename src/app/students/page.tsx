@@ -8,7 +8,7 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { AppShell } from "@/components/layout/AppShell";
 import { Search, X, Users, SlidersHorizontal, ChevronDown } from "lucide-react";
-import { getActiveStudents } from "@/lib/firebase/firestore";
+import { getAllUsers } from "@/lib/firebase/firestore";
 import type { User } from "@/types";
 import { Avatar } from "@/components/ui/Avatar";
 import { CopyButton } from "@/components/ui/CopyButton";
@@ -18,6 +18,7 @@ import { Modal } from "@/components/ui/Modal";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { normalizeForSearch } from "@/lib/utils";
+import { useToast } from "@/components/ui/ToastProvider";
 
 const DEPARTMENTS = [
   "All",
@@ -79,11 +80,13 @@ function DirectoryContent() {
   const [searchQuery, setSearchQuery] = useState(searchParams.get("q") || "");
   const [selectedDept, setSelectedDept] = useState("All");
   const [selectedYear, setSelectedYear] = useState("All");
-  const [selectedSec,  setSelectedSec]  = useState("All");
+  const [selectedSec, setSelectedSec] = useState("All");
 
   useEffect(() => {
-    getActiveStudents()
-      .then(setStudents)
+    getAllUsers()
+      .then(users => {
+        setStudents(users.filter(u => u.status === "active" || u.status === "imported" || !u.status));
+      })
       .catch(console.error)
       .finally(() => setLoading(false));
   }, []);
@@ -192,9 +195,9 @@ function DirectoryContent() {
 
         {/* Selects */}
         {[
-          { label: "Dept",    value: selectedDept, onChange: setSelectedDept, options: DEPARTMENTS },
-          { label: "Year",    value: selectedYear, onChange: setSelectedYear, options: YEARS },
-          { label: "Section", value: selectedSec,  onChange: setSelectedSec,  options: SECTIONS },
+          { label: "Dept", value: selectedDept, onChange: setSelectedDept, options: DEPARTMENTS },
+          { label: "Year", value: selectedYear, onChange: setSelectedYear, options: YEARS },
+          { label: "Section", value: selectedSec, onChange: setSelectedSec, options: SECTIONS },
         ].map(({ label, value, onChange, options }) => (
           <div key={label} style={{ display: "flex", alignItems: "center", gap: "0.375rem" }}>
             <span style={{ fontSize: "0.8125rem", fontWeight: 600, color: "var(--color-muted)", flexShrink: 0 }}>{label}:</span>
@@ -298,11 +301,17 @@ function DirectoryContent() {
 
 // ── Student Card ──────────────────────────────────────────────
 function StudentCard({ student, onOpen }: { student: User; onOpen: () => void }) {
+  const isStaff = student.role === "staff" || student.role === "master";
+
   return (
     <div
       className="mm-card mm-card-hover"
       onClick={onOpen}
-      style={{ display: "flex", flexDirection: "column", gap: "0.875rem", cursor: "pointer" }}
+      style={{
+        display: "flex", flexDirection: "column", gap: "0.875rem", cursor: "pointer",
+        background: isStaff ? "linear-gradient(to bottom right, #F8FAFC, #F1F5F9)" : "var(--color-surface)",
+        borderColor: isStaff ? "#CBD5E1" : "var(--color-border)",
+      }}
     >
       {/* Avatar + name */}
       <div style={{ display: "flex", alignItems: "flex-start", gap: "0.75rem" }}>
@@ -311,8 +320,8 @@ function StudentCard({ student, onOpen }: { student: User; onOpen: () => void })
           <h3 style={{ fontWeight: 700, fontSize: "0.9375rem", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "var(--color-text)" }}>
             {student.name}
           </h3>
-          <p style={{ fontSize: "0.8125rem", color: "var(--color-muted)", fontWeight: 500 }}>
-            {student.department} · {student.year} Yr · Sec {student.section}
+          <p style={{ fontSize: "0.8125rem", color: isStaff ? "#475569" : "var(--color-muted)", fontWeight: 500 }}>
+            {isStaff ? (student.role === "master" ? "Master" : "Faculty / Staff") : `${student.department} · ${student.year} Yr · Sec ${student.section}`}
           </p>
         </div>
       </div>
@@ -365,11 +374,11 @@ function StudentCard({ student, onOpen }: { student: User; onOpen: () => void })
       )}
 
       {/* Footer */}
-      <div style={{ borderTop: "1px solid var(--color-border)", paddingTop: "0.625rem", display: "flex", justifyContent: "flex-end" }}
+      <div style={{ borderTop: `1px solid ${isStaff ? "#CBD5E1" : "var(--color-border)"}`, paddingTop: "0.625rem", display: "flex", justifyContent: "flex-end" }}
         onClick={(e) => e.stopPropagation()}
       >
-        <span style={{ fontSize: "0.75rem", fontWeight: 600, color: "var(--color-muted)" }}>
-          Student profile
+        <span style={{ fontSize: "0.75rem", fontWeight: 700, color: isStaff ? "#334155" : "var(--color-muted)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+          {isStaff ? (student.role === "master" ? "Master Profile" : "Staff Profile") : "Student Profile"}
         </span>
       </div>
     </div>
@@ -386,20 +395,50 @@ function StudentModal({
   onClose: () => void;
   onFindAnother?: (name: string) => void;
 }) {
+  const { success, error: toastError } = useToast();
   if (!student) return null;
 
-  const meta = [student.department, student.year && `${student.year} Year`, student.section && `Section ${student.section}`].filter(Boolean).join(" · ");
+  const isStaff = student.role === "staff" || student.role === "master";
+  const meta = isStaff ? (student.role === "master" ? "Master Account" : "Faculty / Staff Account") : [student.department, student.year && `${student.year} Year`, student.section && `Section ${student.section}`].filter(Boolean).join(" · ");
+
+  const handleCopyProfilePic = async () => {
+    if (!student.profilePhoto) return;
+    try {
+      await navigator.clipboard.writeText(student.profilePhoto);
+      success("Profile picture URL copied!");
+    } catch {
+      toastError("Failed to copy profile picture URL.");
+    }
+  };
 
   return (
     <Modal open={!!student} onClose={onClose} size="xl" title={student.name}>
       <div style={{ display: "flex", flexDirection: "column", gap: "1.25rem", maxHeight: "72vh", overflowY: "auto", paddingRight: "0.25rem" }}>
 
         {/* Profile hero */}
-        <div style={{ display: "flex", alignItems: "center", gap: "1rem", border: "1px solid var(--color-border)", background: "var(--color-bg)", borderRadius: "14px", padding: "1rem" }}>
-          <Avatar name={student.name} photoUrl={student.profilePhoto} size="xl" />
+        <div style={{ display: "flex", alignItems: "center", gap: "1rem", border: "1px solid var(--color-border)", background: isStaff ? "linear-gradient(to right, #F8FAFC, #F1F5F9)" : "var(--color-bg)", borderRadius: "14px", padding: "1rem" }}>
+          <div style={{ position: "relative" }}>
+            <Avatar name={student.name} photoUrl={student.profilePhoto} size="xl" />
+            {student.profilePhoto && (
+              <button
+                onClick={handleCopyProfilePic}
+                title="Copy profile picture URL"
+                style={{
+                  position: "absolute", bottom: -4, right: -4,
+                  width: 28, height: 28, borderRadius: "50%",
+                  background: "var(--color-surface)", border: "1.5px solid var(--color-border)",
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  cursor: "pointer", boxShadow: "var(--shadow-sm)",
+                  transition: "all 0.15s",
+                }}
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--color-primary)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><rect width="18" height="18" x="3" y="3" rx="2" ry="2" /><circle cx="9" cy="9" r="2" /><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21" /></svg>
+              </button>
+            )}
+          </div>
           <div>
-            <h2 style={{ fontWeight: 700, fontSize: "1.25rem", margin: 0 }}>{student.name}</h2>
-            <p style={{ fontSize: "0.875rem", color: "var(--color-muted)", marginTop: "2px" }}>{meta}</p>
+            <h2 style={{ fontWeight: 700, fontSize: "1.25rem", margin: 0, color: isStaff ? "#0F172A" : "inherit" }}>{student.name}</h2>
+            <p style={{ fontSize: "0.875rem", color: isStaff ? "#475569" : "var(--color-muted)", marginTop: "2px", fontWeight: isStaff ? 600 : 400 }}>{meta}</p>
             {student.skills && student.skills.length > 0 && (
               <div style={{ display: "flex", flexWrap: "wrap", gap: "0.25rem", marginTop: "0.5rem" }}>
                 {student.skills.slice(0, 6).map((sk) => (
@@ -438,7 +477,7 @@ function StudentModal({
             <div className="mm-profile-fields">
               {student.dateOfBirth && <CopyField label="Date of Birth" value={student.dateOfBirth} />}
               {student.bloodGroup && <CopyField label="Blood Group" value={student.bloodGroup} />}
-              {student.aadhaarNumber && <CopyField label="Aadhaar Number" value={student.aadhaarNumber} masked />}
+              {student.aadhaarNumber && <CopyField label="Aadhaar Number" value={student.aadhaarNumber} />}
             </div>
           </div>
         )}
@@ -458,14 +497,17 @@ function StudentModal({
       </div>
 
       <div style={{ display: "flex", justifyContent: "space-between", gap: "0.75rem", marginTop: "1rem", paddingTop: "0.75rem", borderTop: "1px solid var(--color-border)" }}>
-        <Button variant="secondary" onClick={onClose}>
-          Close
-        </Button>
+        <Link href={`/students/${student.uid}`} style={{ flex: 1, textDecoration: "none" }}>
+          <Button variant="secondary" style={{ width: "100%", justifyContent: "center" }} onClick={onClose}>
+            View Full Overview
+          </Button>
+        </Link>
         <Button
           variant="primary"
+          style={{ flex: 1, justifyContent: "center" }}
           onClick={() => onFindAnother?.(student.name)}
         >
-          Find Other Student
+          Find Other
         </Button>
       </div>
     </Modal>

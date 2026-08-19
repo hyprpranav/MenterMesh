@@ -1,11 +1,49 @@
 "use client";
 
 // ============================================================
-// MentorMesh — States v2 (Loading, Empty, Error)
+// MentorMesh — States v3 (Loading with 3D + Cat, Empty, Error)
 // ============================================================
 import React from "react";
 import { AlertCircle } from "lucide-react";
 import { Button } from "./Button";
+
+// ── Cat Loader Component ──────────────────────────────────────
+function CatLoader() {
+  return (
+    <div className="mm-cat-loader">
+      <div className="mm-cat">
+        <div className="mm-cat-body">
+          <div className="mm-cat-tail" />
+        </div>
+        <div className="mm-cat-paws">
+          <div className="mm-cat-paw mm-cat-paw--left" />
+          <div className="mm-cat-paw mm-cat-paw--right" />
+        </div>
+        <div className="mm-cat-head">
+          <div className="mm-cat-ear mm-cat-ear--left" />
+          <div className="mm-cat-ear mm-cat-ear--right" />
+          <div className="mm-cat-eye mm-cat-eye--left" />
+          <div className="mm-cat-eye mm-cat-eye--right" />
+          <div className="mm-cat-nose" />
+          <div className="mm-cat-mouth" />
+          <div className="mm-cat-whiskers-l" />
+          <div className="mm-cat-whiskers-r" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── 3D Rotating Loader Component ──────────────────────────────
+function Loader3D() {
+  return (
+    <div className="mm-loader-3d">
+      <div className="mm-load-ring mm-load-ring-1" />
+      <div className="mm-load-ring mm-load-ring-2" />
+      <div className="mm-load-ring mm-load-ring-3" />
+    </div>
+  );
+}
 
 // ── Loading State ─────────────────────────────────────────────
 interface LoadingStateProps {
@@ -16,11 +54,20 @@ interface LoadingStateProps {
 export function LoadingState({ message = "Loading…", fullPage = false }: LoadingStateProps) {
   return (
     <div
-      className="mm-empty"
-      style={fullPage ? { minHeight: "60vh" } : undefined}
+      className={`mm-loading-overlay${fullPage ? " mm-loading-fullpage" : ""}`}
+      style={fullPage ? { minHeight: "60vh" } : { minHeight: "200px" }}
     >
-      <div className="mm-spinner mm-spinner-lg" />
-      <p style={{ fontSize: "0.875rem", color: "var(--color-muted)", margin: 0 }}>{message}</p>
+      {/* Desktop: 3D Loader */}
+      <div className="mm-loading-desktop">
+        <Loader3D />
+        <p style={{ fontSize: "0.875rem", color: "var(--color-muted)", margin: 0, fontWeight: 500 }}>{message}</p>
+      </div>
+
+      {/* Mobile: Cat Loader */}
+      <div className="mm-loading-mobile">
+        <CatLoader />
+        <p style={{ fontSize: "0.8125rem", color: "var(--color-muted)", margin: 0, fontWeight: 500 }}>{message}</p>
+      </div>
     </div>
   );
 }
@@ -88,3 +135,6 @@ export function ErrorState({
     </div>
   );
 }
+
+// ── Export Cat Loader for use elsewhere ────────────────────────
+export { CatLoader };
