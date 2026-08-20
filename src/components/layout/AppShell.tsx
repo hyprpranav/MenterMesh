@@ -51,21 +51,33 @@ export function AppShell({ children }: AppShellProps) {
   }, [mobileMenuOpen]);
 
   const closeDrawer = useCallback(() => setMobileMenuOpen(false), []);
-  const openDrawer  = useCallback(() => setMobileMenuOpen(true),  []);
+  const openDrawer = useCallback(() => setMobileMenuOpen(true), []);
 
   // Role-based redirect
   useEffect(() => {
     if (loading) return;
-    if (!user)                        { router.push("/login");    return; }
-    if (user.status === "pending")    { router.push("/pending");  return; }
-    if (user.status === "rejected")   { router.push("/rejected"); return; }
-    if (user.status === "inactive")   { router.push("/inactive"); return; }
+    if (!user) { router.push("/login"); return; }
+    if (user.status === "pending") { router.push("/pending"); return; }
+    if (user.status === "rejected") { router.push("/rejected"); return; }
+    if (user.status === "inactive") { router.push("/inactive"); return; }
   }, [user, loading, router]);
 
   // Real-time unread notifications
   useEffect(() => {
     if (!user || (user.status !== "active" && user.status !== "imported")) return;
-    const unsub = subscribeToNotifications(user.uid, setUnreadNotifs);
+    const unsub = subscribeToNotifications(user.uid, async (dbNotifs) => {
+      try {
+        const { getUpcomingBirthdays } = await import("@/lib/birthdays");
+        const bdayNotifs = await getUpcomingBirthdays(user);
+
+        const allUnread = [...bdayNotifs.filter(n => !n.read), ...dbNotifs];
+        allUnread.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+        setUnreadNotifs(allUnread);
+      } catch (err) {
+        console.error("Error loading birthday notifs:", err);
+        setUnreadNotifs(dbNotifs);
+      }
+    });
     return () => unsub();
   }, [user]);
 

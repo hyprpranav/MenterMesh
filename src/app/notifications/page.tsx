@@ -11,6 +11,7 @@ import {
   markNotificationRead,
   markAllNotificationsRead,
 } from "@/lib/firebase/firestore";
+import { getUpcomingBirthdays, markVirtualNotificationRead, markAllVirtualNotificationsRead } from "@/lib/birthdays";
 import type { Notification } from "@/types";
 import { Button } from "@/components/ui/Button";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -36,8 +37,11 @@ function NotificationsContent() {
     async function load() {
       if (!user) return;
       try {
-        const list = await getUserNotifications(user.uid);
-        setNotifications(list);
+        const dbList = await getUserNotifications(user.uid);
+        const bdayList = await getUpcomingBirthdays(user);
+        const all = [...bdayList, ...dbList];
+        all.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+        setNotifications(all);
       } catch (err) {
         console.error(err);
       } finally {
@@ -50,6 +54,7 @@ function NotificationsContent() {
   const handleMarkAllRead = async () => {
     if (!user) return;
     try {
+      markAllVirtualNotificationsRead();
       await markAllNotificationsRead(user.uid);
       setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
     } catch (err) {
@@ -57,9 +62,16 @@ function NotificationsContent() {
     }
   };
 
-  const handleMarkRead = async (id: string) => {
+  const handleMarkRead = async (id: string, e?: React.MouseEvent) => {
+    // If the click came from the 1-click action button, we do not want to trigger container onClick
+    if (e) e.stopPropagation();
+
     try {
-      await markNotificationRead(id);
+      if (id.startsWith("bday_")) {
+        markVirtualNotificationRead(id);
+      } else {
+        await markNotificationRead(id);
+      }
       setNotifications((prev) =>
         prev.map((n) => (n.id === id ? { ...n, read: true } : n))
       );
@@ -71,10 +83,11 @@ function NotificationsContent() {
   const unreadCount = notifications.filter((n) => !n.read).length;
 
   const iconConfig: Record<string, { icon: React.ReactNode; classes: string }> = {
-    approval:  { icon: <CheckCircle size={18} />, classes: "bg-emerald-100 text-emerald-600" },
-    rejection: { icon: <XCircle size={18} />,    classes: "bg-red-100 text-red-600" },
-    info:      { icon: <Bell size={18} />,        classes: "bg-blue-100 text-blue-600" },
-    default:   { icon: <Bell size={18} />,        classes: "bg-blue-100 text-blue-600" },
+    approval: { icon: <CheckCircle size={18} />, classes: "bg-emerald-100 text-emerald-600" },
+    rejection: { icon: <XCircle size={18} />, classes: "bg-red-100 text-red-600" },
+    info: { icon: <Bell size={18} />, classes: "bg-blue-100 text-blue-600" },
+    birthday: { icon: <span className="text-xl">🎂</span>, classes: "bg-pink-100 text-pink-600" },
+    default: { icon: <Bell size={18} />, classes: "bg-blue-100 text-blue-600" },
   };
 
   return (
@@ -142,6 +155,20 @@ function NotificationsContent() {
                     </span>
                   </div>
                   <p className="text-xs text-slate-600 mt-0.5 leading-relaxed">{n.message}</p>
+
+                  {n.link && (
+                    <div className="mt-2" onClick={(e) => e.stopPropagation()}>
+                      <a
+                        href={n.link}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center justify-center rounded-md text-[11px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring bg-primary text-primary-foreground shadow hover:bg-primary/90 h-6 px-3 py-1"
+                        onClick={() => !n.read && handleMarkRead(n.id)}
+                      >
+                        Send a Message
+                      </a>
+                    </div>
+                  )}
                 </div>
 
                 {!n.read && (

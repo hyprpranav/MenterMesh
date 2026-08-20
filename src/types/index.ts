@@ -231,7 +231,8 @@ export type NotificationType =
   | "team-join-rejected"
   | "event"
   | "achievement"
-  | "system";
+  | "system"
+  | "birthday";
 
 export interface Notification {
   id: string;
