@@ -429,11 +429,15 @@ export async function updateEvent(eventId: string, data: Partial<Event>): Promis
   }));
 }
 
+export async function deleteEvent(eventId: string): Promise<void> {
+  await deleteDoc(doc(db, "events", eventId));
+}
+
 export async function reviewEventSubmission(
   eventId: string,
   reviewerId: string,
   reviewerName: string,
-  status: "approved" | "changes_requested" | "rejected",
+  status: "approved" | "rejected",
   feedback?: string
 ): Promise<void> {
   const eventRef = doc(db, "events", eventId);
@@ -456,15 +460,11 @@ export async function reviewEventSubmission(
   // Notify student
   if (eventData.submittedBy) {
     const title = status === "approved"
-      ? `Event Approved! 🎉 (${eventData.name})`
-      : status === "changes_requested"
-      ? `Changes Requested for ${eventData.name}`
-      : `Event Submission Update (${eventData.name})`;
+      ? `Event Approved! (${eventData.name})`
+      : `Event Submission Rejected (${eventData.name})`;
 
     const message = status === "approved"
       ? `Your event "${eventData.name}" has been approved by ${reviewerName}.`
-      : status === "changes_requested"
-      ? `Mentor ${reviewerName} requested changes: ${feedback}`
       : `Your event submission for "${eventData.name}" was rejected. Reason: ${feedback}`;
 
     await addDoc(collection(db, "notifications"), {

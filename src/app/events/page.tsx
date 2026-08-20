@@ -13,7 +13,7 @@ import { Button } from "@/components/ui/Button";
 import { Tabs } from "@/components/ui/Tabs";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Badge } from "@/components/ui/Badge";
-import { Calendar, Plus, MapPin, Folder, CheckCircle2, AlertCircle, Clock, XCircle } from "lucide-react";
+import { Calendar, Plus, MapPin, Folder, CheckCircle2, Clock, XCircle } from "lucide-react";
 import { EmptyState, LoadingState } from "@/components/ui/States";
 import { formatDate } from "@/lib/utils";
 
@@ -48,14 +48,11 @@ function EventsContent() {
   const isStaff = user?.role === "staff" || user?.role === "master";
   const pendingCount = events.filter((e) => e.submissionStatus === "pending_review").length;
 
-  const actionReqCountStudent = events.filter((e) => e.submissionStatus === "changes_requested" && e.submittedBy === user?.uid).length;
-
   const filteredEvents = events.filter((e) => {
     if (activeTab === "all") return true;
     if (activeTab === "my") return e.submittedBy === user?.uid || e.participantIds?.includes(user?.uid || "");
     if (activeTab === "pending") return e.submissionStatus === "pending_review";
     if (activeTab === "approved") return e.submissionStatus === "approved" || !e.submissionStatus;
-    if (activeTab === "action_req") return e.submissionStatus === "changes_requested";
     if (activeTab === "rejected") return e.submissionStatus === "rejected";
     if (activeTab === "draft") return e.submissionStatus === "draft";
     return e.type.toLowerCase() === activeTab.toLowerCase();
@@ -65,13 +62,11 @@ function EventsContent() {
     { id: "all", label: "All Events", count: events.length },
     ...(!isStaff ? [
       { id: "my", label: "My Submissions" },
-      { id: "action_req", label: "Action Needed", count: actionReqCountStudent, className: actionReqCountStudent > 0 ? "text-rose-600" : undefined },
       { id: "rejected", label: "Rejected" }
     ] : []),
     ...(isStaff
       ? [
         { id: "pending", label: "Pending Review", count: pendingCount, className: pendingCount > 0 ? "text-amber-700" : undefined },
-        { id: "action_req", label: "Changes Requested" },
         { id: "rejected", label: "Rejected" }
       ]
       : []),
@@ -134,13 +129,10 @@ function EventsContent() {
 function EventCard({ event }: { event: Event }) {
   const isPending = event.submissionStatus === "pending_review";
   const isApproved = event.submissionStatus === "approved" || !event.submissionStatus;
-  const isChangesReq = event.submissionStatus === "changes_requested";
   const isRejected = event.submissionStatus === "rejected";
 
   const statusBadge = isPending ? (
     <Badge variant="pending" icon={<Clock size={11} />}>Pending</Badge>
-  ) : isChangesReq ? (
-    <Badge variant="changes" icon={<AlertCircle size={11} />}>Action Req.</Badge>
   ) : isRejected ? (
     <Badge variant="rejected" icon={<XCircle size={11} />}>Rejected</Badge>
   ) : isApproved ? (

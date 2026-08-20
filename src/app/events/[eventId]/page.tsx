@@ -8,24 +8,23 @@ import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { AppShell } from "@/components/layout/AppShell";
 import { useAuth } from "@/contexts/AuthContext";
-import { getEvent, updateEvent, reviewEventSubmission } from "@/lib/firebase/firestore";
+import { getEvent, reviewEventSubmission, deleteEvent } from "@/lib/firebase/firestore";
 import type { Event } from "@/types";
 import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
 import { Badge } from "@/components/ui/Badge";
 import { LoadingState, ErrorState } from "@/components/ui/States";
 import { useToast } from "@/components/ui/ToastProvider";
-import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import {
   ArrowLeft, Calendar, MapPin, Folder, Image as ImageIcon, Share2, Edit,
-  CheckCircle2, AlertCircle, XCircle, Users, Code, Globe, Lightbulb, ShieldAlert
+  CheckCircle2, XCircle, Users, Code, Lightbulb, ShieldAlert, Trash2, KeyRound
 } from "lucide-react";
 
 export default function EventDetailPage() {
   const { eventId } = useParams() as { eventId: string };
   const { user } = useAuth();
   const router = useRouter();
-  const { success, error, warning } = useToast();
+  const { success, error } = useToast();
 
   const [event, setEvent] = useState<Event | null>(null);
   const [loading, setLoading] = useState(true);
@@ -33,15 +32,10 @@ export default function EventDetailPage() {
   // Review Dialogs
   const [reviewing, setReviewing] = useState(false);
   const [rejectModalOpen, setRejectModalOpen] = useState(false);
-  const [changesModalOpen, setChangesModalOpen] = useState(false);
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [deletePin, setDeletePin] = useState("");
+  const [deleting, setDeleting] = useState(false);
   const [feedbackReason, setFeedbackReason] = useState("");
-
-  // Edit Mode
-  const [editing, setEditing] = useState(false);
-  const [driveLink, setDriveLink] = useState("");
-  const [photosLink, setPhotosLink] = useState("");
-  const [result, setResult] = useState("");
-  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     async function load() {
@@ -50,9 +44,6 @@ export default function EventDetailPage() {
         const data = await getEvent(eventId);
         if (data) {
           setEvent(data);
-          setDriveLink(data.driveLink || "");
-          setPhotosLink(data.photosLink || "");
-          setResult(data.result || "");
         }
       } catch (err) {
         console.error(err);
@@ -69,7 +60,6 @@ export default function EventDetailPage() {
   const isStaff = user?.role === "staff" || user?.role === "master";
   const isPending = event.submissionStatus === "pending_review";
   const isApproved = event.submissionStatus === "approved" || !event.submissionStatus;
-  const isChangesReq = event.submissionStatus === "changes_requested";
 
   const handleApprove = async () => {
     if (!user) return;
@@ -80,22 +70,6 @@ export default function EventDetailPage() {
       success("Event submission approved!");
     } catch {
       error("Failed to approve event.");
-    } finally {
-      setReviewing(false);
-    }
-  };
-
-  const handleRequestChanges = async () => {
-    if (!user || !feedbackReason.trim()) return;
-    setReviewing(true);
-    try {
-      await reviewEventSubmission(event.id, user.uid, user.name, "changes_requested", feedbackReason.trim());
-      setEvent({ ...event, submissionStatus: "changes_requested", reviewFeedback: feedbackReason });
-      setChangesModalOpen(false);
-      setFeedbackReason("");
-      warning("Changes requested from student.");
-    } catch {
-      error("Failed to update status.");
     } finally {
       setReviewing(false);
     }
@@ -117,21 +91,16 @@ export default function EventDetailPage() {
     }
   };
 
-  const handleSaveDetails = async () => {
-    setSaving(true);
+  const handleDelete = async () => {
+    if (!isStaff || deletePin !== "927624") return;
+    setDeleting(true);
     try {
-      await updateEvent(event.id, {
-        driveLink,
-        photosLink,
-        result,
-      });
-      setEvent({ ...event, driveLink, photosLink, result });
-      setEditing(false);
-      success("Event details updated!");
+      await deleteEvent(event.id);
+      success("Event deleted permanently.");
+      router.push("/events");
     } catch {
-      error("Failed to update event.");
-    } finally {
-      setSaving(false);
+      error("Failed to delete event.");
+      setDeleting(false);
     }
   };
 
@@ -143,12 +112,17 @@ export default function EventDetailPage() {
           <Link href="/events" className="text-xs font-semibold text-slate-500 hover:text-blue-600 inline-flex items-center gap-1">
             <ArrowLeft size={14} /> Back to Events
           </Link>
-          {(isStaff || (user?.uid === event.submittedBy && (isChangesReq || event.submissionStatus === "draft"))) && (
+          {(isStaff || (user?.uid === event.submittedBy && event.submissionStatus === "draft")) && (
             <Link href={`/events/${eventId}/edit`}>
               <Button variant="outline" size="sm" icon={<Edit size={14} />}>
                 Edit Details
               </Button>
             </Link>
+          )}
+          {isStaff && (
+            <Button variant="destructive" size="sm" icon={<Trash2 size={14} />} onClick={() => setDeleteModalOpen(true)}>
+              Delete Event
+            </Button>
           )}
         </div>
 
@@ -178,14 +152,6 @@ export default function EventDetailPage() {
                 Approve
               </Button>
               <Button
-                variant="secondary"
-                size="sm"
-                icon={<AlertCircle size={14} />}
-                onClick={() => setChangesModalOpen(true)}
-              >
-                Request Changes
-              </Button>
-              <Button
                 variant="destructive"
                 size="sm"
                 icon={<XCircle size={14} />}
@@ -197,37 +163,16 @@ export default function EventDetailPage() {
           </div>
         )}
 
-        {/* Changes Requested Banner for Student */}
-        {isChangesReq && (
-          <div className="bg-rose-50 border border-rose-200 rounded-2xl p-5 text-xs text-rose-900 space-y-3">
-            <p className="font-bold text-sm flex items-center gap-1.5">
-              <AlertCircle size={16} className="text-rose-600" /> Mentor Requested Changes:
-            </p>
-            <p className="text-rose-700 bg-white/70 p-2.5 rounded-lg border border-rose-100">
-              {event.reviewFeedback || "Please review and update your event submission."}
-            </p>
-            {user?.uid === event.submittedBy && (
-              <div className="pt-2">
-                <Link href={`/events/${event.id}/edit`}>
-                  <Button variant="primary" size="sm" icon={<Edit size={14} />}>
-                    Edit & Re-Upload Event
-                  </Button>
-                </Link>
-              </div>
-            )}
-          </div>
-        )}
-
         {/* Hero Card */}
-        <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-4">
-          <div className="flex justify-between items-start">
-            <div>
-              <span className="text-xs font-semibold text-blue-600 bg-blue-50 px-2.5 py-0.5 rounded-full border border-blue-100">
+        <div className="mm-event-hero">
+          <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-4">
+            <div className="min-w-0">
+              <span className="mm-event-kicker">
                 {event.type}
               </span>
-              <h1 className="text-2xl font-bold text-slate-900 mt-2">{event.name}</h1>
+              <h1 className="mm-event-title">{event.name}</h1>
               {event.organizer && (
-                <p className="text-xs text-slate-500 mt-0.5">Organized by {event.organizer}</p>
+                <p className="mm-event-subtitle">Organized by {event.organizer}</p>
               )}
             </div>
 
@@ -241,36 +186,35 @@ export default function EventDetailPage() {
             )}
           </div>
 
-          {event.result && (
-            <div className="inline-block bg-amber-50 border border-amber-200 px-3 py-1 rounded-lg text-xs font-bold text-amber-800">
-              {event.result}
-            </div>
-          )}
-
-          <div className="flex flex-wrap gap-4 text-xs text-slate-600 pt-2 border-t border-slate-100">
-            <span className="flex items-center gap-1"><Calendar size={14} /> {event.date} {event.endDate && `- ${event.endDate}`}</span>
+          <div className="mm-event-meta-grid">
+            <span className="mm-event-meta"><Calendar size={16} /> <span><strong>Date</strong>{event.date} {event.endDate && `- ${event.endDate}`}</span></span>
             {(event.location || event.venue) && (
-              <span className="flex items-center gap-1"><MapPin size={14} /> {event.venue ? `${event.venue}, ${event.city || ""}` : event.location}</span>
+              <span className="mm-event-meta"><MapPin size={16} /> <span><strong>Location</strong>{event.venue ? `${event.venue}${event.city ? `, ${event.city}` : ""}` : event.location}</span></span>
             )}
             {event.submittedByName && (
-              <span className="text-slate-400">Submitted by <strong className="text-slate-700">{event.submittedByName}</strong></span>
+              <span className="mm-event-meta"><span className="mm-event-meta-dot" /><span><strong>Submitted by</strong>{event.submittedByName}</span></span>
             )}
           </div>
 
           {event.description && (
-            <p className="text-sm text-slate-600">{event.description}</p>
+            <div className="mm-event-description">
+              <span className="mm-event-label">About this event</span>
+              <p>{event.description}</p>
+            </div>
           )}
+          {event.result && <div className="mm-event-result">{event.result}</div>}
         </div>
 
         {/* Team & Participants */}
         {event.participantNames && event.participantNames.length > 0 && (
-          <div className="mm-card space-y-3">
-            <h3 className="font-bold text-slate-900 text-sm flex items-center gap-2">
-              <Users size={16} className="text-blue-600" /> Team Members & Participants
-              {event.teamName && <span className="text-xs text-slate-500">({event.teamName})</span>}
-            </h3>
+          <div className="mm-event-section mm-event-section-participants">
+            <div className="mm-event-section-heading">
+              <span className="mm-event-section-icon"><Users size={18} /></span>
+              <div><span className="mm-event-label">Participation</span><h2>Team Members & Participants</h2></div>
+            </div>
+            {event.teamName && <p className="mm-event-context">Team: <strong>{event.teamName}</strong></p>}
 
-            <div className="flex flex-wrap gap-2">
+            <div className="mm-event-participants">
               {event.participantNames.map((name, i) => (
                 <span key={i} className="bg-slate-50 border border-slate-200 px-3 py-1 rounded-full text-xs font-semibold text-slate-800">
                   {name}
@@ -282,31 +226,42 @@ export default function EventDetailPage() {
 
         {/* Student Experience & Learnings */}
         {(event.whatBuilt || event.whatLearned || event.challenges) && (
-          <div className="mm-card space-y-4">
-            <h3 className="font-bold text-slate-900 text-base flex items-center gap-2">
-              <Lightbulb className="text-amber-500" size={18} /> Student Experience & Project Breakdown
-            </h3>
+          <div className="mm-event-section mm-event-section-experience">
+            <div className="mm-event-section-heading">
+              <span className="mm-event-section-icon"><Lightbulb size={18} /></span>
+              <div><span className="mm-event-label">Project story</span><h2>Student Experience & Project Breakdown</h2></div>
+            </div>
 
             {event.projectTitle && (
-              <p className="text-xs text-slate-500">
-                Project Title: <strong className="text-slate-800">{event.projectTitle}</strong> {event.eventTrack && `(${event.eventTrack})`}
-              </p>
+              <div className="mm-event-project">
+                <span className="mm-event-label">Project title</span>
+                <p>{event.projectTitle} {event.eventTrack && <span>({event.eventTrack})</span>}</p>
+              </div>
             )}
 
             {event.whatBuilt && (
-              <div className="space-y-1">
-                <h4 className="text-xs font-bold text-slate-700">What Was Built / Created</h4>
-                <p className="text-xs text-slate-600 bg-slate-50 p-3 rounded-lg border border-slate-200 whitespace-pre-wrap">
+              <div className="mm-event-copy-block mm-event-copy-built">
+                <h3>What Was Built / Created</h3>
+                <p>
                   {event.whatBuilt}
                 </p>
               </div>
             )}
 
             {event.whatLearned && (
-              <div className="space-y-1">
-                <h4 className="text-xs font-bold text-slate-700">Key Learnings & Challenges</h4>
-                <p className="text-xs text-slate-600 bg-slate-50 p-3 rounded-lg border border-slate-200 whitespace-pre-wrap">
+              <div className="mm-event-copy-block mm-event-copy-learning">
+                <h3>Key Learnings</h3>
+                <p>
                   {event.whatLearned}
+                </p>
+              </div>
+            )}
+
+            {event.challenges && (
+              <div className="mm-event-copy-block mm-event-copy-challenges">
+                <h3>Challenges</h3>
+                <p>
+                  {event.challenges}
                 </p>
               </div>
             )}
@@ -314,22 +269,22 @@ export default function EventDetailPage() {
         )}
 
         {/* Memories & Links */}
-        <div className="mm-card space-y-4">
-          <div className="flex items-center gap-2 border-b border-slate-100 pb-2">
-            <ImageIcon className="text-blue-600" size={20} />
-            <h2 className="font-bold text-slate-900 text-lg">📸 Memories & Links</h2>
+        <div className="mm-event-section mm-event-section-links">
+          <div className="mm-event-section-heading">
+            <span className="mm-event-section-icon"><ImageIcon size={18} /></span>
+            <div><span className="mm-event-label">Resources</span><h2>Memories & Links</h2></div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
+          <div className="mm-event-link-grid">
             {/* Drive Folder */}
-            <div className="p-4 rounded-xl border border-slate-200 bg-slate-50 flex items-center justify-between">
+            <div className="mm-event-link-card">
               <div className="flex items-center gap-3">
                 <div className="w-9 h-9 rounded-lg bg-blue-100 text-blue-600 flex items-center justify-center">
                   <Folder size={18} />
                 </div>
-                <div>
-                  <h4 className="font-semibold text-slate-900">Event Folder</h4>
-                  <p className="text-[11px] text-slate-500">PPTs, Certificates & Docs</p>
+                <div className="min-w-0">
+                  <h3>Event Folder</h3>
+                  <p>PPTs, certificates & documents</p>
                 </div>
               </div>
               {event.driveLink ? (
@@ -342,14 +297,14 @@ export default function EventDetailPage() {
             </div>
 
             {/* LinkedIn Post */}
-            <div className="p-4 rounded-xl border border-slate-200 bg-slate-50 flex items-center justify-between">
+            <div className="mm-event-link-card">
               <div className="flex items-center gap-3">
                 <div className="w-9 h-9 rounded-lg bg-blue-100 text-blue-700 flex items-center justify-center">
                   <Share2 size={18} />
                 </div>
-                <div>
-                  <h4 className="font-semibold text-slate-900">LinkedIn Post</h4>
-                  <p className="text-[11px] text-slate-500">Public Event Share</p>
+                <div className="min-w-0">
+                  <h3>LinkedIn Post</h3>
+                  <p>Public event share</p>
                 </div>
               </div>
               {event.linkedInPost ? (
@@ -363,14 +318,14 @@ export default function EventDetailPage() {
 
             {/* GitHub Repo */}
             {event.githubUrl && (
-              <div className="p-4 rounded-xl border border-slate-200 bg-slate-50 flex items-center justify-between">
+              <div className="mm-event-link-card">
                 <div className="flex items-center gap-3">
                   <div className="w-9 h-9 rounded-lg bg-slate-800 text-white flex items-center justify-center">
                     <Code size={18} />
                   </div>
                   <div>
-                    <h4 className="font-semibold text-slate-900">GitHub Code</h4>
-                    <p className="text-[11px] text-slate-500">Project Repository</p>
+                    <h3>GitHub Code</h3>
+                    <p>Project repository</p>
                   </div>
                 </div>
                 <a href={event.githubUrl} target="_blank" rel="noreferrer">
@@ -381,37 +336,6 @@ export default function EventDetailPage() {
           </div>
         </div>
       </div>
-
-      {/* Request Changes Dialog */}
-      <Modal
-        open={changesModalOpen}
-        onClose={() => { setChangesModalOpen(false); setFeedbackReason(""); }}
-        title="Request Changes from Student"
-        description="Provide constructive feedback on what the student needs to update before approval."
-        size="sm"
-        footer={
-          <>
-            <Button variant="secondary" onClick={() => { setChangesModalOpen(false); setFeedbackReason(""); }}>Cancel</Button>
-            <Button
-              variant="primary"
-              loading={reviewing}
-              onClick={handleRequestChanges}
-              disabled={!feedbackReason.trim()}
-            >
-              Send Request
-            </Button>
-          </>
-        }
-      >
-        <textarea
-          className="mm-input resize-none w-full"
-          rows={4}
-          placeholder="e.g. Please upload the certificate link or add the project demo link."
-          value={feedbackReason}
-          onChange={(e) => setFeedbackReason(e.target.value)}
-          autoFocus
-        />
-      </Modal>
 
       {/* Reject Submission Dialog */}
       <Modal
@@ -442,6 +366,30 @@ export default function EventDetailPage() {
           onChange={(e) => setFeedbackReason(e.target.value)}
           autoFocus
         />
+      </Modal>
+
+      <Modal
+        open={deleteModalOpen}
+        onClose={() => { if (!deleting) { setDeleteModalOpen(false); setDeletePin(""); } }}
+        title="Delete Event Permanently"
+        description="Staff and developer accounts can permanently remove this event. Enter the authorized PIN to continue."
+        size="sm"
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => { setDeleteModalOpen(false); setDeletePin(""); }} disabled={deleting}>Cancel</Button>
+            <Button variant="destructive" icon={<Trash2 size={14} />} loading={deleting} onClick={handleDelete} disabled={deletePin !== "927624"}>
+              Delete Event
+            </Button>
+          </>
+        }
+      >
+        <div>
+          <label htmlFor="event-delete-pin" className="mm-label">Authorization PIN</label>
+          <div className="relative">
+            <KeyRound size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input id="event-delete-pin" className="mm-input pl-9" type="password" inputMode="numeric" value={deletePin} onChange={(e) => setDeletePin(e.target.value)} autoFocus />
+          </div>
+        </div>
       </Modal>
     </AppShell>
   );

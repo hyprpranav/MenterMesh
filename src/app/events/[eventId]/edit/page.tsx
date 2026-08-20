@@ -190,7 +190,7 @@ export default function EditEventPage() {
       } else if (isStaff) {
         // Staff editing doesn't necessarily approve if it was pending, but you can choose:
         newStatus = eventData.submissionStatus === "draft" ? "approved" : eventData.submissionStatus || "pending_review";
-      } else if (eventData.submissionStatus === "changes_requested" || eventData.submissionStatus === "draft") {
+      } else if (eventData.submissionStatus === "draft") {
         newStatus = "pending_review";
       }
 
@@ -255,13 +255,6 @@ export default function EditEventPage() {
         <Link href={`/events/${eventId}`} className="text-xs font-semibold text-slate-500 hover:text-blue-600 inline-flex items-center gap-1">
           <ArrowLeft size={14} /> Back to Event Details
         </Link>
-
-        {eventData.submissionStatus === "changes_requested" && (
-          <div className="bg-rose-50 border border-rose-200 rounded-xl p-4 text-xs text-rose-900 mb-6">
-            <h3 className="font-bold flex items-center gap-1.5 mb-2"><Award size={16} className="text-rose-600" /> Mentor Feedback:</h3>
-            <p className="bg-white/50 p-3 rounded-lg border border-rose-100">{eventData.reviewFeedback}</p>
-          </div>
-        )}
 
         <div className="mm-card space-y-6">
           <div className="flex items-center gap-3 border-b border-slate-100 pb-4">
