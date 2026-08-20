@@ -798,6 +798,19 @@ a:hover {
 .mm-event-meta strong { display: block; margin-bottom: 0.12rem; color: #94a3b8; font-size: 0.62rem; letter-spacing: 0.08em; text-transform: uppercase; }
 .mm-event-meta-dot { width: 0.55rem; height: 0.55rem; flex: 0 0 auto; margin-top: 0.25rem; border-radius: 999px; background: #10b981; }
 
+.mm-event-audit {
+  display: grid;
+  gap: 0.6rem;
+  margin-top: 1.25rem;
+  padding: 0.9rem 1rem;
+  border: 1px solid #dbe3ee;
+  border-radius: 0.7rem;
+  background: #f8fafc;
+}
+
+.mm-event-audit div { display: flex; flex-wrap: wrap; gap: 0.5rem; justify-content: space-between; color: #475569; font-size: 0.75rem; }
+.mm-event-audit strong { color: #64748b; font-size: 0.68rem; letter-spacing: 0.06em; text-transform: uppercase; }
+
 .mm-event-description {
   margin-top: 1.25rem;
   padding: 1rem 1.1rem;

@@ -7,7 +7,7 @@ import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { AppShell } from "@/components/layout/AppShell";
 import { useAuth } from "@/contexts/AuthContext";
-import { getEvents } from "@/lib/firebase/firestore";
+import { getEventsForViewer } from "@/lib/firebase/firestore";
 import type { Event } from "@/types";
 import { Button } from "@/components/ui/Button";
 import { Tabs } from "@/components/ui/Tabs";
@@ -34,7 +34,8 @@ function EventsContent() {
   useEffect(() => {
     async function load() {
       try {
-        const list = await getEvents();
+        if (!user) return;
+        const list = await getEventsForViewer(user.uid, user.role);
         setEvents(list);
       } catch (err) {
         console.error(err);
@@ -43,14 +44,14 @@ function EventsContent() {
       }
     }
     load();
-  }, []);
+  }, [user]);
 
   const isStaff = user?.role === "staff" || user?.role === "master";
   const pendingCount = events.filter((e) => e.submissionStatus === "pending_review").length;
 
   const filteredEvents = events.filter((e) => {
     if (activeTab === "all") return true;
-    if (activeTab === "my") return e.submittedBy === user?.uid || e.participantIds?.includes(user?.uid || "");
+    if (activeTab === "my") return e.submittedBy === user?.uid;
     if (activeTab === "pending") return e.submissionStatus === "pending_review";
     if (activeTab === "approved") return e.submissionStatus === "approved" || !e.submissionStatus;
     if (activeTab === "rejected") return e.submissionStatus === "rejected";

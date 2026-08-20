@@ -24,7 +24,7 @@ import {
   increment,
 } from "firebase/firestore";
 import { db } from "./config";
-import type { User, Team, Event, Post, Announcement, Notification, AccessRequest, ActivityLog } from "@/types";
+import type { User, Team, Event, Post, Announcement, Notification, AccessRequest, ActivityLog, UserRole, TeamChatAttachment, TeamChatMessageType, FileShare } from "@/types";
 
 // Helper to safely extract milliseconds from Firestore Timestamp object, Date string, or number
 function getTimestampMs(val: any): number {
@@ -104,6 +104,42 @@ export async function getActiveStudents(): Promise<User[]> {
       return [];
     }
   }
+}
+
+// ─── Staff File Share ────────────────────────────────────────
+export async function createFileShare(data: Omit<FileShare, "id" | "createdAt">, fileId?: string): Promise<string> {
+  const ref = fileId ? doc(db, "fileShares", fileId) : doc(collection(db, "fileShares"));
+  await setDoc(ref, stripUndefined({
+    ...data,
+    createdAt: serverTimestamp(),
+  }));
+
+  const batch = writeBatch(db);
+  for (const recipientId of data.recipientIds) {
+    batch.set(doc(db, "notifications", `file_${ref.id}_${recipientId}`), {
+      recipientId,
+      title: "New file shared with you",
+      message: `${data.senderName} shared ${data.name}.`,
+      type: "system",
+      read: false,
+      priority: "normal",
+      relatedId: ref.id,
+      link: "/file-share",
+      createdAt: serverTimestamp(),
+    });
+  }
+  await batch.commit();
+  return ref.id;
+}
+
+export async function getFileSharesForViewer(user: User): Promise<FileShare[]> {
+  const constraints = user.role === "staff" || user.role === "master"
+    ? [where("senderId", "==", user.uid)]
+    : [where("recipientIds", "array-contains", user.uid)];
+  const snap = await getDocs(query(collection(db, "fileShares"), ...constraints));
+  return snap.docs
+    .map((item) => ({ id: item.id, ...item.data() } as FileShare))
+    .sort((a, b) => getTimestampMs(b.createdAt) - getTimestampMs(a.createdAt));
 }
 
 export async function getStudentByRegisterNumber(regNo: string): Promise<User | null> {
@@ -416,6 +452,7 @@ export async function getEvent(eventId: string): Promise<Event | null> {
 export async function createEvent(data: Omit<Event, "id" | "createdAt" | "updatedAt">): Promise<string> {
   const ref = await addDoc(collection(db, "events"), stripUndefined({
     ...data,
+    submittedAt: serverTimestamp(),
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   }));
@@ -437,7 +474,7 @@ export async function reviewEventSubmission(
   eventId: string,
   reviewerId: string,
   reviewerName: string,
-  status: "approved" | "rejected",
+  status: "approved" | "rejected" | "changes_requested",
   feedback?: string
 ): Promise<void> {
   const eventRef = doc(db, "events", eventId);
@@ -452,7 +489,12 @@ export async function reviewEventSubmission(
     status: status === "approved" ? "completed" : eventData.status || "upcoming",
     reviewedBy: reviewerId,
     reviewedByName: reviewerName,
+    actionBy: reviewerId,
+    actionByName: reviewerName,
     reviewedAt: now,
+    approvedAt: status === "approved" ? now : undefined,
+    rejectedAt: status === "rejected" ? now : undefined,
+    changesRequestedAt: status === "changes_requested" ? now : undefined,
     reviewFeedback: feedback || undefined,
     updatedAt: now,
   }));
@@ -461,11 +503,15 @@ export async function reviewEventSubmission(
   if (eventData.submittedBy) {
     const title = status === "approved"
       ? `Event Approved! (${eventData.name})`
-      : `Event Submission Rejected (${eventData.name})`;
+      : status === "changes_requested"
+        ? `Changes Requested (${eventData.name})`
+        : `Event Submission Rejected (${eventData.name})`;
 
     const message = status === "approved"
       ? `Your event "${eventData.name}" has been approved by ${reviewerName}.`
-      : `Your event submission for "${eventData.name}" was rejected. Reason: ${feedback}`;
+      : status === "changes_requested"
+        ? `Please update your event "${eventData.name}". Feedback: ${feedback || "See the event details."}`
+        : `Your event submission for "${eventData.name}" was rejected. Reason: ${feedback || "No reason provided."}`;
 
     await addDoc(collection(db, "notifications"), {
       recipientId: eventData.submittedBy,
@@ -482,11 +528,30 @@ export async function reviewEventSubmission(
 
 export async function getStudentEvents(uid: string): Promise<Event[]> {
   try {
-    const snap = await getDocs(collection(db, "events"));
+    const snap = await getDocs(query(
+      collection(db, "events"),
+      where("participantIds", "array-contains", uid),
+      where("submissionStatus", "==", "approved")
+    ));
     const list = snap.docs.map((d) => ({ id: d.id, ...d.data() } as Event));
-    return list.filter((e) => e.submittedBy === uid || e.participantIds?.includes(uid) || e.createdBy === uid);
+    return list
+      .filter((e) => e.submissionStatus === "approved" || !e.submissionStatus)
+      .sort((a, b) => getTimestampMs(b.date) - getTimestampMs(a.date));
   } catch (err) {
     console.error("getStudentEvents error:", err);
+    return [];
+  }
+}
+
+export async function getEventsForViewer(uid: string, role: UserRole): Promise<Event[]> {
+  try {
+    if (role === "staff" || role === "master") return getEvents();
+    const snap = await getDocs(query(collection(db, "events"), where("submittedBy", "==", uid)));
+    return snap.docs
+      .map((d) => ({ id: d.id, ...d.data() } as Event))
+      .sort((a, b) => getTimestampMs(b.date) - getTimestampMs(a.date));
+  } catch (err) {
+    console.error("getEventsForViewer error:", err);
     return [];
   }
 }
@@ -652,7 +717,10 @@ export interface TeamChatMessage {
   senderName: string;
   senderPhoto?: string;
   text: string;
+  messageType: TeamChatMessageType;
+  attachment?: TeamChatAttachment;
   createdAt: any;
+  clientCreatedAt: number;
 }
 
 export async function sendTeamMessage(
@@ -660,7 +728,9 @@ export async function sendTeamMessage(
   senderId: string,
   senderName: string,
   text: string,
-  senderPhoto?: string
+  senderPhoto?: string,
+  messageType: TeamChatMessageType = "text",
+  attachment?: TeamChatAttachment,
 ): Promise<void> {
   await addDoc(
     collection(db, "teamChats", teamId, "messages"),
@@ -669,7 +739,10 @@ export async function sendTeamMessage(
       senderName,
       senderPhoto: senderPhoto || undefined,
       text: text.trim(),
+      messageType,
+      attachment: attachment || undefined,
       createdAt: serverTimestamp(),
+      clientCreatedAt: Date.now(),
     })
   );
 }
@@ -681,7 +754,6 @@ export function subscribeToTeamChat(
   return onSnapshot(
     query(
       collection(db, "teamChats", teamId, "messages"),
-      orderBy("createdAt", "asc"),
       limit(200)
     ),
     (snap) => {
@@ -689,6 +761,7 @@ export function subscribeToTeamChat(
         id: d.id,
         ...d.data(),
       })) as TeamChatMessage[];
+      msgs.sort((a, b) => (a.clientCreatedAt || getTimestampMs(a.createdAt)) - (b.clientCreatedAt || getTimestampMs(b.createdAt)));
       callback(msgs);
     },
     (err) => {

@@ -17,6 +17,7 @@ import { Badge, teamStatusBadge } from "@/components/ui/Badge";
 import { LoadingState, ErrorState } from "@/components/ui/States";
 import { Button } from "@/components/ui/Button";
 import { useToast } from "@/components/ui/ToastProvider";
+import { formatDate } from "@/lib/utils";
 import {
   ArrowLeft, Copy, UsersRound, ChevronDown, ChevronUp,
   Calendar, Award, BookOpen, Megaphone, Star, Hash,
@@ -279,6 +280,24 @@ export default function StudentProfilePage() {
             </div>
           </div>
         )}
+
+        <div className="mm-card">
+          <p className="mm-profile-section-title">Events Participated</p>
+          <p className="mb-3 text-xs text-slate-500">Approved public event history for {student.name}.</p>
+          {events.length > 0 ? (
+            <div className="space-y-2">
+              {events.map((event) => (
+                <Link key={event.id} href={`/events/${event.id}`} className="block rounded-xl border border-slate-200 bg-slate-50 p-3 no-underline transition-colors hover:border-blue-200 hover:bg-blue-50">
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <div><p className="font-semibold text-slate-900">{event.name}</p><p className="text-xs text-slate-500">Team: {event.teamName || "Individual participation"}</p></div>
+                    <span className="text-xs font-semibold text-slate-500">{formatDate(event.date)}</span>
+                  </div>
+                  {event.result && <p className="mt-1 text-xs font-semibold text-amber-700">Result: {event.result}</p>}
+                </Link>
+              ))}
+            </div>
+          ) : <p className="text-sm text-slate-500">No approved public events yet.</p>}
+        </div>
 
         {/* ── Expanded Details Button + Card ────────────────── */}
         <Button

@@ -190,7 +190,7 @@ export default function EditEventPage() {
       } else if (isStaff) {
         // Staff editing doesn't necessarily approve if it was pending, but you can choose:
         newStatus = eventData.submissionStatus === "draft" ? "approved" : eventData.submissionStatus || "pending_review";
-      } else if (eventData.submissionStatus === "draft") {
+      } else if (eventData.submissionStatus === "draft" || eventData.submissionStatus === "changes_requested") {
         newStatus = "pending_review";
       }
 

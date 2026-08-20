@@ -103,6 +103,12 @@ const ADMIN_ITEMS: NavItem[] = [
     roles: ["staff", "master"],
   },
   {
+    label: "File Share",
+    href: "/file-share",
+    icon: <Download size={17} />,
+    roles: ["staff", "master"],
+  },
+  {
     label: "Staff Management",
     href: "/admin/staff",
     icon: <ShieldCheck size={17} />,

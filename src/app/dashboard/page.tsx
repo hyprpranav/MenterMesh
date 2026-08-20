@@ -13,7 +13,7 @@ import {
   Settings, Upload, Clock, BookOpen,
 } from "lucide-react";
 import {
-  getActiveStudents, getAllUsers, getTeams, getEvents,
+  getActiveStudents, getAllUsers, getTeams, getEventsForViewer,
   getAccessRequests, getAnnouncements, getPosts, getUserTeams,
 } from "@/lib/firebase/firestore";
 import type { Team, Event, AccessRequest, Announcement, Post, User } from "@/types";
@@ -55,7 +55,7 @@ function DashboardContent() {
           await Promise.all([
             getActiveStudents(),
             getTeams(),
-            getEvents(),
+            getEventsForViewer(user.uid, user.role),
             user.role !== "student" ? getAccessRequests("pending") : Promise.resolve([]),
             getAnnouncements(),
             getPosts(5),

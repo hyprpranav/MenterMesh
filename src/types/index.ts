@@ -5,6 +5,7 @@
 // ─── User Roles ─────────────────────────────────────────────
 export type UserRole = "student" | "staff" | "master";
 export type UserStatus = "pending" | "active" | "rejected" | "inactive" | "imported";
+export type TimestampValue = string | number | { seconds: number; nanoseconds?: number };
 
 // ─── Core User ──────────────────────────────────────────────
 export interface User {
@@ -35,7 +36,7 @@ export interface User {
   skills?: string[];
   bio?: string;
   linkedIn?: string;
-  createdAt: string;   // ISO timestamp
+  createdAt: string;
   updatedAt: string;
 }
 
@@ -147,6 +148,12 @@ export interface Event {
   reviewedBy?: string;
   reviewedByName?: string;
   reviewedAt?: string;
+  submittedAt?: TimestampValue;
+  approvedAt?: TimestampValue;
+  rejectedAt?: TimestampValue;
+  changesRequestedAt?: TimestampValue;
+  actionBy?: string;
+  actionByName?: string;
   reviewFeedback?: string;
   teamId?: string;
   teamName?: string;
@@ -175,6 +182,29 @@ export interface Event {
   createdBy: string;
   createdAt: string;
   updatedAt: string;
+}
+
+export type TeamChatMessageType = "text" | "image" | "document";
+
+export interface TeamChatAttachment {
+  name: string;
+  url: string;
+  type: string;
+  size: number;
+}
+
+export interface FileShare {
+  id: string;
+  name: string;
+  url: string;
+  type: string;
+  size: number;
+  senderId: string;
+  senderName: string;
+  recipientIds: string[];
+  recipientNames: string[];
+  createdAt: TimestampValue;
+  status: "sent";
 }
 
 

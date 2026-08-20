@@ -15,6 +15,7 @@ import { Modal } from "@/components/ui/Modal";
 import { Badge } from "@/components/ui/Badge";
 import { LoadingState, ErrorState } from "@/components/ui/States";
 import { useToast } from "@/components/ui/ToastProvider";
+import { formatDateTime } from "@/lib/utils";
 import {
   ArrowLeft, Calendar, MapPin, Folder, Image as ImageIcon, Share2, Edit,
   CheckCircle2, XCircle, Users, Code, Lightbulb, ShieldAlert, Trash2, KeyRound
@@ -36,6 +37,7 @@ export default function EventDetailPage() {
   const [deletePin, setDeletePin] = useState("");
   const [deleting, setDeleting] = useState(false);
   const [feedbackReason, setFeedbackReason] = useState("");
+  const [reviewAction, setReviewAction] = useState<"rejected" | "changes_requested">("rejected");
 
   useEffect(() => {
     async function load() {
@@ -60,13 +62,14 @@ export default function EventDetailPage() {
   const isStaff = user?.role === "staff" || user?.role === "master";
   const isPending = event.submissionStatus === "pending_review";
   const isApproved = event.submissionStatus === "approved" || !event.submissionStatus;
+  const isChangesRequested = event.submissionStatus === "changes_requested";
 
   const handleApprove = async () => {
     if (!user) return;
     setReviewing(true);
     try {
       await reviewEventSubmission(event.id, user.uid, user.name, "approved");
-      setEvent({ ...event, submissionStatus: "approved", reviewedByName: user.name });
+      setEvent({ ...event, submissionStatus: "approved", reviewedBy: user.uid, reviewedByName: user.name, actionBy: user.uid, actionByName: user.name, reviewedAt: new Date().toISOString(), approvedAt: new Date().toISOString() });
       success("Event submission approved!");
     } catch {
       error("Failed to approve event.");
@@ -79,11 +82,12 @@ export default function EventDetailPage() {
     if (!user || !feedbackReason.trim()) return;
     setReviewing(true);
     try {
-      await reviewEventSubmission(event.id, user.uid, user.name, "rejected", feedbackReason.trim());
-      setEvent({ ...event, submissionStatus: "rejected", reviewFeedback: feedbackReason });
+      await reviewEventSubmission(event.id, user.uid, user.name, reviewAction, feedbackReason.trim());
+      const reviewedAt = new Date().toISOString();
+      setEvent({ ...event, submissionStatus: reviewAction, reviewFeedback: feedbackReason, reviewedBy: user.uid, reviewedByName: user.name, actionBy: user.uid, actionByName: user.name, reviewedAt, rejectedAt: reviewAction === "rejected" ? reviewedAt : undefined, changesRequestedAt: reviewAction === "changes_requested" ? reviewedAt : undefined });
       setRejectModalOpen(false);
       setFeedbackReason("");
-      error("Event submission rejected.");
+      success(reviewAction === "rejected" ? "Event submission rejected." : "Changes requested from the student.");
     } catch {
       error("Failed to reject event.");
     } finally {
@@ -155,9 +159,16 @@ export default function EventDetailPage() {
                 variant="destructive"
                 size="sm"
                 icon={<XCircle size={14} />}
-                onClick={() => setRejectModalOpen(true)}
+                onClick={() => { setReviewAction("rejected"); setRejectModalOpen(true); }}
               >
                 Reject
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => { setReviewAction("changes_requested"); setRejectModalOpen(true); }}
+              >
+                Request Changes
               </Button>
             </div>
           </div>
@@ -181,10 +192,21 @@ export default function EventDetailPage() {
               <Badge variant="pending">PENDING REVIEW</Badge>
             ) : isApproved ? (
               <Badge variant="approved">APPROVED</Badge>
+            ) : isChangesRequested ? (
+              <Badge variant="pending">CHANGES REQUESTED</Badge>
             ) : (
-              <Badge variant="draft">{event.status.toUpperCase()}</Badge>
+              <Badge variant="rejected">{event.submissionStatus?.toUpperCase() || event.status.toUpperCase()}</Badge>
             )}
           </div>
+
+          {isStaff && (
+            <div className="mm-event-audit">
+              <div><strong>Submitted</strong><span>{formatDateTime(event.submittedAt || event.createdAt)}</span></div>
+              {event.approvedAt && <div><strong>Approved</strong><span>{formatDateTime(event.approvedAt)} by {event.actionByName || event.reviewedByName || "Staff"}</span></div>}
+              {event.rejectedAt && <div><strong>Rejected</strong><span>{formatDateTime(event.rejectedAt)} by {event.actionByName || event.reviewedByName || "Staff"}</span></div>}
+              {event.changesRequestedAt && <div><strong>Changes requested</strong><span>{formatDateTime(event.changesRequestedAt)} by {event.actionByName || event.reviewedByName || "Staff"}</span></div>}
+            </div>
+          )}
 
           <div className="mm-event-meta-grid">
             <span className="mm-event-meta"><Calendar size={16} /> <span><strong>Date</strong>{event.date} {event.endDate && `- ${event.endDate}`}</span></span>
@@ -341,19 +363,19 @@ export default function EventDetailPage() {
       <Modal
         open={rejectModalOpen}
         onClose={() => { setRejectModalOpen(false); setFeedbackReason(""); }}
-        title="Reject Event Submission"
-        description="Please enter the reason for rejecting this event submission. This will notify the student."
+        title={reviewAction === "rejected" ? "Reject Event Submission" : "Request Changes"}
+        description={reviewAction === "rejected" ? "Please enter the reason for rejecting this event submission. This will notify the student." : "Tell the student what must be updated before approval."}
         size="sm"
         footer={
           <>
             <Button variant="secondary" onClick={() => { setRejectModalOpen(false); setFeedbackReason(""); }}>Cancel</Button>
             <Button
-              variant="destructive"
+              variant={reviewAction === "rejected" ? "destructive" : "primary"}
               loading={reviewing}
               onClick={handleReject}
               disabled={!feedbackReason.trim()}
-            >
-              Reject Event
+              >
+              {reviewAction === "rejected" ? "Reject Event" : "Request Changes"}
             </Button>
           </>
         }

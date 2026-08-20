@@ -29,7 +29,7 @@ import { Avatar } from "@/components/ui/Avatar";
 import {
   UsersRound, Plus, Layers, Star, Check, X, Search,
   CheckCircle2, Sparkles, Info, MessageCircle, ArrowLeft,
-  Send, Calendar, Shield, Users, ChevronRight, Trash2,
+  Send, Calendar, Shield, Users, ChevronRight, Trash2, Image as ImageIcon, FileText,
 } from "lucide-react";
 import { EmptyState, LoadingState } from "@/components/ui/States";
 import { useToast } from "@/components/ui/ToastProvider";
@@ -264,7 +264,13 @@ function TeamsContent() {
           team={infoTeam}
           isStaff={isStaff}
           onClose={() => setInfoTeam(null)}
-          onOpenChat={() => { setChatTeam(infoTeam); setInfoTeam(null); }}
+          onOpenChat={() => {
+            if (!user || !infoTeam.memberIds.includes(user.uid)) {
+              error("Only team members can access this private chat.");
+              return;
+            }
+            setChatTeam(infoTeam); setInfoTeam(null);
+          }}
           onDeleteTeam={() => { setDeletingTeam(infoTeam); setInfoTeam(null); setDeleteSecurityCode(""); }}
         />
       )}
@@ -638,6 +644,10 @@ function FullScreenChat({ team, currentUser, isStaff, onBack, onClose }: {
   const [messages, setMessages] = useState<TeamChatMessage[]>([]);
   const [chatText, setChatText] = useState("");
   const [sending, setSending] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [attachmentMenuOpen, setAttachmentMenuOpen] = useState(false);
+  const imageInputRef = useRef<HTMLInputElement>(null);
+  const documentInputRef = useRef<HTMLInputElement>(null);
   const [deleting, setDeleting] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -664,6 +674,29 @@ function FullScreenChat({ team, currentUser, isStaff, onBack, onClose }: {
       inputRef.current?.focus();
     } catch (e) { console.error(e); }
     finally { setSending(false); }
+  };
+
+  const handleAttachment = async (file: File, kind: "image" | "document") => {
+    if (!currentUser) return;
+    setUploading(true);
+    try {
+      const { uploadToCloudinary, validateUploadFile } = await import("@/lib/cloudinary");
+      validateUploadFile(file, kind);
+      const url = await uploadToCloudinary(file, kind === "image" ? "image" : "raw");
+      await sendTeamMessage(team.id, currentUser.uid, currentUser.name, "", currentUser.profilePhoto, kind, {
+        name: file.name,
+        url,
+        type: file.type,
+        size: file.size,
+      });
+      success(kind === "image" ? "Image sent." : "Document sent.");
+    } catch (uploadError) {
+      error(uploadError instanceof Error ? uploadError.message : "Failed to send attachment.");
+    } finally {
+      setUploading(false);
+      if (imageInputRef.current) imageInputRef.current.value = "";
+      if (documentInputRef.current) documentInputRef.current.value = "";
+    }
   };
 
   const handleDeleteChat = async () => {
@@ -740,8 +773,17 @@ function FullScreenChat({ team, currentUser, isStaff, onBack, onClose }: {
                 background: isMe ? "#DCF8C6" : "#fff",
                 boxShadow: "0 1px 2px rgba(0,0,0,0.12)",
               }}>
-                <p style={{ fontSize: 14, color: "#111827", lineHeight: 1.45, wordBreak: "break-word" }}>{msg.text}</p>
-                <p style={{ fontSize: 10, color: "#6B7280", marginTop: 2, textAlign: "right" }}>{fmtTime(msg.createdAt)}</p>
+                {msg.messageType === "image" && msg.attachment ? (
+                  <img src={msg.attachment.url} alt={msg.attachment.name} style={{ display: "block", maxWidth: "min(280px, 100%)", maxHeight: 260, borderRadius: 10, objectFit: "cover" }} />
+                ) : msg.messageType === "document" && msg.attachment ? (
+                  <a href={msg.attachment.url} target="_blank" rel="noreferrer" style={{ display: "flex", alignItems: "center", gap: 8, color: "#111827", textDecoration: "none", minWidth: 180 }}>
+                    <FileText size={22} color="#2563EB" />
+                    <span style={{ minWidth: 0 }}><strong style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{msg.attachment.name}</strong><small>{(msg.attachment.size / 1024).toFixed(1)} KB · Open</small></span>
+                  </a>
+                ) : (
+                  <p style={{ fontSize: 14, color: "#111827", lineHeight: 1.45, wordBreak: "break-word" }}>{msg.text}</p>
+                )}
+                <p style={{ fontSize: 10, color: "#6B7280", marginTop: 2, textAlign: "right" }}>{fmtTime(msg.createdAt || msg.clientCreatedAt)}</p>
               </div>
             </div>
           );
@@ -751,6 +793,15 @@ function FullScreenChat({ team, currentUser, isStaff, onBack, onClose }: {
 
       {/* Input */}
       <div style={{ padding: "0.625rem 0.75rem", background: "#F0F0F0", display: "flex", alignItems: "center", gap: "0.5rem", flexShrink: 0, borderTop: "1px solid #D1D5DB" }}>
+        <input ref={imageInputRef} type="file" accept="image/jpeg,image/png,image/webp,image/gif" hidden onChange={(event) => { const file = event.target.files?.[0]; if (file) void handleAttachment(file, "image"); }} />
+        <input ref={documentInputRef} type="file" accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv" hidden onChange={(event) => { const file = event.target.files?.[0]; if (file) void handleAttachment(file, "document"); }} />
+        <div style={{ position: "relative" }}>
+          <button type="button" onClick={() => setAttachmentMenuOpen((open) => !open)} disabled={uploading} title="Attach image or document" style={{ width: 38, height: 38, borderRadius: "50%", border: "none", background: "#fff", color: "#128C7E", display: "flex", alignItems: "center", justifyContent: "center", cursor: uploading ? "not-allowed" : "pointer" }}><Plus size={20} /></button>
+          {attachmentMenuOpen && <div style={{ position: "absolute", bottom: 44, left: 0, display: "flex", gap: 4, background: "#fff", padding: 4, borderRadius: 8, boxShadow: "0 2px 8px rgba(0,0,0,.15)" }}>
+            <button type="button" onClick={() => { setAttachmentMenuOpen(false); imageInputRef.current?.click(); }} title="Images" style={{ border: "none", background: "#E8F5E9", color: "#128C7E", padding: 7, borderRadius: 6, display: "flex" }}><ImageIcon size={16} /></button>
+            <button type="button" onClick={() => { setAttachmentMenuOpen(false); documentInputRef.current?.click(); }} title="Documents" style={{ border: "none", background: "#EFF6FF", color: "#2563EB", padding: 7, borderRadius: 6, display: "flex" }}><FileText size={16} /></button>
+          </div>}
+        </div>
         <input
           ref={inputRef}
           type="text"
