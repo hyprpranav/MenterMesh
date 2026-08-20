@@ -245,6 +245,15 @@ const USERS = [
     links: ["https://www.linkedin.com/in/varun-kumar-m-761707309"], skills: [],
   },
   {
+    email: "927625bec073@mkce.ac.in", password: "927625BEC073",
+    name: "Divani Shree S", role: "student", status: "active",
+    department: "ECE", year: "II", section: "B", registerNumber: "927625BEC073",
+    phone: "9514407171", personalEmail: "divanishree1208@gmail.com",
+    dateOfBirth: "12-07-2008", aadhaarNumber: "231394555387",
+    bloodGroup: "O+ve", address: "100/1, Lakshmi Nagar, Kunnanur North, Emur, Karur",
+    links: ["https://www.linkedin.com/in/divani-shree-9a46b3381"], skills: [],
+  },
+  {
     email: "927625bec114@mkce.ac.in", password: "927625BEC114",
     name: "J Kamesh Kumar", role: "student", status: "active",
     department: "ECE", year: "II", section: "B", registerNumber: "927625BEC114",
