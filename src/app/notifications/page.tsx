@@ -16,7 +16,7 @@ import type { Notification } from "@/types";
 import { Button } from "@/components/ui/Button";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { LoadingState, EmptyState } from "@/components/ui/States";
-import { Bell, CheckCheck, CheckCircle, XCircle } from "lucide-react";
+import { Bell, Cake, CheckCheck, CheckCircle, XCircle } from "lucide-react";
 import { timeAgo } from "@/lib/utils";
 import { cn } from "@/lib/utils";
 
@@ -86,7 +86,7 @@ function NotificationsContent() {
     approval: { icon: <CheckCircle size={18} />, classes: "bg-emerald-100 text-emerald-600" },
     rejection: { icon: <XCircle size={18} />, classes: "bg-red-100 text-red-600" },
     info: { icon: <Bell size={18} />, classes: "bg-blue-100 text-blue-600" },
-    birthday: { icon: <span className="text-xl">🎂</span>, classes: "bg-pink-100 text-pink-600" },
+    birthday: { icon: <Cake size={18} />, classes: "bg-pink-100 text-pink-600" },
     default: { icon: <Bell size={18} />, classes: "bg-blue-100 text-blue-600" },
   };
 
@@ -128,7 +128,7 @@ function NotificationsContent() {
                 key={n.id}
                 onClick={() => !n.read && handleMarkRead(n.id)}
                 className={cn(
-                  "p-4 rounded-xl border transition-all cursor-pointer flex items-start gap-3",
+                  "mm-notification-card rounded-xl border transition-all cursor-pointer",
                   n.read
                     ? "bg-white border-slate-200"
                     : "bg-blue-50/40 border-blue-200 shadow-sm"
@@ -147,14 +147,14 @@ function NotificationsContent() {
                   {cfg.icon}
                 </div>
 
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-start justify-between gap-2">
-                    <h3 className="font-bold text-slate-900 text-sm leading-snug">{n.title}</h3>
-                    <span className="text-[11px] text-slate-400 shrink-0 whitespace-nowrap mt-0.5">
+                <div className="mm-notification-content">
+                  <div className="mm-notification-heading">
+                    <h3 className="font-bold text-slate-900 text-sm leading-snug overflow-wrap-anywhere">{n.title}</h3>
+                    <span className="text-[11px] text-slate-400 shrink-0 whitespace-nowrap">
                       {timeAgo(n.createdAt)}
                     </span>
                   </div>
-                  <p className="text-xs text-slate-600 mt-0.5 leading-relaxed">{n.message}</p>
+                  <p className="text-xs text-slate-600 mt-1 leading-relaxed overflow-wrap-anywhere">{n.message}</p>
 
                   {n.link && (
                     <div className="mt-2" onClick={(e) => e.stopPropagation()}>
