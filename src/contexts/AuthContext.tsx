@@ -97,8 +97,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   // ─── Sign In ─────────────────────────────────────────────
   const signIn = async (email: string, password: string) => {
-    await signInWithEmailAndPassword(auth, email, password);
-    // onAuthStateChanged will update user state
+    const normalizedEmail = email.trim().toLowerCase();
+    const passwordVariants = [password];
+    const uppercaseBec = password.replace(/bec/gi, "BEC");
+    const lowercaseBec = password.replace(/bec/gi, "bec");
+
+    if (uppercaseBec !== password) passwordVariants.push(uppercaseBec);
+    if (lowercaseBec !== password && lowercaseBec !== uppercaseBec) passwordVariants.push(lowercaseBec);
+
+    let lastError: unknown;
+    for (const passwordVariant of passwordVariants) {
+      try {
+        await signInWithEmailAndPassword(auth, normalizedEmail, passwordVariant);
+        return;
+      } catch (err: unknown) {
+        lastError = err;
+        const code = (err as { code?: string }).code || "";
+        if (code !== "auth/wrong-password" && code !== "auth/invalid-credential") throw err;
+      }
+    }
+
+    throw lastError;
   };
 
   // ─── Sign Up (Registration Request) ──────────────────────

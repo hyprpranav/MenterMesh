@@ -128,9 +128,9 @@ const USERS = [
     links: ["https://www.linkedin.com/in/dharshini-boopathi-53445137a"], skills: [],
   },
   {
-    email: "927624bec038@mkce.ac.in", password: "927623BEC038",
+    email: "927624bec038@mkce.ac.in", password: "927624BEC038",
     name: "Dharani T", role: "student", status: "active",
-    department: "ECE", year: "III", section: "A", registerNumber: "927623BEC038",
+    department: "ECE", year: "III", section: "A", registerNumber: "927624BEC038",
     phone: "7812891984", personalEmail: "dharanithangavel593@gmail.com",
     alternateEmail: "", dateOfBirth: "06-07-2006",
     bloodGroup: "O+ve", address: "3/236, Nallappanaickanpalayam, Kunnamalai, Paramathi Velur, Namakkal - 637203",
