@@ -13,7 +13,7 @@ import { Button } from "@/components/ui/Button";
 import { Tabs } from "@/components/ui/Tabs";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Badge } from "@/components/ui/Badge";
-import { Calendar, Plus, MapPin, Folder, CheckCircle2, AlertCircle, Clock } from "lucide-react";
+import { Calendar, Plus, MapPin, Folder, CheckCircle2, AlertCircle, Clock, XCircle } from "lucide-react";
 import { EmptyState, LoadingState } from "@/components/ui/States";
 import { formatDate } from "@/lib/utils";
 
@@ -48,20 +48,32 @@ function EventsContent() {
   const isStaff = user?.role === "staff" || user?.role === "master";
   const pendingCount = events.filter((e) => e.submissionStatus === "pending_review").length;
 
+  const actionReqCountStudent = events.filter((e) => e.submissionStatus === "changes_requested" && e.submittedBy === user?.uid).length;
+
   const filteredEvents = events.filter((e) => {
     if (activeTab === "all") return true;
     if (activeTab === "my") return e.submittedBy === user?.uid || e.participantIds?.includes(user?.uid || "");
     if (activeTab === "pending") return e.submissionStatus === "pending_review";
     if (activeTab === "approved") return e.submissionStatus === "approved" || !e.submissionStatus;
+    if (activeTab === "action_req") return e.submissionStatus === "changes_requested";
+    if (activeTab === "rejected") return e.submissionStatus === "rejected";
     if (activeTab === "draft") return e.submissionStatus === "draft";
     return e.type.toLowerCase() === activeTab.toLowerCase();
   });
 
   const tabs = [
     { id: "all", label: "All Events", count: events.length },
-    ...(!isStaff ? [{ id: "my", label: "My Submissions" }] : []),
+    ...(!isStaff ? [
+      { id: "my", label: "My Submissions" },
+      { id: "action_req", label: "Action Needed", count: actionReqCountStudent, className: actionReqCountStudent > 0 ? "text-rose-600" : undefined },
+      { id: "rejected", label: "Rejected" }
+    ] : []),
     ...(isStaff
-      ? [{ id: "pending", label: "Pending Review", count: pendingCount, className: pendingCount > 0 ? "text-amber-700" : undefined }]
+      ? [
+        { id: "pending", label: "Pending Review", count: pendingCount, className: pendingCount > 0 ? "text-amber-700" : undefined },
+        { id: "action_req", label: "Changes Requested" },
+        { id: "rejected", label: "Rejected" }
+      ]
       : []),
     { id: "approved", label: "Approved" },
     { id: "hackathon", label: "Hackathon" },
@@ -123,11 +135,14 @@ function EventCard({ event }: { event: Event }) {
   const isPending = event.submissionStatus === "pending_review";
   const isApproved = event.submissionStatus === "approved" || !event.submissionStatus;
   const isChangesReq = event.submissionStatus === "changes_requested";
+  const isRejected = event.submissionStatus === "rejected";
 
   const statusBadge = isPending ? (
-    <Badge variant="pending" icon={<Clock size={11} />}>Pending Review</Badge>
+    <Badge variant="pending" icon={<Clock size={11} />}>Pending</Badge>
   ) : isChangesReq ? (
-    <Badge variant="changes" icon={<AlertCircle size={11} />}>Action Required</Badge>
+    <Badge variant="changes" icon={<AlertCircle size={11} />}>Action Req.</Badge>
+  ) : isRejected ? (
+    <Badge variant="rejected" icon={<XCircle size={11} />}>Rejected</Badge>
   ) : isApproved ? (
     <Badge variant="approved" icon={<CheckCircle2 size={11} />}>Approved</Badge>
   ) : (
@@ -135,63 +150,70 @@ function EventCard({ event }: { event: Event }) {
   );
 
   return (
-    <div className="mm-card hover:border-blue-300 transition-all flex flex-col justify-between space-y-4">
+    <div className="mm-card hover:border-blue-300 transition-all flex flex-col justify-between h-full bg-white">
       <div className="space-y-3">
-        <div className="flex justify-between items-start gap-2 flex-wrap">
-          <span className="text-xs font-semibold text-blue-600 bg-blue-50 px-2.5 py-0.5 rounded-full border border-blue-100 whitespace-nowrap">
+        <div className="flex justify-between items-start gap-2 w-full pr-1">
+          <span className="text-xs font-semibold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full border border-blue-100 truncate max-w-[60%] inline-block">
             {event.type}
           </span>
-          {statusBadge}
+          <div className="shrink-0">{statusBadge}</div>
         </div>
 
-        <h3 className="font-bold text-slate-900 text-base leading-snug">{event.name}</h3>
+        <h3 className="font-bold text-slate-900 text-[15px] leading-snug line-clamp-2" title={event.name}>
+          {event.name}
+        </h3>
 
         {event.result && (
-          <p className="text-xs font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-lg border border-amber-200 inline-block">
-            {event.result}
-          </p>
+          <div className="w-full">
+            <span
+              className="text-xs font-bold text-amber-700 bg-amber-50 px-2 opacity-90 py-1 rounded-md border border-amber-200 inline-block w-auto max-w-full truncate"
+              title={event.result}
+            >
+              {event.result}
+            </span>
+          </div>
         )}
 
-        <div className="text-xs text-slate-500 space-y-1">
-          <p className="flex items-center gap-1.5">
+        <div className="text-xs text-slate-500 space-y-2 pt-1 border-t border-slate-50">
+          <p className="flex items-center gap-2">
             <Calendar size={13} className="text-slate-400 shrink-0" />
-            <span>{formatDate(event.date)}</span>
+            <span className="truncate">{formatDate(event.date)}</span>
           </p>
           {(event.location || event.venue) && (
-            <p className="flex items-center gap-1.5">
+            <p className="flex items-center gap-2">
               <MapPin size={13} className="text-slate-400 shrink-0" />
-              <span className="truncate">
+              <span className="truncate" title={event.venue ? `${event.venue}${event.city ? `, ${event.city}` : ""}` : event.location}>
                 {event.venue ? `${event.venue}${event.city ? `, ${event.city}` : ""}` : event.location}
               </span>
             </p>
           )}
           {event.submittedByName && (
-            <p className="text-[11px] text-slate-400">
-              By <strong className="text-slate-600">{event.submittedByName}</strong>
+            <p className="text-[11px] text-slate-400 truncate mt-1 bg-slate-50 px-2 py-1 rounded inline-block w-full">
+              By <strong className="text-slate-600 font-semibold">{event.submittedByName}</strong>
             </p>
           )}
         </div>
 
         {event.description && (
-          <p className="text-xs text-slate-600 line-clamp-2">{event.description}</p>
+          <p className="text-xs text-slate-600 line-clamp-2 mt-2 leading-relaxed">{event.description}</p>
         )}
       </div>
 
-      <div className="pt-3 border-t border-slate-100 flex items-center justify-between">
+      <div className="pt-3 mt-4 border-t border-slate-100 flex items-center justify-between w-full h-[32px]">
         {event.driveLink ? (
           <a
             href={event.driveLink}
             target="_blank"
             rel="noreferrer"
-            className="text-xs text-blue-600 font-medium hover:underline flex items-center gap-1"
+            className="text-xs text-blue-600 font-medium hover:underline flex items-center gap-1.5 px-2 py-1 bg-blue-50/50 rounded-lg transition-colors hover:bg-blue-50"
           >
-            <Folder size={12} /> Drive Folder
+            <Folder size={12} className="shrink-0" /> <span className="truncate max-w-[80px]">Folder</span>
           </a>
         ) : (
-          <span />
+          <div aria-hidden="true" />
         )}
         <Link href={`/events/${event.id}`}>
-          <Button size="sm" variant="ghost">View Event →</Button>
+          <Button size="sm" variant="ghost" className="h-8 text-xs px-3">View Event →</Button>
         </Link>
       </div>
     </div>

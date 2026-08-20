@@ -143,10 +143,12 @@ export default function EventDetailPage() {
           <Link href="/events" className="text-xs font-semibold text-slate-500 hover:text-blue-600 inline-flex items-center gap-1">
             <ArrowLeft size={14} /> Back to Events
           </Link>
-          {isStaff && (
-            <Button variant="outline" size="sm" icon={<Edit size={14} />} onClick={() => setEditing(!editing)}>
-              {editing ? "Cancel Edit" : "Edit Details"}
-            </Button>
+          {(isStaff || (user?.uid === event.submittedBy && (isChangesReq || event.submissionStatus === "draft"))) && (
+            <Link href={`/events/${eventId}/edit`}>
+              <Button variant="outline" size="sm" icon={<Edit size={14} />}>
+                Edit Details
+              </Button>
+            </Link>
           )}
         </div>
 
@@ -197,13 +199,22 @@ export default function EventDetailPage() {
 
         {/* Changes Requested Banner for Student */}
         {isChangesReq && (
-          <div className="bg-rose-50 border border-rose-200 rounded-2xl p-5 text-xs text-rose-900 space-y-1">
+          <div className="bg-rose-50 border border-rose-200 rounded-2xl p-5 text-xs text-rose-900 space-y-3">
             <p className="font-bold text-sm flex items-center gap-1.5">
               <AlertCircle size={16} className="text-rose-600" /> Mentor Requested Changes:
             </p>
             <p className="text-rose-700 bg-white/70 p-2.5 rounded-lg border border-rose-100">
               {event.reviewFeedback || "Please review and update your event submission."}
             </p>
+            {user?.uid === event.submittedBy && (
+              <div className="pt-2">
+                <Link href={`/events/${event.id}/edit`}>
+                  <Button variant="primary" size="sm" icon={<Edit size={14} />}>
+                    Edit & Re-Upload Event
+                  </Button>
+                </Link>
+              </div>
+            )}
           </div>
         )}
 
