@@ -91,7 +91,7 @@ function NotificationsContent() {
   };
 
   return (
-    <div className="space-y-6 w-full max-w-6xl mx-auto mm-page-animate">
+    <div className="mm-card space-y-6 w-full max-w-4xl mx-auto mm-page-animate">
       <PageHeader
         icon={<Bell size={20} />}
         iconClass="bg-blue-100 text-blue-600"

@@ -9,10 +9,24 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
+// ─── Safely parse date from Firestore Timestamp or string ────
+function parseDate(val: any): Date | null {
+  if (!val) return null;
+  if (typeof val === "object" && typeof val.seconds === "number") {
+    return new Date(val.seconds * 1000);
+  }
+  if (typeof val === "number") {
+    return new Date(val);
+  }
+  const date = new Date(val);
+  if (isNaN(date.getTime())) return null;
+  return date;
+}
+
 // ─── Format date for display ─────────────────────────────────
-export function formatDate(isoString: string, options?: Intl.DateTimeFormatOptions): string {
-  if (!isoString) return "—";
-  const date = new Date(isoString);
+export function formatDate(val: any, options?: Intl.DateTimeFormatOptions): string {
+  const date = parseDate(val);
+  if (!date) return "—";
   return date.toLocaleDateString("en-IN", {
     day: "numeric",
     month: "short",
@@ -21,9 +35,9 @@ export function formatDate(isoString: string, options?: Intl.DateTimeFormatOptio
   });
 }
 
-export function formatDateTime(isoString: string): string {
-  if (!isoString) return "—";
-  const date = new Date(isoString);
+export function formatDateTime(val: any): string {
+  const date = parseDate(val);
+  if (!date) return "—";
   return date.toLocaleString("en-IN", {
     day: "numeric",
     month: "short",
@@ -33,8 +47,10 @@ export function formatDateTime(isoString: string): string {
   });
 }
 
-export function timeAgo(isoString: string): string {
-  const date = new Date(isoString);
+export function timeAgo(val: any): string {
+  const date = parseDate(val);
+  if (!date) return "—";
+
   const now = new Date();
   const diff = now.getTime() - date.getTime();
   const seconds = Math.floor(diff / 1000);
@@ -46,7 +62,7 @@ export function timeAgo(isoString: string): string {
   if (minutes < 60) return `${minutes}m ago`;
   if (hours < 24) return `${hours}h ago`;
   if (days < 7) return `${days}d ago`;
-  return formatDate(isoString);
+  return formatDate(val);
 }
 
 // ─── Copy to clipboard ───────────────────────────────────────

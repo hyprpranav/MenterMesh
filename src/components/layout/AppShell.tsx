@@ -62,6 +62,18 @@ export function AppShell({ children }: AppShellProps) {
     if (user.status === "inactive") { router.push("/inactive"); return; }
   }, [user, loading, router]);
 
+  // Request browser notification permissions
+  useEffect(() => {
+    if (typeof window !== "undefined" && "Notification" in window) {
+      if (Notification.permission === "default") {
+        Notification.requestPermission();
+      }
+    }
+  }, []);
+
+  const prevNotifs = React.useRef<Set<string>>(new Set());
+  const initialLoad = React.useRef(false);
+
   // Real-time unread notifications
   useEffect(() => {
     if (!user || (user.status !== "active" && user.status !== "imported")) return;
@@ -72,6 +84,18 @@ export function AppShell({ children }: AppShellProps) {
 
         const allUnread = [...bdayNotifs.filter(n => !n.read), ...dbNotifs];
         allUnread.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+        // Trigger browser notification for new items
+        if (initialLoad.current && typeof window !== "undefined" && "Notification" in window && Notification.permission === "granted") {
+          for (const n of allUnread) {
+            if (!prevNotifs.current.has(n.id)) {
+              new Notification(n.title, { body: n.message, icon: "/icon.jpg" });
+            }
+          }
+        }
+
+        prevNotifs.current = new Set(allUnread.map(n => n.id));
+        initialLoad.current = true;
         setUnreadNotifs(allUnread);
       } catch (err) {
         console.error("Error loading birthday notifs:", err);

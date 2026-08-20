@@ -126,20 +126,20 @@ export default function RequestDetailPage() {
 
   return (
     <AppShell>
-      <div className="space-y-6 max-w-5xl mx-auto w-full mm-page-animate">
-        <Link href="/admin/requests" className="text-xs font-semibold text-slate-500 hover:text-blue-600 inline-flex items-center gap-1">
-          <ArrowLeft size={14} /> Back to Requests
+      <div className="space-y-6 max-w-3xl mx-auto w-full mm-page-animate">
+        <Link href="/admin/requests" className="text-sm font-semibold text-slate-500 hover:text-blue-600 inline-flex items-center gap-1">
+          <ArrowLeft size={16} /> Back to Requests
         </Link>
 
         {/* Details Card */}
-        <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-4">
+        <div className="mm-card space-y-4">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-3">
                 <h1 className="text-2xl font-bold text-slate-900">{req.name}</h1>
                 <span className={`mm-badge border ${req.status === "approved" ? "bg-emerald-100 text-emerald-800 border-emerald-200" : req.status === "rejected" ? "bg-red-100 text-red-700 border-red-200" : "bg-amber-100 text-amber-800 border-amber-200"}`}>{req.status.toUpperCase()}</span>
               </div>
-              <p className="text-xs text-slate-500 mt-1">{req.email} • Phone: {req.phone}</p>
+              <p className="text-sm text-slate-500 mt-1">{req.email} • Phone: {req.phone}</p>
             </div>
 
             {req.status === "pending" && (
