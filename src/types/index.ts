@@ -14,6 +14,7 @@ export interface User {
   role: UserRole;
   status: UserStatus;
   profilePhoto?: string;
+  professionalPhoto?: string;
   department?: string;
   year?: string;       // "I" | "II" | "III" | "IV"
   section?: string;
@@ -43,6 +44,7 @@ export interface PublicProfile {
   uid: string;
   name: string;
   profilePhoto?: string;
+  professionalPhoto?: string;
   department?: string;
   year?: string;
   section?: string;

@@ -401,13 +401,13 @@ function StudentModal({
   const isStaff = student.role === "staff" || student.role === "master";
   const meta = isStaff ? (student.role === "master" ? "Master Account" : "Faculty / Staff Account") : [student.department, student.year && `${student.year} Year`, student.section && `Section ${student.section}`].filter(Boolean).join(" · ");
 
-  const handleCopyProfilePic = async () => {
-    if (!student.profilePhoto) return;
+  const handleCopyProfessionalPic = async () => {
+    if (!student.professionalPhoto) return;
     try {
-      await navigator.clipboard.writeText(student.profilePhoto);
-      success("Profile picture URL copied!");
+      await navigator.clipboard.writeText(student.professionalPhoto);
+      success("Professional picture URL copied!");
     } catch {
-      toastError("Failed to copy profile picture URL.");
+      toastError("Failed to copy professional picture URL.");
     }
   };
 
@@ -419,22 +419,6 @@ function StudentModal({
         <div style={{ display: "flex", alignItems: "center", gap: "1rem", border: "1px solid var(--color-border)", background: isStaff ? "linear-gradient(to right, #F8FAFC, #F1F5F9)" : "var(--color-bg)", borderRadius: "14px", padding: "1rem" }}>
           <div style={{ position: "relative" }}>
             <Avatar name={student.name} photoUrl={student.profilePhoto} size="xl" />
-            {student.profilePhoto && (
-              <button
-                onClick={handleCopyProfilePic}
-                title="Copy profile picture URL"
-                style={{
-                  position: "absolute", bottom: -4, right: -4,
-                  width: 28, height: 28, borderRadius: "50%",
-                  background: "var(--color-surface)", border: "1.5px solid var(--color-border)",
-                  display: "flex", alignItems: "center", justifyContent: "center",
-                  cursor: "pointer", boxShadow: "var(--shadow-sm)",
-                  transition: "all 0.15s",
-                }}
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--color-primary)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><rect width="18" height="18" x="3" y="3" rx="2" ry="2" /><circle cx="9" cy="9" r="2" /><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21" /></svg>
-              </button>
-            )}
           </div>
           <div>
             <h2 style={{ fontWeight: 700, fontSize: "1.25rem", margin: 0, color: isStaff ? "#0F172A" : "inherit" }}>{student.name}</h2>
@@ -458,6 +442,21 @@ function StudentModal({
             {student.email && <CopyField label="College Email" value={student.email} />}
           </div>
         </div>
+
+        {student.professionalPhoto && (
+          <div style={{ background: "linear-gradient(135deg, #f8fafc, #f1f5f9)", borderRadius: "12px", border: "1px solid #e2e8f0", padding: "1.5rem", display: "flex", gap: "1.5rem", alignItems: "center", marginTop: "0.5rem" }}>
+            <div style={{ width: "90px", height: "90px", borderRadius: "12px", overflow: "hidden", border: "2px solid #fff", boxShadow: "0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)", flexShrink: 0 }}>
+              <img src={student.professionalPhoto} alt="Professional" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+            </div>
+            <div style={{ flex: 1 }}>
+              <h4 style={{ fontWeight: 700, fontSize: "1.05rem", color: "#0f172a", marginBottom: "0.25rem", margin: 0 }}>Professional Photo</h4>
+              <p style={{ fontSize: "0.85rem", color: "#64748b", margin: 0, marginBottom: "1rem" }}>High-resolution picture for official use, presentations, and events.</p>
+              <Button onClick={handleCopyProfessionalPic} variant="primary" size="sm" icon={<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2" /><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" /></svg>}>
+                Copy Photo Link
+              </Button>
+            </div>
+          </div>
+        )}
 
         <div>
           <p className="mm-profile-section-title">Contact</p>

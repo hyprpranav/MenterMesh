@@ -51,7 +51,7 @@ function DashboardContent() {
     async function loadAll() {
       if (!user) return;
       try {
-        const [stList, tmList, evList, reqList, annList, postList, mTeams, staffList] =
+        const [stList, tmList, evList, reqList, annList, postList, mTeams, staffList, bdays] =
           await Promise.all([
             getActiveStudents(),
             getTeams(),

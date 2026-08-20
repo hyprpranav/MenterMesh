@@ -37,6 +37,7 @@ const initialProfileForm = (user: User | null) => ({
   bio: user?.bio ?? "",
   skills: (user?.skills ?? []).join(", "),
   profilePhoto: user?.profilePhoto ?? "",
+  professionalPhoto: user?.professionalPhoto ?? "",
 });
 
 export default function ProfilePage() {
@@ -68,6 +69,7 @@ export default function ProfilePage() {
     bio: "",
     skills: "",
     profilePhoto: "",
+    professionalPhoto: "",
   });
 
   useEffect(() => {
@@ -115,6 +117,7 @@ export default function ProfilePage() {
         linkedIn: form.linkedIn.trim() || undefined,
         portfolio: form.portfolio.trim() || undefined,
         profilePhoto: form.profilePhoto.trim() || undefined,
+        professionalPhoto: form.professionalPhoto.trim() || undefined,
         bio: form.bio.trim() || undefined,
         skills: form.skills
           .split(",")
@@ -246,12 +249,18 @@ export default function ProfilePage() {
             <div className="mm-card">
               <p className="mm-profile-section-title">Edit Profile</p>
 
-              <div className="mb-6 pt-2 pb-4 border-b border-slate-100">
+              <div className="mb-6 pt-2 pb-4 border-b border-slate-100 flex flex-wrap gap-8">
                 <CloudinaryImageUpload
                   label="Profile Photo"
-                  buttonText="Upload New Photo"
+                  buttonText="Upload Profile Photo"
                   existingUrl={form.profilePhoto}
                   onUploadSuccess={(url) => handleChange("profilePhoto", url)}
+                />
+                <CloudinaryImageUpload
+                  label="Professional Photo"
+                  buttonText="Upload Professional Photo"
+                  existingUrl={form.professionalPhoto}
+                  onUploadSuccess={(url) => handleChange("professionalPhoto", url)}
                 />
               </div>
 
