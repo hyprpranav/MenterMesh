@@ -31,6 +31,7 @@ function FileShareContent() {
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
+  const [loadError, setLoadError] = useState("");
 
   const isStaff = user?.role === "staff" || user?.role === "master";
 
@@ -44,13 +45,13 @@ function FileShareContent() {
         setHistory(shares);
       } catch (loadError) {
         console.error(loadError);
-        error("Unable to load file sharing data.");
+        setLoadError("Unable to load file sharing data. Firebase access rules may need to be published.");
       } finally {
         setLoading(false);
       }
     }
     void load();
-  }, [user, error]);
+  }, [user]);
 
   const visibleStudents = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -140,6 +141,12 @@ function FileShareContent() {
           </div>
           <div className="flex justify-end border-t border-slate-100 pt-3"><Button onClick={() => void sendFile()} loading={sending} disabled={selectedIds.length === 0}>Send File ({selectedIds.length})</Button></div>
         </section>
+      )}
+
+      {loadError && (
+        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700" role="alert">
+          {loadError}
+        </div>
       )}
 
       <section className="mm-card space-y-4"><div><h2 className="font-bold text-slate-900">{isStaff ? "File Share History" : "Files Shared With Me"}</h2><p className="text-xs text-slate-500">{isStaff ? "Files sent to students remain listed here." : "Only files sent to your account appear here."}</p></div>{loading ? <LoadingState message="Loading file history..." /> : history.length === 0 ? <EmptyState icon={<FileText size={32} />} title="No files shared yet" /> : <div className="space-y-2">{history.map((item) => <div key={item.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 p-3"><div className="flex min-w-0 items-center gap-3"><FileText className="shrink-0 text-blue-600" size={22} /><div className="min-w-0"><p className="truncate font-semibold text-slate-900">{item.name}</p><p className="text-xs text-slate-500">{isStaff ? `Sent to: ${item.recipientNames.join(", ")}` : `From: ${item.senderName}`}</p><p className="text-[11px] text-slate-400">{formatDateTime(item.createdAt)}</p></div></div><a href={item.url} target="_blank" rel="noreferrer" className="inline-flex shrink-0 items-center gap-1 text-sm font-semibold text-blue-600"><Download size={15} /> Open</a></div>)}</div>}</section>
