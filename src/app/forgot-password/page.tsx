@@ -90,9 +90,26 @@ export default function ForgotPasswordPage() {
                 <MailCheck size={28} color="var(--color-success)" />
               </div>
               <h1 style={{ fontSize: "1.25rem", fontWeight: 700, marginBottom: "0.5rem" }}>Check your email</h1>
-              <p style={{ fontSize: "0.875rem", color: "var(--color-muted)", lineHeight: 1.6, marginBottom: "1.5rem" }}>
+              <p style={{ fontSize: "0.875rem", color: "var(--color-muted)", lineHeight: 1.6, marginBottom: "1rem" }}>
                 {successMsg}
               </p>
+
+              <div style={{
+                background: "var(--amber-50)",
+                border: "1px solid var(--amber-200)",
+                borderRadius: "8px",
+                padding: "0.875rem",
+                display: "flex",
+                alignItems: "flex-start",
+                gap: "0.5rem",
+                marginBottom: "1.5rem",
+                textAlign: "left"
+              }}>
+                <AlertCircle size={18} color="var(--amber-600)" style={{ flexShrink: 0, marginTop: "2px" }} />
+                <p style={{ fontSize: "0.8125rem", color: "var(--amber-800)", margin: 0, fontWeight: 500, lineHeight: 1.5 }}>
+                  <span style={{ fontWeight: 700, color: "var(--amber-900)" }}>Note:</span> Please check your <strong style={{ background: "var(--amber-200)", padding: "0 4px", borderRadius: "4px", color: "var(--amber-900)" }}>SPAM folder</strong> if you don't see it in your inbox immediately.
+                </p>
+              </div>
               <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
                 <Button variant="secondary" fullWidth icon={<ArrowLeft size={16} />} onClick={() => setSuccessMsg("")}>
                   Try another email
