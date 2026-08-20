@@ -180,8 +180,8 @@ function AdminStudentsContent() {
       ) : filteredUsers.length === 0 ? (
         <EmptyState icon={<Search size={40} />} title="No matching records" />
       ) : (
-        <div className="mm-table-wrap">
-          <table className="mm-table">
+        <div className="mm-table-wrap mm-student-table-wrap">
+          <table className="mm-table mm-student-table">
             <thead>
               <tr>
                 <th>Student</th>
@@ -195,7 +195,7 @@ function AdminStudentsContent() {
             <tbody>
               {filteredUsers.map((u) => (
                 <tr key={u.uid}>
-                  <td>
+                  <td data-label="Student">
                     <div className="flex items-center gap-2.5">
                       <Avatar name={u.name} photoUrl={u.profilePhoto} size="sm" />
                       <div>
@@ -209,7 +209,7 @@ function AdminStudentsContent() {
                       </div>
                     </div>
                   </td>
-                  <td className="font-mono text-xs">
+                  <td data-label="Register No" className="font-mono text-xs">
                     <div className="flex items-center gap-1.5">
                       <span>{u.registerNumber || "—"}</span>
                       {u.registerNumber && (
@@ -217,22 +217,22 @@ function AdminStudentsContent() {
                       )}
                     </div>
                   </td>
-                  <td className="text-xs">
+                  <td data-label="Dept / Yr / Sec" className="text-xs">
                     {u.department
                       ? `${u.department} — ${u.year} Yr (${u.section})`
                       : "—"}
                   </td>
-                  <td>
+                  <td data-label="Role">
                     <span className="text-xs font-bold capitalize text-slate-700">
                       {u.role}
                     </span>
                   </td>
-                  <td>
+                  <td data-label="Status">
                     <Badge variant={statusVariant(u.status) as "active" | "pending" | "rejected" | "draft"}>
                       {u.status.toUpperCase()}
                     </Badge>
                   </td>
-                  <td>
+                  <td data-label="Actions">
                     {u.role !== "master" || isMaster ? (
                       <Button
                         size="sm"
@@ -393,7 +393,7 @@ function AdminStudentsContent() {
         <div className="space-y-3">
           <div style={{ padding: "0.75rem", background: "var(--red-50)", border: "1px solid var(--red-100)", borderRadius: "10px" }}>
             <p style={{ fontSize: "0.8125rem", color: "var(--red-700)", fontWeight: 600 }}>
-              ⚠️ This will completely delete the user's account from the database. This action cannot be reversed.
+              ⚠️ This will completely delete the user&apos;s account from the database. This action cannot be reversed.
             </p>
           </div>
           <label className="mm-label">Security Code <span style={{ color: "var(--color-danger)" }}>*</span></label>

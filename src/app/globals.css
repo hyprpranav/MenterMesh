@@ -2686,6 +2686,60 @@ a:hover {
   background: var(--color-bg);
 }
 
+/* Keep student records readable on narrow screens instead of squeezing each column. */
+@media (max-width: 639px) {
+  .mm-student-table {
+    display: block;
+  }
+
+  .mm-student-table thead {
+    display: none;
+  }
+
+  .mm-student-table tbody,
+  .mm-student-table tr,
+  .mm-student-table td {
+    display: block;
+  }
+
+  .mm-student-table tr {
+    padding: 0.5rem 0;
+    border-bottom: 1px solid var(--color-border);
+  }
+
+  .mm-student-table tr:last-child {
+    border-bottom: none;
+  }
+
+  .mm-student-table td {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.75rem;
+    padding: 0.625rem 0.875rem;
+    border-bottom: none;
+    min-width: 0;
+  }
+
+  .mm-student-table td::before {
+    content: attr(data-label);
+    flex: 0 0 6.75rem;
+    color: var(--color-muted);
+    font-size: 0.68rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    line-height: 1.35;
+    text-transform: uppercase;
+  }
+
+  .mm-student-table td > * {
+    min-width: 0;
+  }
+
+  .mm-student-table td:first-child > div {
+    min-width: 0;
+  }
+}
+
 /* ── Announce Priority ───────────────────────────────────── */
 .mm-urgent {
   color: var(--color-danger);
