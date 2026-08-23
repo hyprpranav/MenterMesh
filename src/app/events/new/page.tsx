@@ -32,12 +32,12 @@ const RESULTS_LIST = [
 const T = {
   input: [
     "block w-full rounded-[12px] border border-slate-200 bg-slate-50/50",
-    "px-4 py-2.5 text-[14px] text-slate-900 placeholder-slate-400 font-medium min-h-[44px]",
+    "px-5 py-3 text-[15px] text-slate-900 placeholder-slate-400 font-medium min-h-[48px]",
     "outline-none transition-all duration-200",
     "hover:bg-white hover:border-slate-300 hover:shadow-sm",
     "focus:bg-white focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 focus:shadow-sm",
   ].join(" "),
-  divider: "border-t border-slate-100 my-6",
+  divider: "border-t border-slate-100 my-8",
 };
 
 type Accent = "blue" | "violet" | "amber" | "rose" | "teal";
@@ -54,20 +54,20 @@ function SectionCard({ step, icon, title, subtitle, accent, children }: {
 }) {
   const a = ACCENT[accent];
   return (
-    <div className="bg-white rounded-[20px] border border-slate-200/80 shadow-sm mb-8 transition-shadow hover:shadow-md outline-none">
+    <div className="bg-white rounded-[20px] border border-slate-200/80 shadow-sm mb-10 transition-shadow hover:shadow-md outline-none">
       <div className="px-6 md:px-8 py-5 border-b border-slate-100 bg-slate-50/40 flex items-center gap-4 rounded-t-[20px]">
         <div className={`w-11 h-11 rounded-[12px] ${a.iconBg} ${a.iconTxt} flex items-center justify-center shrink-0 shadow-sm`}>
           {icon}
         </div>
         <div className="flex-1">
           <div className="flex items-center gap-2 mb-1">
-            <span className={`text-[11px] font-extrabold uppercase tracking-[0.1em] ${a.badgeTxt}`}>Step {step}</span>
+            <span className={`text-[12px] font-extrabold uppercase tracking-[0.1em] ${a.badgeTxt}`}>Step {step}</span>
           </div>
-          <h3 className="text-[16px] font-bold text-slate-900 tracking-tight leading-none mb-1.5">{title}</h3>
-          <p className="text-[13px] text-slate-500 leading-none">{subtitle}</p>
+          <h3 className="text-[18px] font-bold text-slate-900 tracking-tight leading-none mb-1.5">{title}</h3>
+          <p className="text-[14px] text-slate-500 leading-none">{subtitle}</p>
         </div>
       </div>
-      <div className="px-6 md:px-8 py-7 space-y-8">
+      <div className="px-6 md:px-8 py-8 space-y-10">
         {children}
       </div>
     </div>
@@ -79,21 +79,17 @@ function Field({ label, required, optional, hint, children }: {
 }) {
   return (
     <div className="flex flex-col w-full h-full">
-      <div className="flex items-baseline justify-between mb-2.5">
-        <label className="text-[13px] font-bold text-slate-800 tracking-wide">
+      <div className="flex items-center gap-2 mb-3">
+        <label className="text-[14px] font-bold text-slate-800 tracking-wide flex items-center gap-2">
           {label}
-          {required && <span className="text-rose-500 ml-1 font-bold">*</span>}
+          {required && <span className="text-rose-500 font-bold">*</span>}
+          {optional && <span className="text-[12px] font-medium text-slate-400 font-normal">Optional</span>}
         </label>
-        {optional && (
-          <span className="text-[10px] font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-[4px] uppercase tracking-wider">
-            Optional
-          </span>
-        )}
       </div>
       <div className="relative flex-1 flex flex-col justify-end">
         {children}
       </div>
-      {hint && <p className="mt-2 text-[12px] text-slate-500 font-medium leading-relaxed">{hint}</p>}
+      {hint && <p className="mt-2.5 text-[13px] text-slate-500 font-medium leading-relaxed">{hint}</p>}
     </div>
   );
 }
@@ -110,7 +106,7 @@ function SelectField({ value, onChange, children, className = "" }: {
 }
 
 function Row({ cols = 2, children }: { cols?: number; children: React.ReactNode }) {
-  return <div className={cols === 3 ? "grid grid-cols-1 md:grid-cols-3 gap-6 md:gap-7" : "grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-7"}>{children}</div>;
+  return <div className={cols === 3 ? "grid grid-cols-1 md:grid-cols-3 gap-6 md:gap-8" : "grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-8"}>{children}</div>;
 }
 
 function ParticipationCard({ active, icon, title, desc, onClick }: {
@@ -309,7 +305,7 @@ export default function CreateEventPage() {
 
   return (
     <AppShell>
-      <div className="w-full max-w-[920px] mx-auto px-4 sm:px-8 pb-24 mm-page-animate">
+      <div className="w-full max-w-5xl mx-auto px-4 sm:px-8 pb-32 mm-page-animate">
 
         {/* ── PAGE HEADER ── */}
         <div className="pt-6 pb-12">
@@ -372,10 +368,10 @@ export default function CreateEventPage() {
           {/* 2. TEAM & PARTICIPATION */}
           <SectionCard step={2} accent="violet" icon={<Users size={20} strokeWidth={2.5} />} title="Team & Participation" subtitle="Who participated at this event?">
             <div>
-              <div className="flex items-baseline justify-between mb-3">
-                <label className="text-[13px] font-bold text-slate-800 tracking-wide">Participation Type<span className="text-rose-500 ml-1 font-bold">*</span></label>
+              <div className="flex items-center gap-2 mb-4">
+                <label className="text-[14px] font-bold text-slate-800 tracking-wide flex items-center gap-2">Participation Type<span className="text-rose-500 font-bold">*</span></label>
               </div>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+              <div className={`grid grid-cols-1 gap-6 ${userTeams.length > 0 ? "md:grid-cols-3" : "md:grid-cols-2"}`}>
                 <ParticipationCard active={partType === "individual"} icon={<UserIcon size={20} />} title="Individual" desc="Only me — no teammates" onClick={() => setPartType("individual")} />
                 {userTeams.length > 0 && <ParticipationCard active={partType === "team"} icon={<Users size={20} />} title="MentorMesh Team" desc="One of my existing teams" onClick={() => setPartType("team")} />}
                 <ParticipationCard active={partType === "custom"} icon={<UserPlus size={20} />} title="Custom Group" desc="Platform students + external peers" onClick={() => setPartType("custom")} />
@@ -495,7 +491,7 @@ export default function CreateEventPage() {
               </div>
             )}
 
-            <div className={T.divider} />
+            <div className="mt-10 pt-10 border-t border-slate-100" />
 
             {/* Project Context */}
             <Row>
@@ -575,7 +571,7 @@ export default function CreateEventPage() {
           </SectionCard>
 
           {/* SUBMIT BAR */}
-          <div className="mt-12 flex flex-col sm:flex-row items-center justify-between gap-4 bg-white border border-slate-200 rounded-[20px] px-8 py-6 shadow-[0_8px_30px_rgb(0,0,0,0.04)] sticky bottom-6 z-10 w-full mb-8">
+          <div className="mt-14 mb-16 flex flex-col sm:flex-row items-center justify-between gap-4 bg-white border border-slate-200 rounded-[20px] px-8 py-8 shadow-sm w-full">
             <Link href="/events" className="w-full sm:w-auto">
               <Button type="button" variant="secondary" className="w-full sm:w-auto px-6 py-3 font-semibold hover:bg-slate-100">Cancel</Button>
             </Link>

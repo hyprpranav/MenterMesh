@@ -30,14 +30,19 @@ const RESULTS_LIST = [
 
 // ─── Premium Design Tokens ─────────────────────────────────────
 const T = {
+  card: "bg-white rounded-[20px] border border-slate-200/80 shadow-sm mb-10 transition-shadow hover:shadow-md outline-none",
   input: [
     "block w-full rounded-[12px] border border-slate-200 bg-slate-50/50",
-    "px-4 py-2.5 text-[14px] text-slate-900 placeholder-slate-400 font-medium min-h-[44px]",
-    "outline-none transition-all duration-200",
-    "hover:bg-white hover:border-slate-300 hover:shadow-sm",
+    "px-5 py-3 text-[15px] text-slate-900 placeholder-slate-400 font-medium min-h-[48px]",
+    "outline-none transition duration-150",
+    "hover:border-slate-300",
     "focus:bg-white focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 focus:shadow-sm",
   ].join(" "),
-  divider: "border-t border-slate-100 my-6",
+  label: "block text-[14px] font-bold text-slate-800 mb-1.5 inline-flex items-center gap-2",
+  req: "text-rose-500 font-bold",
+  opt: "ml-1.5 text-[12px] font-medium text-slate-400 font-normal",
+  hint: "mt-2.5 text-[13px] text-slate-500 font-medium leading-relaxed",
+  divider: "mt-10 pt-10 border-t border-slate-100",
 };
 
 type Accent = "blue" | "violet" | "amber" | "rose" | "teal";
@@ -54,7 +59,7 @@ function SectionCard({ step, icon, title, subtitle, accent, children }: {
 }) {
   const a = ACCENT[accent];
   return (
-    <div className="bg-white rounded-[20px] border border-slate-200/80 shadow-sm mb-8 transition-shadow hover:shadow-md outline-none">
+    <div className={T.card}>
       <div className="px-6 md:px-8 py-5 border-b border-slate-100 bg-slate-50/40 flex items-center gap-4 rounded-t-[20px]">
         <div className={`w-11 h-11 rounded-[12px] ${a.iconBg} ${a.iconTxt} flex items-center justify-center shrink-0 shadow-sm`}>
           {icon}
@@ -80,20 +85,16 @@ function Field({ label, required, optional, hint, children }: {
   return (
     <div className="flex flex-col w-full h-full">
       <div className="flex items-baseline justify-between mb-2.5">
-        <label className="text-[13px] font-bold text-slate-800 tracking-wide">
+        <label className={T.label}>
           {label}
-          {required && <span className="text-rose-500 ml-1 font-bold">*</span>}
+          {required && <span className={T.req}>*</span>}
+          {optional && <span className={T.opt}>Optional</span>}
         </label>
-        {optional && (
-          <span className="text-[10px] font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-[4px] uppercase tracking-wider">
-            Optional
-          </span>
-        )}
       </div>
       <div className="relative flex-1 flex flex-col justify-end">
         {children}
       </div>
-      {hint && <p className="mt-2 text-[12px] text-slate-500 font-medium leading-relaxed">{hint}</p>}
+      {hint && <p className={T.hint}>{hint}</p>}
     </div>
   );
 }
@@ -124,7 +125,7 @@ function ParticipationCard({ active, icon, title, desc, onClick }: {
       <div className="flex items-center justify-between w-full">
         <div className={`w-11 h-11 rounded-[12px] flex items-center justify-center shrink-0 transition-colors ${active ? "bg-violet-600 text-white shadow-md shadow-violet-500/20" : "bg-slate-100 text-slate-500"}`}>{icon}</div>
         <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 transition-all ${active ? "border-violet-600 bg-violet-600" : "border-slate-300 bg-white"}`}>
-          {active && <Check size={12} strokeWidth={4} className="text-white" />}
+          {active && <div className="w-2 h-2 rounded-full bg-white" />}
         </div>
       </div>
       <div className="mt-1 flex flex-col">
@@ -341,7 +342,7 @@ export default function EditEventPage() {
 
   return (
     <AppShell>
-      <div className="w-full max-w-[920px] mx-auto px-4 sm:px-8 pb-24 mm-page-animate">
+      <div className="w-full max-w-5xl mx-auto px-4 sm:px-6 pb-20 mm-page-animate">
 
         {/* ── PAGE HEADER ── */}
         <div className="pt-6 pb-12">
@@ -402,15 +403,15 @@ export default function EditEventPage() {
           </SectionCard>
 
           {/* 2. TEAM & PARTICIPATION */}
-          <SectionCard step={2} accent="violet" icon={<Users size={20} strokeWidth={2.5} />} title="Team & Participation" subtitle="Who participated at this event?">
+          <SectionCard step={2} accent="violet" icon={<Users size={17} />} title="Team & Participation" subtitle="Who participated at this event?">
             <div>
-              <div className="flex items-baseline justify-between mb-3">
-                <label className="text-[13px] font-bold text-slate-800 tracking-wide">Participation Type<span className="text-rose-500 ml-1 font-bold">*</span></label>
+              <div className="flex items-center gap-2 mb-4">
+                <label className="text-[14px] font-bold text-slate-800 tracking-wide flex items-center gap-2">Participation Type<span className="text-rose-500 font-bold">*</span></label>
               </div>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-                <ParticipationCard active={partType === "individual"} icon={<UserIcon size={20} />} title="Individual" desc="Only me — no teammates" onClick={() => setPartType("individual")} />
-                {userTeams.length > 0 && <ParticipationCard active={partType === "team"} icon={<Users size={20} />} title="MentorMesh Team" desc="One of my existing teams" onClick={() => setPartType("team")} />}
-                <ParticipationCard active={partType === "custom"} icon={<UserPlus size={20} />} title="Custom Group" desc="Platform students + external peers" onClick={() => setPartType("custom")} />
+              <div className={`grid grid-cols-1 gap-6 ${userTeams.length > 0 ? "md:grid-cols-3" : "md:grid-cols-2"}`}>
+                <ParticipationCard active={partType === "individual"} icon={<UserIcon size={16} />} title="Individual" desc="Only me — no teammates" onClick={() => setPartType("individual")} />
+                {userTeams.length > 0 && <ParticipationCard active={partType === "team"} icon={<Users size={16} />} title="MentorMesh Team" desc="One of my existing teams" onClick={() => setPartType("team")} />}
+                <ParticipationCard active={partType === "custom"} icon={<UserPlus size={16} />} title="Custom Group" desc="Select platform students + add outside participants" onClick={() => setPartType("custom")} />
               </div>
             </div>
 
@@ -527,9 +528,7 @@ export default function EditEventPage() {
               </div>
             )}
 
-            <div className={T.divider} />
-
-            {/* Project Context */}
+            <div className={T.divider} /> {/* Project Context */}
             <Row>
               <Field label="Project Title / Theme" optional>
                 <input className={T.input} placeholder="e.g. Smart Agriculture Bot" value={projectTitle} onChange={e => setProjectTitle(e.target.value)} />
@@ -607,17 +606,13 @@ export default function EditEventPage() {
           </SectionCard>
 
           {/* SUBMIT BAR */}
-          <div className="mt-12 flex flex-col sm:flex-row items-center justify-between gap-4 bg-white border border-slate-200 rounded-[20px] px-8 py-6 shadow-[0_8px_30px_rgb(0,0,0,0.04)] sticky bottom-6 z-10 w-full mb-8">
-            <Link href={`/events/${eventId}`} className="w-full sm:w-auto">
-              <Button type="button" variant="secondary" className="w-full sm:w-auto px-6 py-3 font-semibold hover:bg-slate-100">Cancel</Button>
+          <div className="mt-14 flex items-center justify-between bg-white border border-slate-200 rounded-[20px] px-8 py-8 shadow-sm">
+            <Link href={`/events/${eventId}`}>
+              <Button type="button" variant="secondary" className="px-6 py-3 font-semibold hover:bg-slate-100">Cancel</Button>
             </Link>
-            <div className="flex flex-col sm:flex-row items-center gap-4 w-full sm:w-auto">
-              {!isStaff && (
-                <Button type="button" variant="outline" loading={saving} onClick={() => handleSave(true)} className="w-full sm:w-auto px-6 py-3 font-bold border-slate-300 text-slate-700 hover:bg-slate-50">
-                  Save as Draft
-                </Button>
-              )}
-              <Button type="submit" variant="primary" loading={saving} className="w-full sm:w-auto px-8 py-3 bg-blue-600 hover:bg-blue-700 text-[15px] font-bold shadow-lg shadow-blue-500/20">
+            <div className="flex items-center gap-3">
+              {!isStaff && <Button type="button" variant="outline" loading={saving} onClick={() => handleSave(true)} className="px-6 py-3 font-bold border-slate-300 text-slate-700 hover:bg-slate-50">Save Draft</Button>}
+              <Button type="submit" variant="primary" loading={saving} className="px-8 py-3 bg-blue-600 hover:bg-blue-700 text-[15px] font-bold shadow-lg shadow-blue-500/20">
                 {isStaff ? "Update Event" : "Re-Submit for Review"}
               </Button>
             </div>
