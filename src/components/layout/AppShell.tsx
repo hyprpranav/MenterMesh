@@ -42,6 +42,7 @@ export function AppShell({ children }: AppShellProps) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [hasNewTeams, setHasNewTeams] = useState(false);
   const [hasNewEvents, setHasNewEvents] = useState(false);
+  const [birthdayPopupOpen, setBirthdayPopupOpen] = useState(false);
 
   // Close drawer on route change
   useEffect(() => {
@@ -65,6 +66,24 @@ export function AppShell({ children }: AppShellProps) {
     if (user.status === "rejected") { router.push("/rejected"); return; }
     if (user.status === "inactive") { router.push("/inactive"); return; }
   }, [user, loading, router]);
+
+  // Birthday popup — shown once per day when today === user's DOB
+  useEffect(() => {
+    if (!user?.dateOfBirth) return;
+    try {
+      const dob = new Date(user.dateOfBirth);
+      if (isNaN(dob.getTime())) return;
+      const today = new Date();
+      const isBirthday = dob.getMonth() === today.getMonth() && dob.getDate() === today.getDate();
+      if (!isBirthday) return;
+      const todayStr = today.toDateString();
+      const lastShown = localStorage.getItem(`mm_bday_popup_${user.uid}`);
+      if (lastShown !== todayStr) {
+        setBirthdayPopupOpen(true);
+        localStorage.setItem(`mm_bday_popup_${user.uid}`, todayStr);
+      }
+    } catch { /* ignore */ }
+  }, [user]);
 
   // Request browser notification permissions
   useEffect(() => {
@@ -330,6 +349,125 @@ export function AppShell({ children }: AppShellProps) {
 
       {/* ── Mobile Bottom Nav ─────────────────────────────── */}
       <BottomNav unreadCount={unreadCount} hasNewTeams={hasNewTeams} hasNewEvents={hasNewEvents} />
+
+      {/* ── Birthday Popup ────────────────────────────────── */}
+      {birthdayPopupOpen && user && (
+        <div
+          style={{
+            position: "fixed", inset: 0, zIndex: 9999,
+            background: "rgba(0, 0, 0, 0.65)",
+            backdropFilter: "blur(8px)",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            padding: "1rem",
+            animation: "mm-fade-in 0.4s ease",
+          }}
+          onClick={() => setBirthdayPopupOpen(false)}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{
+              position: "relative",
+              background: "linear-gradient(135deg, #0F172A 0%, #1E1B4B 50%, #0F172A 100%)",
+              borderRadius: "28px",
+              padding: "2.5rem 2rem",
+              maxWidth: "440px",
+              width: "100%",
+              textAlign: "center",
+              boxShadow: "0 32px 64px rgba(0,0,0,0.5), 0 0 0 1px rgba(139,92,246,0.3)",
+              animation: "mm-slide-up 0.4s cubic-bezier(0.32, 0.72, 0, 1)",
+              overflow: "hidden",
+            }}
+          >
+            {/* Glow decoration */}
+            <div style={{ position: "absolute", top: "-40px", left: "50%", transform: "translateX(-50%)", width: "200px", height: "200px", background: "radial-gradient(circle, rgba(139,92,246,0.35) 0%, transparent 70%)", pointerEvents: "none" }} />
+
+            {/* Developer photo */}
+            <div style={{ position: "relative", display: "inline-block", marginBottom: "1.25rem" }}>
+              <div style={{
+                width: "80px", height: "80px", borderRadius: "50%",
+                background: "linear-gradient(135deg, #7C3AED, #3B82F6)",
+                display: "flex", alignItems: "center", justifyContent: "center",
+                margin: "0 auto",
+                boxShadow: "0 0 0 4px rgba(139,92,246,0.4), 0 8px 24px rgba(139,92,246,0.3)",
+                fontSize: "2.5rem", lineHeight: 1,
+              }}>
+                🎂
+              </div>
+              {/* Sparkles */}
+              {["✨", "🎉", "⭐"].map((s, i) => (
+                <span key={i} style={{
+                  position: "absolute",
+                  fontSize: "1.2rem",
+                  top: i === 0 ? "-8px" : i === 1 ? "0" : "auto",
+                  bottom: i === 2 ? "-4px" : "auto",
+                  left: i === 1 ? "-16px" : "auto",
+                  right: i === 0 ? "-12px" : i === 2 ? "0" : "auto",
+                  animation: `mm-float 2s ease-in-out infinite ${i * 0.4}s`,
+                }}>{s}</span>
+              ))}
+            </div>
+
+            <p style={{ fontSize: "0.75rem", fontWeight: 700, color: "#A78BFA", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: "0.5rem" }}>
+              🎊 Happy Birthday, {user.name.split(" ")[0]}! 🎊
+            </p>
+
+            <h2 style={{
+              fontSize: "clamp(1.5rem, 5vw, 2rem)", fontWeight: 900,
+              background: "linear-gradient(135deg, #F8FAFC, #C4B5FD)",
+              WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent",
+              lineHeight: 1.2, marginBottom: "1rem",
+            }}>
+              Wishing You a<br />Wonderful Day! 🌟
+            </h2>
+
+            <p style={{
+              fontSize: "0.9375rem", color: "#CBD5E1", lineHeight: 1.65,
+              marginBottom: "1.25rem", fontStyle: "italic",
+            }}>
+              "Today you are you, that is truer than true. There is no one alive who is youer than you!"
+            </p>
+            <p style={{ fontSize: "0.75rem", color: "#7C3AED", fontWeight: 600, marginBottom: "1.5rem" }}>— Dr. Seuss 💜</p>
+
+            <p style={{ fontSize: "0.8125rem", color: "#94A3B8", marginBottom: "1.5rem" }}>
+              With love & warm wishes from<br />
+              <strong style={{ color: "#E2E8F0" }}>HARISH PRANAV S</strong>{" "}
+              <span style={{ color: "#7C3AED" }}>&</span>{" "}
+              <strong style={{ color: "#E2E8F0" }}>the MentorMesh Team</strong> 🧡
+            </p>
+
+            <button
+              onClick={() => setBirthdayPopupOpen(false)}
+              style={{
+                background: "linear-gradient(135deg, #7C3AED, #4F46E5)",
+                color: "#fff", fontWeight: 700, fontSize: "1rem",
+                padding: "0.875rem 2.5rem", borderRadius: "50px",
+                border: "none", cursor: "pointer",
+                boxShadow: "0 4px 20px rgba(124,58,237,0.5)",
+                transition: "transform 0.15s, box-shadow 0.15s",
+                width: "100%",
+              }}
+              onMouseEnter={e => { e.currentTarget.style.transform = "scale(1.03)"; }}
+              onMouseLeave={e => { e.currentTarget.style.transform = "scale(1)"; }}
+            >
+              Thank You! 🎂
+            </button>
+
+            <button
+              onClick={() => setBirthdayPopupOpen(false)}
+              style={{
+                position: "absolute", top: "1rem", right: "1rem",
+                background: "rgba(255,255,255,0.1)", border: "none",
+                borderRadius: "8px", width: "32px", height: "32px",
+                display: "flex", alignItems: "center", justifyContent: "center",
+                cursor: "pointer", color: "#94A3B8",
+              }}
+            >
+              <X size={18} />
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
+

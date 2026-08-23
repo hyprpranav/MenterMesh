@@ -1,9 +1,9 @@
 "use client";
 
 // ============================================================
-// MentorMesh — Notification Center v2
+// MentorMesh — Notification Center v3 (restored alignment + floating msg)
 // ============================================================
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import { AppShell } from "@/components/layout/AppShell";
 import { useAuth } from "@/contexts/AuthContext";
 import {
@@ -20,7 +20,7 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { LoadingState, EmptyState } from "@/components/ui/States";
 import {
   Bell, Cake, CheckCheck, CheckCircle, XCircle, MessageSquare,
-  Send, Gift, Paperclip, X, Search
+  Send, Gift, X, Search, Paperclip
 } from "lucide-react";
 import { timeAgo } from "@/lib/utils";
 import { cn } from "@/lib/utils";
@@ -29,6 +29,8 @@ import { db } from "@/lib/firebase/config";
 import { useToast } from "@/components/ui/ToastProvider";
 
 interface Student { uid: string; name: string; email: string; profilePhoto?: string; }
+
+const MAX_FILE_MB = 5;
 
 export default function NotificationsPage() {
   return (
@@ -44,18 +46,27 @@ function NotificationsContent() {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Compose message state
+  // Floating compose state
   const [composeOpen, setComposeOpen] = useState(false);
   const [students, setStudents] = useState<Student[]>([]);
   const [selectedRecipients, setSelectedRecipients] = useState<string[]>([]);
   const [msgText, setMsgText] = useState("");
   const [searchQ, setSearchQ] = useState("");
   const [sending, setSending] = useState(false);
+  const [attachedFile, setAttachedFile] = useState<File | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Birthday wish modal
   const [wishNotif, setWishNotif] = useState<Notification | null>(null);
   const [wishText, setWishText] = useState("");
   const [wishing, setWishing] = useState(false);
+
+  // Floating button drag state
+  const [fabPos, setFabPos] = useState({ x: 0, y: 0 });
+  const [dragging, setDragging] = useState(false);
+  const dragOffset = useRef({ x: 0, y: 0 });
+  const fabRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     async function load() {
@@ -66,14 +77,28 @@ function NotificationsContent() {
         const all = [...bdayList, ...dbList];
         all.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
         setNotifications(all);
-      } catch (err) {
-        console.error(err);
-      } finally {
-        setLoading(false);
-      }
+      } catch (err) { console.error(err); }
+      finally { setLoading(false); }
     }
     load();
   }, [user]);
+
+  // Draggable FAB handlers
+  const handleFabMouseDown = (e: React.MouseEvent) => {
+    e.preventDefault();
+    setDragging(true);
+    dragOffset.current = { x: e.clientX - fabPos.x, y: e.clientY - fabPos.y };
+  };
+  useEffect(() => {
+    const onMove = (e: MouseEvent) => {
+      if (!dragging) return;
+      setFabPos({ x: e.clientX - dragOffset.current.x, y: e.clientY - dragOffset.current.y });
+    };
+    const onUp = () => setDragging(false);
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+    return () => { window.removeEventListener("mousemove", onMove); window.removeEventListener("mouseup", onUp); };
+  }, [dragging]);
 
   const handleMarkAllRead = async () => {
     if (!user) return;
@@ -81,28 +106,18 @@ function NotificationsContent() {
       markAllVirtualNotificationsRead();
       await markAllNotificationsRead(user.uid);
       setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
-    } catch (err) {
-      console.error(err);
-    }
+    } catch (err) { console.error(err); }
   };
 
   const handleMarkRead = async (id: string, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
     try {
-      if (id.startsWith("bday_")) {
-        markVirtualNotificationRead(id);
-      } else {
-        await markNotificationRead(id);
-      }
-      setNotifications((prev) =>
-        prev.map((n) => (n.id === id ? { ...n, read: true } : n))
-      );
-    } catch (err) {
-      console.error(err);
-    }
+      if (id.startsWith("bday_")) markVirtualNotificationRead(id);
+      else await markNotificationRead(id);
+      setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, read: true } : n)));
+    } catch (err) { console.error(err); }
   };
 
-  // Open compose and load students
   const openCompose = async () => {
     setComposeOpen(true);
     if (students.length === 0) {
@@ -113,15 +128,41 @@ function NotificationsContent() {
     }
   };
 
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > MAX_FILE_MB * 1024 * 1024) {
+      toastError(`File too large. Maximum size is ${MAX_FILE_MB}MB.`);
+      return;
+    }
+    setAttachedFile(file);
+  };
+
   const handleSendMessage = async () => {
     if (!user || selectedRecipients.length === 0 || !msgText.trim()) return;
     setSending(true);
+    setUploading(!!attachedFile);
     try {
+      let fileUrl = "";
+      // Upload to Cloudinary if file attached
+      if (attachedFile) {
+        const formData = new FormData();
+        formData.append("file", attachedFile);
+        formData.append("upload_preset", process.env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET || "mentormesh");
+        formData.append("folder", "mentormesh/messages");
+        const cloudName = process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME;
+        const res = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/auto/upload`, { method: "POST", body: formData });
+        const data = await res.json();
+        fileUrl = data.secure_url || "";
+      }
+      setUploading(false);
+
+      const msgBody = msgText.trim() + (fileUrl ? `\n\n📎 Attachment: ${fileUrl}` : "");
       await Promise.all(selectedRecipients.map(recipientId =>
         addDoc(collection(db, "notifications"), {
           recipientId,
           title: `📩 Message from ${user.name}`,
-          message: msgText.trim(),
+          message: msgBody,
           type: "system",
           read: false,
           priority: "normal",
@@ -134,10 +175,12 @@ function NotificationsContent() {
       setSelectedRecipients([]);
       setMsgText("");
       setSearchQ("");
+      setAttachedFile(null);
     } catch {
       toastError("Failed to send message.");
     } finally {
       setSending(false);
+      setUploading(false);
     }
   };
 
@@ -184,24 +227,24 @@ function NotificationsContent() {
     default: { icon: <Bell size={18} />, classes: "bg-blue-100 text-blue-600" },
   };
 
+  // Dynamic FAB position from bottom-right if never dragged
+  const fabStyle: React.CSSProperties = fabPos.x || fabPos.y
+    ? { position: "fixed", left: fabPos.x, top: fabPos.y, zIndex: 50, cursor: dragging ? "grabbing" : "grab" }
+    : { position: "fixed", bottom: "88px", right: "20px", zIndex: 50, cursor: "grab" };
+
   return (
-    <div className="space-y-6 w-full max-w-4xl mx-auto mm-page-animate relative">
+    <div className="mm-card space-y-6 w-full max-w-4xl mx-auto mm-page-animate">
       <PageHeader
         icon={<Bell size={20} />}
         iconClass="bg-blue-100 text-blue-600"
         title="Notification Center"
         subtitle="Approvals, team updates, birthday reminders, and messages."
         actions={
-          <div className="flex items-center gap-2">
-            {unreadCount > 0 && (
-              <Button variant="outline" size="sm" icon={<CheckCheck size={14} />} onClick={handleMarkAllRead}>
-                Mark All Read
-              </Button>
-            )}
-            <Button variant="primary" size="sm" icon={<MessageSquare size={14} />} onClick={openCompose}>
-              New Message
+          unreadCount > 0 ? (
+            <Button variant="outline" size="sm" icon={<CheckCheck size={14} />} onClick={handleMarkAllRead}>
+              Mark All Read
             </Button>
-          </div>
+          ) : undefined
         }
       />
 
@@ -211,10 +254,10 @@ function NotificationsContent() {
         <EmptyState
           icon={<Bell size={40} />}
           title="No notifications"
-          description="You're all caught up! Updates and messages will appear here."
+          description="You're all caught up! Updates and requests will appear here."
         />
       ) : (
-        <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
           {notifications.map((n) => {
             const cfg = iconConfig[n.type] ?? iconConfig.default;
             const isBdayOther = n.type === "birthday" && n.id.startsWith("bday_other_");
@@ -223,7 +266,7 @@ function NotificationsContent() {
                 key={n.id}
                 onClick={() => !n.read && handleMarkRead(n.id)}
                 className={cn(
-                  "flex items-start gap-3 p-4 rounded-xl border transition-all cursor-pointer",
+                  "mm-notification-card rounded-xl border transition-all cursor-pointer",
                   n.read
                     ? "bg-white border-slate-200"
                     : "bg-blue-50/40 border-blue-200 shadow-sm"
@@ -237,22 +280,17 @@ function NotificationsContent() {
                   {cfg.icon}
                 </div>
 
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-start justify-between gap-2">
-                    <h3 className="font-bold text-slate-900 text-sm leading-snug">{n.title}</h3>
-                    <span className="text-[11px] text-slate-400 shrink-0 whitespace-nowrap ml-2">{timeAgo(n.createdAt)}</span>
+                <div className="mm-notification-content">
+                  <div className="mm-notification-heading">
+                    <h3 className="font-bold text-slate-900 text-sm leading-snug overflow-wrap-anywhere">{n.title}</h3>
+                    <span className="text-[11px] text-slate-400 shrink-0 whitespace-nowrap">{timeAgo(n.createdAt)}</span>
                   </div>
-                  <p className="text-xs text-slate-600 mt-1 leading-relaxed">{n.message}</p>
+                  <p className="text-xs text-slate-600 mt-1 leading-relaxed overflow-wrap-anywhere">{n.message}</p>
 
                   {/* Birthday wish button */}
                   {isBdayOther && (
                     <div className="mt-3 flex gap-2" onClick={e => e.stopPropagation()}>
-                      <Button
-                        size="sm"
-                        variant="primary"
-                        icon={<Gift size={13} />}
-                        onClick={() => { setWishNotif(n); setWishText(""); }}
-                      >
+                      <Button size="sm" variant="primary" icon={<Gift size={13} />} onClick={() => { setWishNotif(n); setWishText(""); }}>
                         Wish Now 🎂
                       </Button>
                       {n.link && (
@@ -263,7 +301,7 @@ function NotificationsContent() {
                     </div>
                   )}
 
-                  {/* Link action (non-birthday) */}
+                  {/* Standard link for non-birthday */}
                   {n.link && !isBdayOther && (
                     <div className="mt-3" onClick={e => e.stopPropagation()}>
                       <a href={n.link} target="_blank" rel="noopener noreferrer"
@@ -285,7 +323,20 @@ function NotificationsContent() {
         </div>
       )}
 
-      {/* Birthday Wish Modal */}
+      {/* ── Draggable Floating Message Button ── */}
+      <button
+        ref={fabRef}
+        style={fabStyle}
+        onMouseDown={handleFabMouseDown}
+        onClick={() => { if (!dragging) openCompose(); }}
+        className="w-14 h-14 rounded-full bg-blue-600 text-white shadow-xl flex items-center justify-center hover:bg-blue-700 active:scale-95 transition-transform select-none"
+        aria-label="Compose new message"
+        title="Send a message"
+      >
+        <MessageSquare size={24} />
+      </button>
+
+      {/* ── Birthday Wish Modal ── */}
       <Modal
         open={!!wishNotif}
         onClose={() => { setWishNotif(null); setWishText(""); }}
@@ -295,9 +346,7 @@ function NotificationsContent() {
         footer={
           <>
             <Button variant="secondary" onClick={() => { setWishNotif(null); setWishText(""); }}>Cancel</Button>
-            <Button variant="primary" icon={<Send size={14} />} loading={wishing} onClick={handleSendWish}>
-              Send Wish 🎊
-            </Button>
+            <Button variant="primary" icon={<Send size={14} />} loading={wishing} onClick={handleSendWish}>Send Wish 🎊</Button>
           </>
         }
       >
@@ -321,36 +370,34 @@ function NotificationsContent() {
         </div>
       </Modal>
 
-      {/* Compose Message Modal */}
+      {/* ── Compose Message Modal ── */}
       <Modal
         open={composeOpen}
-        onClose={() => { setComposeOpen(false); setSelectedRecipients([]); setMsgText(""); setSearchQ(""); }}
+        onClose={() => { setComposeOpen(false); setSelectedRecipients([]); setMsgText(""); setSearchQ(""); setAttachedFile(null); }}
         title="Compose Message"
-        description="Send a message or announcement to one or multiple students."
+        description="Send a message to one or multiple students instantly."
         size="md"
         footer={
           <>
-            <Button variant="secondary" onClick={() => { setComposeOpen(false); setSelectedRecipients([]); setMsgText(""); }}>Cancel</Button>
+            <Button variant="secondary" onClick={() => { setComposeOpen(false); setSelectedRecipients([]); setMsgText(""); setAttachedFile(null); }}>Cancel</Button>
             <Button
               variant="primary"
-              icon={<Send size={14} />}
+              icon={uploading ? undefined : <Send size={14} />}
               loading={sending}
               onClick={handleSendMessage}
               disabled={selectedRecipients.length === 0 || !msgText.trim()}
             >
-              Send to {selectedRecipients.length || ""} {selectedRecipients.length === 1 ? "Person" : selectedRecipients.length > 1 ? "People" : "..."}
+              {uploading ? "Uploading..." : `Send${selectedRecipients.length > 0 ? ` to ${selectedRecipients.length}` : ""}`}
             </Button>
           </>
         }
       >
         <div className="space-y-4">
-          {/* From field */}
           <div>
             <label className="mm-label">From (You)</label>
-            <input className="mm-input" value={user?.name || ""} disabled />
+            <input className="mm-input bg-slate-50" value={user?.name || ""} disabled />
           </div>
 
-          {/* To field - searchable multi-select */}
           <div>
             <label className="mm-label">To <span className="text-red-500">*</span></label>
             {selectedRecipients.length > 0 && (
@@ -360,7 +407,7 @@ function NotificationsContent() {
                   return s ? (
                     <span key={uid} className="flex items-center gap-1 bg-blue-100 text-blue-800 text-xs font-semibold px-2 py-1 rounded-full">
                       {s.name}
-                      <button onClick={() => setSelectedRecipients(prev => prev.filter(id => id !== uid))} className="hover:text-red-600">
+                      <button onClick={() => setSelectedRecipients(prev => prev.filter(id => id !== uid))} className="hover:text-red-600 ml-0.5">
                         <X size={12} />
                       </button>
                     </span>
@@ -368,16 +415,11 @@ function NotificationsContent() {
                 })}
               </div>
             )}
-            <div className="relative mb-1">
-              <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
-              <input
-                className="mm-input !pl-9"
-                placeholder="Search students..."
-                value={searchQ}
-                onChange={e => setSearchQ(e.target.value)}
-              />
+            <div className="relative mb-1.5">
+              <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+              <input className="mm-input !pl-9 !py-2 text-sm" placeholder="Search students..." value={searchQ} onChange={e => setSearchQ(e.target.value)} />
             </div>
-            <div className="border border-slate-200 rounded-xl overflow-hidden max-h-[180px] overflow-y-auto">
+            <div className="border border-slate-200 rounded-xl overflow-hidden max-h-[160px] overflow-y-auto">
               {filteredStudents.length === 0 ? (
                 <p className="text-xs text-slate-400 p-3 text-center">No students found</p>
               ) : filteredStudents.map(s => (
@@ -386,33 +428,40 @@ function NotificationsContent() {
                     type="checkbox"
                     className="rounded text-blue-600 w-4 h-4"
                     checked={selectedRecipients.includes(s.uid)}
-                    onChange={e => {
-                      if (e.target.checked) setSelectedRecipients(prev => [...prev, s.uid]);
-                      else setSelectedRecipients(prev => prev.filter(id => id !== s.uid));
-                    }}
+                    onChange={e => setSelectedRecipients(prev => e.target.checked ? [...prev, s.uid] : prev.filter(id => id !== s.uid))}
                   />
                   <span className="text-sm font-medium text-slate-800 flex-1">{s.name}</span>
-                  <span className="text-xs text-slate-400">{s.email}</span>
+                  <span className="text-xs text-slate-400 hidden sm:block">{s.email}</span>
                 </label>
               ))}
             </div>
           </div>
 
-          {/* Message */}
           <div>
             <label className="mm-label">Message <span className="text-red-500">*</span></label>
-            <textarea
-              className="mm-input resize-none w-full"
-              rows={4}
-              placeholder="Type your message here..."
-              value={msgText}
-              onChange={e => setMsgText(e.target.value)}
-            />
+            <textarea className="mm-input resize-none w-full" rows={4} placeholder="Type your message here..." value={msgText} onChange={e => setMsgText(e.target.value)} />
           </div>
 
-          <div className="flex items-center gap-2 text-xs text-slate-400">
-            <Paperclip size={13} />
-            <span>File attachments coming soon (max 5MB per file)</span>
+          {/* File attachment */}
+          <div>
+            <label className="mm-label">Attach File <span className="text-slate-400 text-xs font-normal">(max 5MB)</span></label>
+            <input ref={fileInputRef} type="file" className="hidden" accept="image/*,application/pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.zip,.txt" onChange={handleFileSelect} />
+            {attachedFile ? (
+              <div className="flex items-center gap-2 bg-blue-50 border border-blue-200 rounded-xl px-4 py-2.5">
+                <Paperclip size={16} className="text-blue-500 shrink-0" />
+                <span className="text-sm text-blue-800 font-medium flex-1 truncate">{attachedFile.name}</span>
+                <button onClick={() => setAttachedFile(null)} className="text-slate-400 hover:text-red-500"><X size={16} /></button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="w-full flex items-center gap-2 border-2 border-dashed border-slate-200 rounded-xl px-4 py-3 text-sm text-slate-500 hover:border-blue-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
+              >
+                <Paperclip size={16} />
+                <span>Click to attach a file</span>
+              </button>
+            )}
           </div>
         </div>
       </Modal>
