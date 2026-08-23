@@ -31,11 +31,11 @@ const RESULTS_LIST = [
 // ─── Premium Design Tokens ─────────────────────────────────────
 const T = {
   input: [
-    "block w-full rounded-[12px] border border-slate-200 bg-slate-50/50",
-    "px-5 py-3 text-[15px] text-slate-900 placeholder-slate-400 font-medium min-h-[48px]",
-    "outline-none transition-all duration-200",
-    "hover:bg-white hover:border-slate-300 hover:shadow-sm",
-    "focus:bg-white focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 focus:shadow-sm",
+    "block w-full rounded-[14px] border border-slate-200/80 bg-white",
+    "px-5 py-4 text-[15px] text-slate-900 placeholder-slate-400 font-medium min-h-[52px]",
+    "outline-none transition-all duration-200 shadow-sm",
+    "hover:border-slate-300",
+    "focus:border-blue-500 focus:ring-4 focus:ring-blue-500/15 focus:shadow-md",
   ].join(" "),
   divider: "border-t border-slate-100 my-8",
 };
@@ -54,20 +54,20 @@ function SectionCard({ step, icon, title, subtitle, accent, children }: {
 }) {
   const a = ACCENT[accent];
   return (
-    <div className="bg-white rounded-[20px] border border-slate-200/80 shadow-sm mb-10 transition-shadow hover:shadow-md outline-none overflow-hidden flex flex-col w-full relative">
-      <div className="px-6 md:px-8 py-5 border-b border-slate-100 bg-slate-50/40 flex items-center gap-4 rounded-t-[20px]">
-        <div className={`w-11 h-11 rounded-[12px] ${a.iconBg} ${a.iconTxt} flex items-center justify-center shrink-0 shadow-sm`}>
+    <div className="mb-16 md:mb-20 flex flex-col w-full relative">
+      <div className="mb-8 md:mb-10 flex items-center gap-5">
+        <div className={`w-14 h-14 rounded-[16px] ${a.iconBg} ${a.iconTxt} flex items-center justify-center shrink-0 shadow-sm border border-white/50`}>
           {icon}
         </div>
         <div className="flex-1">
-          <div className="flex items-center gap-2 mb-1">
-            <span className={`text-[12px] font-extrabold uppercase tracking-[0.1em] ${a.badgeTxt}`}>Step {step}</span>
+          <div className="flex items-center gap-2 mb-1.5">
+            <span className={`text-[13px] font-extrabold uppercase tracking-[0.15em] ${a.badgeTxt}`}>Step {step}</span>
           </div>
-          <h3 className="text-[18px] font-bold text-slate-900 tracking-tight leading-none mb-1.5">{title}</h3>
-          <p className="text-[14px] text-slate-500 leading-none">{subtitle}</p>
+          <h3 className="text-[22px] md:text-[24px] font-black text-slate-900 tracking-tight leading-none mb-2">{title}</h3>
+          <p className="text-[15px] font-medium text-slate-500 leading-tight">{subtitle}</p>
         </div>
       </div>
-      <div className="px-6 md:px-8 py-8 space-y-10">
+      <div className="space-y-10 md:space-y-12">
         {children}
       </div>
     </div>
@@ -305,10 +305,10 @@ export default function CreateEventPage() {
 
   return (
     <AppShell>
-      <div className="w-full max-w-5xl mx-auto px-4 sm:px-6 md:px-10 lg:px-12 pb-32 mm-page-animate">
+      <div className="w-full max-w-4xl mx-auto px-5 sm:px-8 md:px-12 pb-32 mm-page-animate">
 
         {/* ── PAGE HEADER ── */}
-        <div className="pt-6 pb-12">
+        <div className="pt-10 pb-16">
           <Link href="/events" className="inline-flex items-center gap-1.5 text-[14px] font-bold text-slate-500 hover:text-blue-600 transition-colors mb-8">
             <ArrowLeft size={16} /> Back to Events
           </Link>
@@ -491,7 +491,7 @@ export default function CreateEventPage() {
               </div>
             )}
 
-            <div className="mt-10 pt-10 border-t border-slate-100" />
+            <div className="mt-14 pt-14 border-t border-slate-200/60" />
 
             {/* Project Context */}
             <Row>
