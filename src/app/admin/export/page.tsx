@@ -145,10 +145,23 @@ function ExportCenterContent() {
     try {
       const events = await getEvents();
 
-      let headers: string[] = ["S.No", "Event Name", "Type", "Date", "Submitted By", "Team Name/Participation", "Participants", "Result / Prize", "Location", "Status"];
+      let headers: string[] = [
+        "S.No", "Event Name", "Type", "Track / Category", "Project Title", "Date", "Location",
+        "Submitted By", "Team Name/Participation", "Platform Participants", "External Participants",
+        "Role", "Result / Prize", "Certificate Link",
+        "Geotag Photo 1", "Geotag Photo 2", "Geotag Photo 3", "Geotag Photo 4", "Geotag Photo 5",
+        "LinkedIn Post", "GitHub", "Live URL", "Drive/Docs", "Status", "Feedback/Comments"
+      ];
       let rows: string[][] = events.map((e, index) => [
-        String(index + 1), e.name, e.type, e.date || "", e.submittedByName || "Unknown", e.teamName || "Individual",
-        e.participantNames?.join("; ") || "", e.result || "", e.location || "", e.submissionStatus || e.status
+        String(index + 1), e.name, e.type, e.eventTrack || "", e.projectTitle || "", e.date || "", e.location || "",
+        e.submittedByName || "Unknown", e.teamName || "Individual",
+        e.participantNames?.join("; ") || "", e.externalParticipants?.join("; ") || "",
+        e.roleInEvent || "", e.result || "",
+        e.certificateFile || e.certificatesLink || "",
+        e.geotagPhotos?.[0] || "", e.geotagPhotos?.[1] || "", e.geotagPhotos?.[2] || "", e.geotagPhotos?.[3] || "", e.geotagPhotos?.[4] || "",
+        e.linkedInPost || "", e.githubUrl || "", e.liveUrl || "",
+        [e.driveLink, e.documentsLink].filter(Boolean).join(" | "),
+        e.submissionStatus || e.status, e.reviewFeedback || ""
       ]);
 
       downloadCSV("mentormesh_events", [headers, ...rows]);
