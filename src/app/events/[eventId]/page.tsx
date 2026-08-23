@@ -18,7 +18,7 @@ import { useToast } from "@/components/ui/ToastProvider";
 import { formatDateTime } from "@/lib/utils";
 import {
   ArrowLeft, Calendar, MapPin, Folder, Image as ImageIcon, Share2, Edit,
-  CheckCircle2, XCircle, Users, Code, Lightbulb, ShieldAlert, Trash2, KeyRound
+  CheckCircle2, XCircle, Users, Code, Lightbulb, ShieldAlert, Trash2, KeyRound, Award
 } from "lucide-react";
 
 export default function EventDetailPage() {
@@ -63,6 +63,7 @@ export default function EventDetailPage() {
   const isPending = event.submissionStatus === "pending_review";
   const isApproved = event.submissionStatus === "approved" || !event.submissionStatus;
   const isChangesRequested = event.submissionStatus === "changes_requested";
+  const isRejected = event.submissionStatus === "rejected";
 
   const handleApprove = async () => {
     if (!user) return;
@@ -118,13 +119,13 @@ export default function EventDetailPage() {
           </Link>
           {(isStaff || (user?.uid === event.submittedBy && event.submissionStatus === "draft")) && (
             <Link href={`/events/${eventId}/edit`}>
-              <Button variant="outline" size="sm" icon={<Edit size={14} />}>
+              <Button variant="outline" size="md" icon={<Edit size={16} />}>
                 Edit Details
               </Button>
             </Link>
           )}
           {isStaff && (
-            <Button variant="destructive" size="sm" icon={<Trash2 size={14} />} onClick={() => setDeleteModalOpen(true)}>
+            <Button variant="destructive" size="md" icon={<Trash2 size={16} />} onClick={() => setDeleteModalOpen(true)}>
               Delete Event
             </Button>
           )}
@@ -145,11 +146,11 @@ export default function EventDetailPage() {
               </div>
             </div>
 
-            <div className="flex items-center gap-2 shrink-0">
+            <div className="flex items-center gap-2 shrink-0 flex-wrap">
               <Button
                 variant="primary"
-                size="sm"
-                icon={<CheckCircle2 size={14} />}
+                size="md"
+                icon={<CheckCircle2 size={16} />}
                 loading={reviewing}
                 onClick={handleApprove}
               >
@@ -157,15 +158,15 @@ export default function EventDetailPage() {
               </Button>
               <Button
                 variant="destructive"
-                size="sm"
-                icon={<XCircle size={14} />}
+                size="md"
+                icon={<XCircle size={16} />}
                 onClick={() => { setReviewAction("rejected"); setRejectModalOpen(true); }}
               >
                 Reject
               </Button>
               <Button
                 variant="outline"
-                size="sm"
+                size="md"
                 onClick={() => { setReviewAction("changes_requested"); setRejectModalOpen(true); }}
               >
                 Request Changes
@@ -205,6 +206,13 @@ export default function EventDetailPage() {
               {event.approvedAt && <div><strong>Approved</strong><span>{formatDateTime(event.approvedAt)} by {event.actionByName || event.reviewedByName || "Staff"}</span></div>}
               {event.rejectedAt && <div><strong>Rejected</strong><span>{formatDateTime(event.rejectedAt)} by {event.actionByName || event.reviewedByName || "Staff"}</span></div>}
               {event.changesRequestedAt && <div><strong>Changes requested</strong><span>{formatDateTime(event.changesRequestedAt)} by {event.actionByName || event.reviewedByName || "Staff"}</span></div>}
+            </div>
+          )}
+
+          {event.reviewFeedback && (isChangesRequested || isRejected) && (
+            <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 mt-4">
+              <h3 className="font-bold text-amber-900 text-sm mb-1 flex items-center gap-1.5"><ShieldAlert size={16} /> Staff Feedback</h3>
+              <p className="text-amber-800 text-sm">{event.reviewFeedback}</p>
             </div>
           )}
 
@@ -298,6 +306,46 @@ export default function EventDetailPage() {
           </div>
 
           <div className="mm-event-link-grid">
+            {/* Certificate */}
+            {event.certificateFile && (
+              <div className="mm-event-link-card">
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-lg bg-green-100 text-green-600 flex items-center justify-center">
+                    <Award size={18} />
+                  </div>
+                  <div className="min-w-0">
+                    <h3>Certificate</h3>
+                    <p>Event Verification</p>
+                  </div>
+                </div>
+                <a href={event.certificateFile} target="_blank" rel="noreferrer">
+                  <Button size="md" variant="outline">View Certificate</Button>
+                </a>
+              </div>
+            )}
+
+            {/* Geotagged Photos */}
+            {event.geotagPhotos && event.geotagPhotos.length > 0 && (
+              <div className="mm-event-link-card" style={{ gridColumn: "1 / -1", flexDirection: "column", alignItems: "flex-start", gap: "12px" }}>
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-lg bg-indigo-100 text-indigo-600 flex items-center justify-center">
+                    <ImageIcon size={18} />
+                  </div>
+                  <div className="min-w-0">
+                    <h3>Geotagged Event Photos</h3>
+                    <p>Activity / Event Pictures</p>
+                  </div>
+                </div>
+                <div className="flex flex-wrap gap-2 w-full mt-2">
+                  {event.geotagPhotos.map((url, i) => (
+                    <a key={i} href={url} target="_blank" rel="noreferrer" className="w-24 h-24 rounded-lg overflow-hidden border border-slate-200">
+                      <img src={url} alt={`Geotag ${i + 1}`} className="w-full h-full object-cover hover:scale-105 transition-transform" />
+                    </a>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {/* Drive Folder */}
             <div className="mm-event-link-card">
               <div className="flex items-center gap-3">
@@ -311,7 +359,7 @@ export default function EventDetailPage() {
               </div>
               {event.driveLink ? (
                 <a href={event.driveLink} target="_blank" rel="noreferrer">
-                  <Button size="sm" variant="outline">Open Folder</Button>
+                  <Button size="md" variant="outline">Open Folder</Button>
                 </a>
               ) : (
                 <span className="text-slate-400 italic">Not set</span>
@@ -331,7 +379,7 @@ export default function EventDetailPage() {
               </div>
               {event.linkedInPost ? (
                 <a href={event.linkedInPost} target="_blank" rel="noreferrer">
-                  <Button size="sm" variant="outline">View Post</Button>
+                  <Button size="md" variant="outline">View Post</Button>
                 </a>
               ) : (
                 <span className="text-slate-400 italic">Not set</span>
@@ -351,7 +399,7 @@ export default function EventDetailPage() {
                   </div>
                 </div>
                 <a href={event.githubUrl} target="_blank" rel="noreferrer">
-                  <Button size="sm" variant="outline">View Code</Button>
+                  <Button size="md" variant="outline">View Code</Button>
                 </a>
               </div>
             )}
@@ -374,7 +422,7 @@ export default function EventDetailPage() {
               loading={reviewing}
               onClick={handleReject}
               disabled={!feedbackReason.trim()}
-              >
+            >
               {reviewAction === "rejected" ? "Reject Event" : "Request Changes"}
             </Button>
           </>

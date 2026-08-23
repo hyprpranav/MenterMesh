@@ -1,537 +1,596 @@
 "use client";
-
 // ============================================================
-// MentorMesh — Create / Submit Event Page (Student + Staff)
+// MentorMesh — Submit Event Page  ·  Premium UI Redesign v5
 // ============================================================
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { AppShell } from "@/components/layout/AppShell";
 import { useAuth } from "@/contexts/AuthContext";
-import { createEvent, getUserTeams } from "@/lib/firebase/firestore";
-import type { Team } from "@/types";
+import { createEvent, getUserTeams, getActiveStudents } from "@/lib/firebase/firestore";
+import type { Team, User } from "@/types";
 import { Button } from "@/components/ui/Button";
 import { useToast } from "@/components/ui/ToastProvider";
-import { ArrowLeft, Calendar, Users, Award, ExternalLink, FileText, X } from "lucide-react";
 import { CloudinaryImageUpload } from "@/components/ui/CloudinaryImageUpload";
+import {
+  ArrowLeft, Calendar, Users, Award, Link2, FileText,
+  X, Plus, Search, UserPlus, ChevronDown, Camera, Upload,
+  CheckCircle2, User as UserIcon, Trophy, Check,
+} from "lucide-react";
 
+// ─── Static data ──────────────────────────────────────────────
 const EVENT_TYPES = [
-  "Hackathon",
-  "Designathon",
-  "Project Expo",
-  "Workshop",
-  "Competition",
-  "Bootcamp",
-  "Internship",
-  "Symposium",
-  "Seminar",
-  "Other",
+  "Hackathon", "Designathon", "Project Expo", "Workshop",
+  "Competition", "Bootcamp", "Internship", "Symposium", "Seminar", "Other",
 ];
-
 const RESULTS_LIST = [
-  "Winner / 1st Place 🏆",
-  "1st Runner Up 🥈",
-  "2nd Runner Up 🥉",
-  "Top 10 Finalist 🌟",
-  "Special Jury Award 🎖️",
-  "Participant / Completed 📜",
+  "Winner / 1st Place 🏆", "1st Runner Up 🥈", "2nd Runner Up 🥉",
+  "Top 10 Finalist 🌟", "Special Jury Award 🎖️", "Participant / Completed 📜",
 ];
 
+// ─── Premium Design Tokens ─────────────────────────────────────
+const T = {
+  input: [
+    "block w-full rounded-[14px] border border-slate-200 bg-slate-50/30",
+    "px-3.5 py-2.5 text-[14px] text-slate-900 placeholder-slate-400 font-medium",
+    "outline-none transition-all duration-200",
+    "hover:bg-white hover:border-slate-300 hover:shadow-sm",
+    "focus:bg-white focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 focus:shadow-sm",
+  ].join(" "),
+  divider: "border-t border-slate-100 my-4",
+};
+
+type Accent = "blue" | "violet" | "amber" | "rose" | "teal";
+const ACCENT: Record<Accent, { iconBg: string; iconTxt: string; badgeTxt: string }> = {
+  blue: { iconBg: "bg-blue-100", iconTxt: "text-blue-600", badgeTxt: "text-blue-600" },
+  violet: { iconBg: "bg-violet-100", iconTxt: "text-violet-600", badgeTxt: "text-violet-600" },
+  amber: { iconBg: "bg-amber-100", iconTxt: "text-amber-600", badgeTxt: "text-amber-600" },
+  rose: { iconBg: "bg-rose-100", iconTxt: "text-rose-600", badgeTxt: "text-rose-600" },
+  teal: { iconBg: "bg-teal-100", iconTxt: "text-teal-600", badgeTxt: "text-teal-600" },
+};
+
+function SectionCard({ step, icon, title, subtitle, accent, children }: {
+  step: number; icon: React.ReactNode; title: string; subtitle: string; accent: Accent; children: React.ReactNode;
+}) {
+  const a = ACCENT[accent];
+  return (
+    <div className="bg-white rounded-[20px] border border-slate-200/80 shadow-sm mb-7 transition-shadow hover:shadow-md outline-none">
+      <div className="px-6 md:px-8 py-5 border-b border-slate-100 bg-slate-50/30 flex items-center gap-4 rounded-t-[20px]">
+        <div className={`w-11 h-11 rounded-[12px] ${a.iconBg} ${a.iconTxt} flex items-center justify-center shrink-0`}>
+          {icon}
+        </div>
+        <div className="flex-1">
+          <div className="flex items-center gap-2 mb-0.5">
+            <span className={`text-[11px] font-extrabold uppercase tracking-[0.1em] ${a.badgeTxt}`}>Step {step}</span>
+          </div>
+          <h3 className="text-[16px] font-bold text-slate-900 tracking-tight leading-none mb-1.5">{title}</h3>
+          <p className="text-[13px] text-slate-500 leading-none">{subtitle}</p>
+        </div>
+      </div>
+      <div className="p-6 md:p-8 space-y-7">
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function Field({ label, required, optional, hint, children }: {
+  label: string; required?: boolean; optional?: boolean; hint?: string; children: React.ReactNode;
+}) {
+  return (
+    <div className="flex flex-col w-full h-full">
+      <div className="flex items-baseline justify-between mb-2">
+        <label className="text-[13px] font-bold text-slate-800 tracking-wide">
+          {label}
+          {required && <span className="text-rose-500 ml-1 font-bold">*</span>}
+        </label>
+        {optional && (
+          <span className="text-[11px] font-bold text-slate-400 bg-slate-100/80 px-2 py-0.5 rounded-md tracking-wide">
+            Optional
+          </span>
+        )}
+      </div>
+      <div className="relative">
+        {children}
+      </div>
+      {hint && <p className="mt-2 text-[12px] text-slate-500 font-medium leading-relaxed">{hint}</p>}
+    </div>
+  );
+}
+
+function SelectField({ value, onChange, children, className = "" }: {
+  value: string; onChange: (v: string) => void; children: React.ReactNode; className?: string;
+}) {
+  return (
+    <div className="relative">
+      <select value={value} onChange={e => onChange(e.target.value)} className={`${T.input} appearance-none pr-10 cursor-pointer ${className}`}>{children}</select>
+      <ChevronDown size={16} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+    </div>
+  );
+}
+
+function Row({ cols = 2, children }: { cols?: number; children: React.ReactNode }) {
+  return <div className={cols === 3 ? "grid grid-cols-1 md:grid-cols-3 gap-6" : "grid grid-cols-1 md:grid-cols-2 gap-6"}>{children}</div>;
+}
+
+function ParticipationCard({ active, icon, title, desc, onClick }: {
+  active: boolean; icon: React.ReactNode; title: string; desc: string; onClick: () => void;
+}) {
+  return (
+    <button type="button" onClick={onClick}
+      className={["flex flex-col items-start gap-4 p-5 rounded-[16px] border-2 transition-all duration-200 text-left w-full h-full",
+        active ? "border-violet-500 bg-violet-50/40 shadow-sm ring-2 ring-violet-500/20" : "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50/50"
+      ].join(" ")}>
+      <div className="flex items-center justify-between w-full">
+        <div className={`w-11 h-11 rounded-[12px] flex items-center justify-center shrink-0 transition-colors ${active ? "bg-violet-600 text-white shadow-md shadow-violet-500/20" : "bg-slate-100 text-slate-500"}`}>{icon}</div>
+        <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 transition-all ${active ? "border-violet-600 bg-violet-600" : "border-slate-300"}`}>
+          {active && <Check size={12} strokeWidth={4} className="text-white" />}
+        </div>
+      </div>
+      <div className="mt-1 flex-1 flex flex-col justify-end">
+        <p className={`text-[14px] font-bold mb-1 ${active ? "text-violet-950" : "text-slate-800"}`}>{title}</p>
+        <p className={`text-[12px] leading-relaxed ${active ? "text-violet-700/80" : "text-slate-500"}`}>{desc}</p>
+      </div>
+    </button>
+  );
+}
+
+function StudentRow({ student, checked, onToggle }: { student: User; checked: boolean; onToggle: () => void }) {
+  return (
+    <button type="button" onClick={onToggle} className={`w-full flex items-center gap-3.5 px-5 py-3 text-left transition-colors ${checked ? "bg-violet-50/50" : "hover:bg-slate-50"}`}>
+      <div className={`flex-shrink-0 w-5 h-5 rounded-[6px] border-2 flex items-center justify-center transition-all ${checked ? "border-violet-600 bg-violet-600" : "border-slate-300 bg-white"}`}>
+        {checked && <Check size={12} strokeWidth={4} className="text-white" />}
+      </div>
+      <div className={`w-10 h-10 rounded-full flex items-center justify-center text-[13px] font-black shrink-0 ${checked ? "bg-violet-200 text-violet-800" : "bg-slate-100 text-slate-600"}`}>
+        {student.name?.[0]?.toUpperCase() ?? "?"}
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className={`text-[14px] font-bold truncate ${checked ? "text-violet-950" : "text-slate-800"}`}>{student.name}</p>
+        <p className="text-[12px] text-slate-500 truncate mt-0.5">{[student.registerNumber, student.department, student.year && `${student.year} Yr`].filter(Boolean).join("  ·  ")}</p>
+      </div>
+      {checked && <span className="text-[11px] font-extrabold text-violet-600 bg-violet-100 px-2.5 py-1 rounded-full shrink-0">✓ Added</span>}
+    </button>
+  );
+}
+
+function UploadZone({ title, required, desc, icon, children, badgeText, badgeColor }: {
+  title: string; required?: boolean; desc: string; icon: React.ReactNode;
+  children: React.ReactNode; badgeText?: string; badgeColor?: string;
+}) {
+  return (
+    <div className="rounded-[16px] border-2 border-dashed border-slate-200 hover:border-slate-300 transition-colors bg-slate-50/30 p-6 space-y-5">
+      <div className="flex items-start justify-between gap-4">
+        <div className="flex items-start gap-3.5">
+          <div className="w-10 h-10 rounded-xl bg-white border border-slate-200 shadow-sm text-slate-500 flex items-center justify-center shrink-0">{icon}</div>
+          <div className="pt-0.5">
+            <p className="text-[13px] font-bold text-slate-900 tracking-wide">{title}{required && <span className="text-rose-500 ml-1 font-bold">*</span>}</p>
+            <p className="text-[12px] text-slate-500 mt-0.5">{desc}</p>
+          </div>
+        </div>
+        {badgeText && <span className={`text-[11px] font-bold px-2.5 py-1 rounded-full border ${badgeColor ?? "bg-slate-100 text-slate-600 border-slate-200 shrink-0"}`}>{badgeText}</span>}
+      </div>
+      <div>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+
+// ══════════════════════════════════════════════════════════════
 export default function CreateEventPage() {
   const { user } = useAuth();
   const router = useRouter();
   const { success, error } = useToast();
-
   const isStaff = user?.role === "staff" || user?.role === "master";
 
-  // Form State
   const [name, setName] = useState("");
   const [type, setType] = useState("Hackathon");
   const [date, setDate] = useState("");
   const [endDate, setEndDate] = useState("");
-  const [location, setLocation] = useState("");
   const [venue, setVenue] = useState("");
   const [city, setCity] = useState("");
   const [state, setState] = useState("");
   const [organizer, setOrganizer] = useState("");
   const [description, setDescription] = useState("");
 
-  // Team & Participation
   const [userTeams, setUserTeams] = useState<Team[]>([]);
+  const [allStudents, setAllStudents] = useState<User[]>([]);
+  const [partType, setPartType] = useState<"individual" | "team" | "custom">("individual");
   const [selectedTeamId, setSelectedTeamId] = useState("");
+  const [memberSearch, setMemberSearch] = useState("");
+  const [checkedUids, setCheckedUids] = useState<Set<string>>(new Set());
+  const [externalInput, setExternalInput] = useState("");
+  const [externalMembers, setExternalMembers] = useState<string[]>([]);
+
   const [projectTitle, setProjectTitle] = useState("");
   const [eventTrack, setEventTrack] = useState("");
-  const [roleInEvent, setRoleInEvent] = useState("");
-  const [participantNames, setParticipantNames] = useState<string[]>([]);
 
-  // Experience & Learnings
+  const [result, setResult] = useState("Participant / Completed 📜");
   const [whatBuilt, setWhatBuilt] = useState("");
   const [whatLearned, setWhatLearned] = useState("");
-  const [challenges, setChallenges] = useState("");
-  const [result, setResult] = useState("Participant / Completed 📜");
 
-  // Media & External Links
-  const [photosLink, setPhotosLink] = useState("");
-  const [documentsLink, setDocumentsLink] = useState("");
-  const [certificatesLink, setCertificatesLink] = useState("");
   const [certificateFile, setCertificateFile] = useState("");
   const [geotagPhotos, setGeotagPhotos] = useState<string[]>([]);
+
   const [driveLink, setDriveLink] = useState("");
   const [linkedInPost, setLinkedInPost] = useState("");
   const [githubUrl, setGithubUrl] = useState("");
   const [liveUrl, setLiveUrl] = useState("");
-
   const [saving, setSaving] = useState(false);
 
-  // Load user teams if student
   useEffect(() => {
-    async function load() {
-      if (user?.uid) {
-        const teams = await getUserTeams(user.uid);
-        setUserTeams(teams);
-      }
-    }
-    load();
+    if (!user?.uid) return;
+    Promise.all([getUserTeams(user.uid), getActiveStudents()]).then(([teams, students]) => {
+      setUserTeams(teams);
+      setAllStudents(students);
+    });
   }, [user]);
 
-  // Handle Team Selection (Auto fill team members)
-  const handleTeamChange = (tId: string) => {
-    setSelectedTeamId(tId);
-    const found = userTeams.find((t) => t.id === tId);
-    if (found) {
-      setParticipantNames(found.memberNames || []);
-    } else {
-      setParticipantNames([]);
-    }
+  const filteredStudents = useMemo(() => {
+    const q = memberSearch.trim().toLowerCase();
+    return allStudents.filter(s => {
+      if (s.uid === user?.uid) return false;
+      if (!q) return true;
+      return (
+        s.name?.toLowerCase().includes(q) ||
+        s.registerNumber?.toLowerCase().includes(q) ||
+        s.department?.toLowerCase().includes(q)
+      );
+    });
+  }, [allStudents, memberSearch, user]);
+
+  const toggleCheck = (uid: string) =>
+    setCheckedUids(prev => { const n = new Set(prev); n.has(uid) ? n.delete(uid) : n.add(uid); return n; });
+
+  const addExternal = () => {
+    const n = externalInput.trim();
+    if (!n) return;
+    if (externalMembers.includes(n)) { error("Name already added."); return; }
+    setExternalMembers(p => [...p, n]);
+    setExternalInput("");
   };
 
   const handleGeotagUpload = (url: string) => {
-    if (geotagPhotos.length >= 5) {
-      error("Maximum 5 photos allowed.");
-      return;
-    }
-    setGeotagPhotos((prev) => [...prev, url]);
+    if (geotagPhotos.length >= 5) { error("Max 5 photos allowed."); return; }
+    setGeotagPhotos(p => [...p, url]);
   };
 
   const handleSave = async (asDraft = false) => {
     if (!name.trim() || !date || !user) return;
-
-    if (geotagPhotos.length < 1) {
-      error("Please upload at least one geotagged photo of the event.");
-      return;
+    if (partType === "team" && !selectedTeamId) { error("Please select a team."); return; }
+    if (!asDraft) {
+      if (!certificateFile) { error("Event Certificate is mandatory."); return; }
+      if (geotagPhotos.length < 1) { error("At least one geotagged photo is required."); return; }
     }
-
     setSaving(true);
-
     try {
-      const selectedTeamObj = userTeams.find((t) => t.id === selectedTeamId);
+      const teamObj = partType === "team" ? userTeams.find(t => t.id === selectedTeamId) : undefined;
+      const checkedStudents = allStudents.filter(s => checkedUids.has(s.uid));
+      let finalIds = [user.uid];
+      let finalNames = [user.name || "Student"];
+      let teamName: string | undefined;
 
-      const id = await createEvent({
-        name: name.trim(),
-        type,
-        date,
-        endDate: endDate || undefined,
-        location: location.trim() || undefined,
-        venue: venue.trim() || undefined,
-        city: city.trim() || undefined,
-        state: state.trim() || undefined,
-        organizer: organizer.trim() || undefined,
-        description: description.trim() || undefined,
-        teamId: selectedTeamId || undefined,
-        teamName: selectedTeamObj?.name || undefined,
-        participantIds: selectedTeamObj?.memberIds || [user.uid],
-        participantNames: participantNames.length > 0 ? participantNames : [user.name],
-        roleInEvent: roleInEvent.trim() || undefined,
-        eventTrack: eventTrack.trim() || undefined,
-        projectTitle: projectTitle.trim() || undefined,
-        whatBuilt: whatBuilt.trim() || undefined,
-        whatLearned: whatLearned.trim() || undefined,
-        challenges: challenges.trim() || undefined,
-        result,
-        photosLink: photosLink.trim() || undefined,
-        documentsLink: documentsLink.trim() || undefined,
-        certificatesLink: certificatesLink.trim() || undefined,
-        certificateFile: certificateFile || undefined,
-        geotagPhotos: geotagPhotos.length > 0 ? geotagPhotos : undefined,
-        driveLink: driveLink.trim() || undefined,
-        linkedInPost: linkedInPost.trim() || undefined,
-        githubUrl: githubUrl.trim() || undefined,
-        liveUrl: liveUrl.trim() || undefined,
-        status: "upcoming",
-        submissionStatus: isStaff ? "approved" : asDraft ? "draft" : "pending_review",
-        submittedBy: user.uid,
-        submittedByName: user.name,
-        submittedByPhoto: user.profilePhoto,
-        createdBy: user.uid,
-      });
-
-      if (asDraft) {
-        success("Event submission saved as Draft!");
-      } else if (isStaff) {
-        success(`Event "${name}" published successfully!`);
-      } else {
-        success("Event submitted for mentor review! Notification sent to staff.");
+      if (partType === "team" && teamObj) {
+        finalIds = teamObj.memberIds; finalNames = teamObj.memberNames || []; teamName = teamObj.name;
+      } else if (partType === "custom") {
+        finalIds = [user.uid, ...checkedStudents.map(s => s.uid)];
+        finalNames = [user.name || "Student", ...checkedStudents.map(s => s.name || "?"), ...externalMembers];
+        teamName = "Custom Group";
       }
 
+      const id = await createEvent({
+        name: name.trim(), type, date,
+        endDate: endDate || undefined, venue: venue.trim() || undefined,
+        city: city.trim() || undefined, state: state.trim() || undefined,
+        organizer: organizer.trim() || undefined, description: description.trim() || undefined,
+        teamId: teamObj?.id, teamName, participantIds: finalIds, participantNames: finalNames,
+        externalParticipants: externalMembers.length > 0 ? externalMembers : undefined,
+        eventTrack: eventTrack.trim() || undefined, projectTitle: projectTitle.trim() || undefined,
+        result, whatBuilt: whatBuilt.trim() || undefined, whatLearned: whatLearned.trim() || undefined,
+        certificateFile: certificateFile || undefined, geotagPhotos: geotagPhotos.length > 0 ? geotagPhotos : undefined,
+        driveLink: driveLink.trim() || undefined, linkedInPost: linkedInPost.trim() || undefined,
+        githubUrl: githubUrl.trim() || undefined, liveUrl: liveUrl.trim() || undefined,
+        status: "upcoming",
+        submissionStatus: isStaff ? "approved" : asDraft ? "draft" : "pending_review",
+        submittedBy: user.uid, submittedByName: user.name, submittedByPhoto: user.profilePhoto, createdBy: user.uid,
+      });
+
+      if (asDraft) success("Saved as draft!");
+      else if (isStaff) success(`"${name}" published.`);
+      else success("Submitted for faculty review!");
       router.push(`/events/${id}`);
-    } catch (err) {
-      console.error(err);
-      error("Failed to submit event.");
-    } finally {
-      setSaving(false);
-    }
+    } catch (e) { console.error(e); error("Failed to submit. Please try again."); }
+    finally { setSaving(false); }
   };
+
+  const checkedList = allStudents.filter(s => checkedUids.has(s.uid));
+  const rosterCount = 1 + checkedList.length + externalMembers.length;
 
   return (
     <AppShell>
-      <div className="space-y-6 max-w-5xl mx-auto w-full mm-page-animate">
-        <Link href="/events" className="text-xs font-semibold text-slate-500 hover:text-blue-600 inline-flex items-center gap-1">
-          <ArrowLeft size={14} /> Back to Events
-        </Link>
+      <div className="w-full max-w-[920px] mx-auto px-4 sm:px-8 pb-24 mm-page-animate">
 
-        <div className="mm-card space-y-6">
-          {/* Header */}
-          <div className="flex items-center gap-3 border-b border-slate-100 pb-4">
-            <div className="w-10 h-10 rounded-xl bg-blue-100 text-blue-600 flex items-center justify-center">
-              <Calendar size={20} />
+        {/* ── PAGE HEADER ── */}
+        <div className="pt-6 pb-12">
+          <Link href="/events" className="inline-flex items-center gap-1.5 text-[14px] font-bold text-slate-500 hover:text-blue-600 transition-colors mb-8">
+            <ArrowLeft size={16} /> Back to Events
+          </Link>
+          <div className="flex items-center gap-6">
+            <div className="w-16 h-16 rounded-[20px] bg-blue-600 text-white flex items-center justify-center shadow-lg shadow-blue-600/20 shrink-0">
+              <Calendar size={28} />
             </div>
             <div>
-              <h1 className="text-xl font-bold text-slate-900">
+              <h1 className="text-3xl font-black text-slate-900 tracking-tight leading-tight">
                 {isStaff ? "Publish College Event" : "Submit Event Participation"}
               </h1>
-              <p className="text-xs text-slate-500">
-                {isStaff
-                  ? "Publish an event announcement for students across all departments and years."
-                  : "Submit hackathon or competition participation for faculty verification."}
+              <p className="text-[15px] text-slate-500 mt-2 leading-relaxed max-w-2xl">
+                {isStaff ? "Create an official event record visible to all departments and years." : "Record your hackathon, competition, or workshop experience for faculty verification."}
               </p>
             </div>
           </div>
+        </div>
 
-          <form onSubmit={(e) => { e.preventDefault(); handleSave(false); }} className="space-y-6">
-            {/* Basic Information */}
-            <div className="space-y-4">
-              <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
-                <FileText size={14} /> 1. Event Details
-              </h3>
+        <form onSubmit={e => { e.preventDefault(); handleSave(false); }} className="space-y-4">
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="mm-label">Event Name <span style={{ color: "var(--color-danger)" }}>*</span></label>
-                  <input
-                    className="mm-input"
-                    placeholder="e.g. Smart India Hackathon 2026 / VLSI Designathon"
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    required
-                  />
-                </div>
+          {/* 1. EVENT DETAILS */}
+          <SectionCard step={1} accent="blue" icon={<FileText size={20} strokeWidth={2.5} />} title="Event Details" subtitle="Basic information about the event">
+            <Row>
+              <Field label="Event Name" required>
+                <input className={T.input} placeholder="e.g. Smart India Hackathon 2025" value={name} onChange={e => setName(e.target.value)} required />
+              </Field>
+              <Field label="Event Type">
+                <SelectField value={type} onChange={setType}>
+                  {EVENT_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                </SelectField>
+              </Field>
+            </Row>
+            <Row>
+              <Field label="Start Date" required>
+                <input type="date" className={T.input} value={date} onChange={e => setDate(e.target.value)} required />
+              </Field>
+              <Field label="End Date" optional>
+                <input type="date" className={T.input} value={endDate} onChange={e => setEndDate(e.target.value)} />
+              </Field>
+            </Row>
+            <Row cols={3}>
+              <Field label="Venue / College" optional>
+                <input className={T.input} placeholder="e.g. Main Auditorium" value={venue} onChange={e => setVenue(e.target.value)} />
+              </Field>
+              <Field label="City" optional>
+                <input className={T.input} placeholder="e.g. Salem" value={city} onChange={e => setCity(e.target.value)} />
+              </Field>
+              <Field label="State" optional>
+                <input className={T.input} placeholder="e.g. Tamil Nadu" value={state} onChange={e => setState(e.target.value)} />
+              </Field>
+            </Row>
+            <Field label="Organizing Institution / Company" optional>
+              <input className={T.input} placeholder="e.g. Sri Eshwar College of Engineering" value={organizer} onChange={e => setOrganizer(e.target.value)} />
+            </Field>
+          </SectionCard>
 
-                <div>
-                  <label className="mm-label">Event Type</label>
-                  <select
-                    className="mm-input mm-select"
-                    value={type}
-                    onChange={(e) => setType(e.target.value)}
-                  >
-                    {EVENT_TYPES.map((t) => (
-                      <option key={t} value={t}>{t}</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="mm-label">Start Date <span style={{ color: "var(--color-danger)" }}>*</span></label>
-                  <input
-                    type="date"
-                    className="mm-input"
-                    value={date}
-                    onChange={(e) => setDate(e.target.value)}
-                    required
-                  />
-                </div>
-
-                <div>
-                  <label className="mm-label">End Date (optional)</label>
-                  <input
-                    type="date"
-                    className="mm-input"
-                    value={endDate}
-                    onChange={(e) => setEndDate(e.target.value)}
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                <div>
-                  <label className="mm-label">Venue / College</label>
-                  <input
-                    className="mm-input"
-                    placeholder="e.g. Main Auditorium"
-                    value={venue}
-                    onChange={(e) => setVenue(e.target.value)}
-                  />
-                </div>
-
-                <div>
-                  <label className="mm-label">City</label>
-                  <input
-                    className="mm-input"
-                    placeholder="e.g. Salem / Chennai"
-                    value={city}
-                    onChange={(e) => setCity(e.target.value)}
-                  />
-                </div>
-
-                <div>
-                  <label className="mm-label">State</label>
-                  <input
-                    className="mm-input"
-                    placeholder="e.g. Tamil Nadu"
-                    value={state}
-                    onChange={(e) => setState(e.target.value)}
-                  />
-                </div>
+          {/* 2. TEAM & PARTICIPATION */}
+          <SectionCard step={2} accent="violet" icon={<Users size={20} strokeWidth={2.5} />} title="Team & Participation" subtitle="Who participated at this event?">
+            <div>
+              <label className={T.label}>Participation Type<span className={T.req}>*</span></label>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+                <ParticipationCard active={partType === "individual"} icon={<UserIcon size={20} />} title="Individual" desc="Only me — no teammates" onClick={() => setPartType("individual")} />
+                {userTeams.length > 0 && <ParticipationCard active={partType === "team"} icon={<Users size={20} />} title="MentorMesh Team" desc="One of my existing teams" onClick={() => setPartType("team")} />}
+                <ParticipationCard active={partType === "custom"} icon={<UserPlus size={20} />} title="Custom Group" desc="Platform students + external peers" onClick={() => setPartType("custom")} />
               </div>
             </div>
 
-            {/* Team & Participation */}
-            <div className="space-y-4 pt-4 border-t border-slate-100">
-              <div className="flex items-center justify-between">
-                <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
-                  <Users size={14} /> 2. Team & Participation
-                </h3>
-                <Link href="/teams" className="text-xs text-blue-600 hover:underline font-medium">
-                  + Create New Team
-                </Link>
+            {partType === "team" && (
+              <div className="rounded-[20px] bg-violet-50/50 border border-violet-100 p-6 md:p-8 space-y-5 animate-in fade-in slide-in-from-top-2 duration-300">
+                <p className="text-[13px] font-extrabold text-violet-800 uppercase tracking-widest">Selected Team</p>
+                <SelectField value={selectedTeamId} onChange={setSelectedTeamId} className="bg-white border-violet-200 hover:border-violet-300 focus:border-violet-500 focus:ring-violet-500/10 h-[52px]">
+                  <option value="">— Choose a team —</option>
+                  {userTeams.map(t => <option key={t.id} value={t.id}>{t.name}  ({t.memberIds.length} members)</option>)}
+                </SelectField>
+                {selectedTeamId && (() => {
+                  const t = userTeams.find(x => x.id === selectedTeamId);
+                  return t?.memberNames?.length ? (
+                    <div className="pt-2">
+                      <p className="text-[12px] font-bold text-violet-600 mb-3">Team Members List</p>
+                      <div className="flex flex-wrap gap-2.5">
+                        {t.memberNames.map((n, i) => (
+                          <span key={i} className="flex items-center gap-2 text-[13px] font-bold bg-white text-violet-900 border border-violet-200 px-3.5 py-1.5 rounded-full shadow-sm">
+                            <CheckCircle2 size={14} className="text-violet-500" /> {n}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null;
+                })()}
               </div>
+            )}
 
-              {userTeams.length > 0 ? (
-                <div>
-                  <label className="mm-label">Select Your Team (Auto-populates members)</label>
-                  <select
-                    className="mm-input mm-select"
-                    value={selectedTeamId}
-                    onChange={(e) => handleTeamChange(e.target.value)}
-                  >
-                    <option value="">Individual Participation (Just Me)</option>
-                    {userTeams.map((t) => (
-                      <option key={t.id} value={t.id}>{t.name} ({t.memberIds.length} members)</option>
-                    ))}
-                  </select>
-                </div>
-              ) : (
-                <div className="p-3 bg-blue-50/60 rounded-xl border border-blue-100 text-xs text-blue-900 flex items-center justify-between">
-                  <span>Submitting as individual. Have team members? Create a team on the Teams page.</span>
-                  <Link href="/teams" className="font-semibold text-blue-700 underline">
-                    Teams Page →
-                  </Link>
-                </div>
-              )}
-
-              {participantNames.length > 0 && (
-                <div className="bg-slate-50 p-3 rounded-lg border border-slate-200 text-xs">
-                  <p className="font-semibold text-slate-700 mb-1">Team Members Included:</p>
-                  <div className="flex flex-wrap gap-1">
-                    {participantNames.map((mn, i) => (
-                      <span key={i} className="bg-white border border-slate-200 px-2 py-0.5 rounded-full text-slate-700 font-medium">
-                        ✓ {mn}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="mm-label">Project Title / Theme</label>
-                  <input
-                    className="mm-input"
-                    placeholder="e.g. Smart Agriculture Bot"
-                    value={projectTitle}
-                    onChange={(e) => setProjectTitle(e.target.value)}
-                  />
-                </div>
-
-                <div>
-                  <label className="mm-label">Event Track / Category</label>
-                  <input
-                    className="mm-input"
-                    placeholder="e.g. AI/ML, Hardware, Open Innovation"
-                    value={eventTrack}
-                    onChange={(e) => setEventTrack(e.target.value)}
-                  />
-                </div>
-              </div>
-            </div>
-
-            {/* Experience & Achievements */}
-            <div className="space-y-4 pt-4 border-t border-slate-100">
-              <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
-                <Award size={14} /> 3. Experience & Result
-              </h3>
-
-              <div>
-                <label className="mm-label">Result / Achievement</label>
-                <select
-                  className="mm-input mm-select"
-                  value={result}
-                  onChange={(e) => setResult(e.target.value)}
-                >
-                  {RESULTS_LIST.map((r) => (
-                    <option key={r} value={r}>{r}</option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="mm-label">What did you build / create?</label>
-                <textarea
-                  className="mm-input resize-none"
-                  rows={2}
-                  placeholder="Describe your prototype, hardware, or software solution..."
-                  value={whatBuilt}
-                  onChange={(e) => setWhatBuilt(e.target.value)}
-                />
-              </div>
-
-              <div>
-                <label className="mm-label">Key Learnings & Challenges</label>
-                <textarea
-                  className="mm-input resize-none"
-                  rows={2}
-                  placeholder="What key technical skills did you gain or obstacles did you overcome?"
-                  value={whatLearned}
-                  onChange={(e) => setWhatLearned(e.target.value)}
-                />
-              </div>
-            </div>
-
-            {/* Event Specific Documents & Uploads */}
-            <div className="space-y-4 pt-4 border-t border-slate-100">
-              <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
-                <FileText size={14} /> 4. Event Documents & Geotag Photos
-              </h3>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 bg-slate-50 p-4 rounded-xl border border-slate-200">
-                <div>
-                  <h4 className="font-semibold text-slate-800 text-sm mb-2">Event Certificate</h4>
-                  <CloudinaryImageUpload
-                    label="Upload Participation/Winner Certificate"
-                    buttonText="Select Certificate Image"
-                    existingUrl={certificateFile}
-                    onUploadSuccess={(url) => setCertificateFile(url)}
-                  />
-                </div>
-
-                <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <h4 className="font-semibold text-slate-800 text-sm">Geotagged Photos *</h4>
-                    <span className="text-xs text-slate-500">{geotagPhotos.length} / 5</span>
-                  </div>
-                  <CloudinaryImageUpload
-                    label="Minimum 1, Maximum 5 Photos"
-                    buttonText="Upload Geotag Photo"
-                    onUploadSuccess={handleGeotagUpload}
-                  />
-
-                  {geotagPhotos.length > 0 && (
-                    <div className="flex flex-wrap gap-2 mt-3 block">
-                      {geotagPhotos.map((url, idx) => (
-                        <div key={idx} className="relative w-16 h-16 rounded overflow-hidden border border-slate-200 group">
-                          <img src={url} alt="Geotag" className="w-full h-full object-cover" />
-                          <button
-                            type="button"
-                            onClick={() => setGeotagPhotos(prev => prev.filter((_, i) => i !== idx))}
-                            className="absolute inset-0 bg-black/50 text-white opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity"
-                          >
-                            <X size={16} />
-                          </button>
+            {partType === "custom" && (
+              <div className="space-y-8 animate-in fade-in slide-in-from-top-2 duration-300">
+                <Row>
+                  {/* Platform Students */}
+                  <div className="rounded-[20px] border border-slate-200 shadow-sm overflow-hidden flex flex-col h-[400px]">
+                    <div className="bg-white px-5 py-5 border-b border-slate-100 shrink-0 space-y-4">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-[13px] font-extrabold text-slate-800 uppercase tracking-wider">MentorMesh Students</p>
+                          <p className="text-[12px] text-slate-500 mt-0.5">Search and select registered peers</p>
                         </div>
+                        {checkedUids.size > 0 && <span className="text-[12px] font-bold text-violet-800 bg-violet-100 border border-violet-200 px-3 py-1 rounded-full">{checkedUids.size} added</span>}
+                      </div>
+                      <div className="relative">
+                        <Search size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                        <input type="text" placeholder="Search by name or reg number…" value={memberSearch} onChange={e => setMemberSearch(e.target.value)}
+                          className="w-full pl-10 pr-4 py-3 text-[14px] rounded-xl border border-slate-200 bg-slate-50 outline-none focus:bg-white focus:border-violet-500 focus:ring-2 focus:ring-violet-500/10 transition" />
+                      </div>
+                    </div>
+                    <div className="divide-y divide-slate-100 overflow-y-auto flex-1 bg-white">
+                      {filteredStudents.length === 0 ? <div className="px-5 py-10 text-center text-[14px] text-slate-400">No peers found matching your criteria.</div>
+                        : filteredStudents.map(s => <StudentRow key={s.uid} student={s} checked={checkedUids.has(s.uid)} onToggle={() => toggleCheck(s.uid)} />)}
+                    </div>
+                  </div>
+
+                  {/* External Participants */}
+                  <div className="rounded-[20px] border border-slate-200 shadow-sm overflow-hidden flex flex-col h-[400px]">
+                    <div className="bg-slate-50/50 px-5 py-5 border-b border-slate-100 shrink-0">
+                      <p className="text-[13px] font-extrabold text-slate-800 uppercase tracking-wider">External Teammates</p>
+                      <p className="text-[12px] text-slate-500 mt-0.5">Add people not on the platform</p>
+                    </div>
+                    <div className="p-5 flex flex-col flex-1 bg-white">
+                      <div className="flex gap-3 mb-5 shrink-0">
+                        <div className="relative flex-1">
+                          <UserPlus size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                          <input type="text" placeholder="Type full name & add…" value={externalInput} onChange={e => setExternalInput(e.target.value)}
+                            onKeyDown={e => e.key === "Enter" && (e.preventDefault(), addExternal())}
+                            className="w-full pl-10 pr-4 py-3 text-[14px] rounded-xl border border-slate-200 bg-slate-50 outline-none focus:bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10 transition" />
+                        </div>
+                        <button type="button" onClick={addExternal} disabled={!externalInput.trim()}
+                          className="flex items-center gap-2 px-5 py-3 rounded-xl bg-slate-900 text-white text-[14px] font-bold hover:bg-slate-800 disabled:opacity-40 transition-colors shrink-0">
+                          <Plus size={16} /> Add
+                        </button>
+                      </div>
+                      <div className="flex-1 overflow-y-auto">
+                        {externalMembers.length > 0 ? (
+                          <div className="flex flex-wrap gap-2.5">
+                            {externalMembers.map((n, i) => (
+                              <span key={i} className="inline-flex items-center gap-2 bg-slate-50 text-slate-800 text-[13px] font-bold px-3.5 py-1.5 rounded-full border border-slate-200 shadow-sm animate-in zoom-in duration-200">
+                                {n}
+                                <button type="button" onClick={() => setExternalMembers(p => p.filter((_, j) => j !== i))} className="text-slate-400 hover:text-rose-500 transition-colors bg-white rounded-full p-0.5"><X size={12} /></button>
+                              </span>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="flex items-center justify-center h-full text-[13px] text-slate-400 text-center px-4">
+                            No external members added yet.<br />Use the input above to add manually.
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </Row>
+
+                {/* Final Roster Display */}
+                {(checkedList.length > 0 || externalMembers.length > 0) && (
+                  <div className="rounded-[20px] bg-gradient-to-br from-violet-50/50 via-white to-blue-50/30 border border-violet-100 p-6 md:p-8 shadow-sm">
+                    <p className="text-[13px] font-extrabold text-violet-900 uppercase tracking-wider mb-4">Complete Group Roster <span className="text-violet-500 ml-1">({rosterCount} members)</span></p>
+                    <div className="flex flex-wrap gap-3">
+                      <span className="inline-flex items-center gap-2 bg-blue-600 text-white text-[13px] font-bold px-4 py-2 rounded-full shadow-md">
+                        ★ {user?.name} (You)
+                      </span>
+                      {checkedList.map(s => (
+                        <span key={s.uid} className="inline-flex items-center gap-2 bg-white text-violet-950 text-[13px] font-bold px-4 py-2 rounded-full border border-violet-200 shadow-sm">
+                          <CheckCircle2 size={14} className="text-violet-500" /> {s.name}
+                        </span>
+                      ))}
+                      {externalMembers.map((n, i) => (
+                        <span key={`e-${i}`} className="inline-flex items-center gap-2 bg-white text-slate-700 text-[13px] font-bold px-4 py-2 rounded-full border border-slate-200 shadow-sm">
+                          <span className="w-2 h-2 rounded-full bg-slate-300 inline-block shrink-0" /> {n}
+                        </span>
                       ))}
                     </div>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            {/* Media & External Links */}
-            <div className="space-y-4 pt-4 border-t border-slate-100">
-              <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
-                <ExternalLink size={14} /> 5. External Links (Optional)
-              </h3>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="mm-label">Google Drive Folder Link</label>
-                  <input
-                    className="mm-input"
-                    placeholder="https://drive.google.com/drive/folders/..."
-                    value={driveLink}
-                    onChange={(e) => setDriveLink(e.target.value)}
-                  />
-                </div>
-
-                <div>
-                  <label className="mm-label">LinkedIn Post URL</label>
-                  <input
-                    className="mm-input"
-                    placeholder="https://linkedin.com/posts/..."
-                    value={linkedInPost}
-                    onChange={(e) => setLinkedInPost(e.target.value)}
-                  />
-                </div>
-
-                <div>
-                  <label className="mm-label">GitHub Repository URL</label>
-                  <input
-                    className="mm-input"
-                    placeholder="https://github.com/..."
-                    value={githubUrl}
-                    onChange={(e) => setGithubUrl(e.target.value)}
-                  />
-                </div>
-
-                <div>
-                  <label className="mm-label">Live Demo Link (if any)</label>
-                  <input
-                    className="mm-input"
-                    placeholder="https://..."
-                    value={liveUrl}
-                    onChange={(e) => setLiveUrl(e.target.value)}
-                  />
-                </div>
-              </div>
-            </div>
-
-            {/* Footer Action Controls */}
-            <div className="flex items-center justify-between pt-4 border-t border-slate-200">
-              <Link href="/events">
-                <Button type="button" variant="secondary">Cancel</Button>
-              </Link>
-
-              <div className="flex items-center gap-2">
-                {!isStaff && (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    loading={saving}
-                    onClick={() => handleSave(true)}
-                  >
-                    Save Draft
-                  </Button>
+                  </div>
                 )}
-
-                <Button type="submit" variant="primary" loading={saving}>
-                  {isStaff ? "Publish Event" : "Submit Event"}
-                </Button>
               </div>
+            )}
+
+            <div className={T.divider} />
+
+            {/* Project Context */}
+            <Row>
+              <Field label="Project Title / Theme" optional>
+                <input className={T.input} placeholder="e.g. Smart Agriculture Bot" value={projectTitle} onChange={e => setProjectTitle(e.target.value)} />
+              </Field>
+              <Field label="Event Track / Category" optional>
+                <input className={T.input} placeholder="e.g. AI/ML, Hardware, Fintech" value={eventTrack} onChange={e => setEventTrack(e.target.value)} />
+              </Field>
+            </Row>
+          </SectionCard>
+
+          {/* 3. EXPERIENCE & RESULT */}
+          <SectionCard step={3} accent="amber" icon={<Trophy size={20} strokeWidth={2.5} />} title="Experience & Result" subtitle="Share your achievement and key takeaways">
+            <Field label="Result / Achievement" required>
+              <SelectField value={result} onChange={setResult} className="font-bold text-amber-950 bg-amber-50/50 border-amber-200 hover:border-amber-300 focus:border-amber-500 focus:ring-amber-500/10 h-[52px]">
+                {RESULTS_LIST.map(r => <option key={r} value={r}>{r}</option>)}
+              </SelectField>
+            </Field>
+            <div className="grid grid-cols-1 gap-8 pt-2">
+              <Field label="What did you build / create?" optional hint="Keep it brief but descriptive. Focus on the core value or functionality of your solution.">
+                <textarea className={`${T.input} resize-y min-h-[120px] leading-relaxed`} placeholder="Describe your prototype, solution, or deliverable clearly…" value={whatBuilt} onChange={e => setWhatBuilt(e.target.value)} />
+              </Field>
+              <Field label="Key Learnings & Challenges" optional hint="What valuable technical or soft skills did you gain? What was the hardest part?">
+                <textarea className={`${T.input} resize-y min-h-[120px] leading-relaxed`} placeholder="Technical skills learned, obstacles overcome, insights gained…" value={whatLearned} onChange={e => setWhatLearned(e.target.value)} />
+              </Field>
             </div>
-          </form>
-        </div>
+          </SectionCard>
+
+          {/* 4. DOCUMENTS & VERIFICATION */}
+          <SectionCard step={4} accent="rose" icon={<Camera size={20} strokeWidth={2.5} />} title="Documents & Verification Photos" subtitle="Required for submission to be approved by faculty">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+              <UploadZone title="Event Certificate" required desc="Upload your final participation or winner certificate." icon={<Upload size={18} />}>
+                <CloudinaryImageUpload label="" buttonText="Click to Upload Certificate" existingUrl={certificateFile} onUploadSuccess={url => setCertificateFile(url)} />
+                {certificateFile && (
+                  <div className="flex items-center justify-between gap-4 bg-emerald-50 border border-emerald-200 rounded-[14px] px-4 py-3 animate-in zoom-in-95 duration-200 mt-2">
+                    <div className="flex items-center gap-3 overflow-hidden">
+                      <div className="w-8 h-8 rounded-full bg-emerald-500 text-white flex items-center justify-center shrink-0">
+                        <Check size={14} strokeWidth={4} />
+                      </div>
+                      <span className="text-[13px] font-bold text-emerald-900 truncate">Certificate successfully uploaded</span>
+                    </div>
+                    <button type="button" onClick={() => setCertificateFile("")} className="w-8 h-8 flex items-center justify-center rounded-full text-emerald-700 hover:bg-emerald-200/50 hover:text-emerald-900 transition-colors shrink-0"><X size={16} /></button>
+                  </div>
+                )}
+              </UploadZone>
+
+              <UploadZone title="Geotagged Photos" required desc="Real venue photos for verification purposes." icon={<Camera size={18} />} badgeText={`${geotagPhotos.length} / 5`} badgeColor={geotagPhotos.length >= 5 ? "bg-rose-100 text-rose-700 border-rose-200" : "bg-white text-slate-600 border-slate-200"}>
+                {geotagPhotos.length < 5 && (
+                  <CloudinaryImageUpload label="" buttonText="Upload Geotag Photo" onUploadSuccess={handleGeotagUpload} />
+                )}
+                {geotagPhotos.length > 0 && (
+                  <div className="grid grid-cols-4 sm:grid-cols-3 md:grid-cols-4 gap-3 mt-2">
+                    {geotagPhotos.map((url, idx) => (
+                      <div key={idx} className="relative aspect-square rounded-[14px] overflow-hidden border border-slate-200 shadow-sm group">
+                        <img src={url} alt={`Verification Photo ${idx + 1}`} className="w-full h-full object-cover transition-transform group-hover:scale-110 duration-500" />
+                        <button type="button" onClick={() => setGeotagPhotos(p => p.filter((_, i) => i !== idx))} className="absolute inset-0 bg-slate-900/40 text-white opacity-0 group-hover:opacity-100 flex items-center justify-center transition-all duration-200 backdrop-blur-[2px]">
+                          <div className="w-8 h-8 rounded-full bg-rose-500 text-white flex items-center justify-center shadow-lg"><X size={14} strokeWidth={3} /></div>
+                        </button>
+                        <span className="absolute bottom-1.5 right-1.5 text-[10px] font-black bg-slate-900/70 text-white px-2 py-1 rounded-md backdrop-blur-md">{idx + 1}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </UploadZone>
+            </div>
+          </SectionCard>
+
+          {/* 5. EXTERNAL LINKS */}
+          <SectionCard step={5} accent="teal" icon={<Link2 size={20} strokeWidth={2.5} />} title="External Links" subtitle="Drive folder, LinkedIn post, GitHub, live demo — all optional">
+            <Row>
+              <Field label="Google Drive Folder" optional><input className={T.input} placeholder="https://drive.google.com/…" value={driveLink} onChange={e => setDriveLink(e.target.value)} /></Field>
+              <Field label="LinkedIn Post" optional><input className={T.input} placeholder="https://linkedin.com/…" value={linkedInPost} onChange={e => setLinkedInPost(e.target.value)} /></Field>
+              <Field label="GitHub Repository" optional><input className={T.input} placeholder="https://github.com/…" value={githubUrl} onChange={e => setGithubUrl(e.target.value)} /></Field>
+              <Field label="Live Demo / Hosted App" optional><input className={T.input} placeholder="https://…" value={liveUrl} onChange={e => setLiveUrl(e.target.value)} /></Field>
+            </Row>
+          </SectionCard>
+
+          {/* SUBMIT BAR */}
+          <div className="mt-12 flex flex-col sm:flex-row items-center justify-between gap-4 bg-white border border-slate-200 rounded-[24px] px-8 py-6 shadow-[0_8px_30px_rgb(0,0,0,0.04)] sticky bottom-6 z-10">
+            <Link href="/events" className="w-full sm:w-auto">
+              <Button type="button" variant="secondary" className="w-full sm:w-auto px-6 py-3">Cancel</Button>
+            </Link>
+            <div className="flex flex-col sm:flex-row items-center gap-4 w-full sm:w-auto">
+              {!isStaff && (
+                <Button type="button" variant="outline" loading={saving} onClick={() => handleSave(true)} className="w-full sm:w-auto px-6 py-3 font-bold border-slate-300 text-slate-700 hover:bg-slate-50">
+                  Save as Draft
+                </Button>
+              )}
+              <Button type="submit" variant="primary" loading={saving} className="w-full sm:w-auto px-8 py-3 bg-blue-600 hover:bg-blue-700 text-[15px] shadow-lg shadow-blue-500/20">
+                {isStaff ? "Publish Event" : "Submit for Faculty Review"}
+              </Button>
+            </div>
+          </div>
+
+        </form>
       </div>
     </AppShell>
   );
 }
-

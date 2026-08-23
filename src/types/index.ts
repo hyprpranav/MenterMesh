@@ -160,6 +160,7 @@ export interface Event {
   teamIds?: string[];
   participantIds?: string[];
   participantNames?: string[];
+  externalParticipants?: string[]; // Names of participants not registered on the platform
   roleInEvent?: string;
   eventTrack?: string;
   projectTitle?: string;

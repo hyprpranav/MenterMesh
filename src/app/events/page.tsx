@@ -86,7 +86,7 @@ function EventsContent() {
         subtitle="Track hackathons, project expos, workshops, and student achievements."
         actions={
           <Link href="/events/new">
-            <Button variant="primary" size="sm" icon={<Plus size={16} />}>
+            <Button variant="primary" size="md" icon={<Plus size={16} />}>
               {isStaff ? "Create Event" : "Submit Event"}
             </Button>
           </Link>
@@ -117,9 +117,9 @@ function EventsContent() {
           }
         />
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
           {filteredEvents.map((ev) => (
-            <EventCard key={ev.id} event={ev} />
+            <EventCard key={ev.id} event={ev} currentUserId={user?.uid} isStaff={isStaff} />
           ))}
         </div>
       )}
@@ -127,10 +127,13 @@ function EventsContent() {
   );
 }
 
-function EventCard({ event }: { event: Event }) {
+function EventCard({ event, currentUserId, isStaff }: { event: Event; currentUserId?: string; isStaff: boolean }) {
   const isPending = event.submissionStatus === "pending_review";
   const isApproved = event.submissionStatus === "approved" || !event.submissionStatus;
   const isRejected = event.submissionStatus === "rejected";
+  const isParticipant = currentUserId ? (event.participantIds || []).includes(currentUserId) : false;
+  // Similar to teams, give staff highlighted access
+  const isHighlighted = isParticipant || isStaff;
 
   const statusBadge = isPending ? (
     <Badge variant="pending" icon={<Clock size={11} />}>Pending</Badge>
@@ -142,71 +145,77 @@ function EventCard({ event }: { event: Event }) {
     <Badge variant="draft">{event.status?.toUpperCase()}</Badge>
   );
 
+  const cardStyle: React.CSSProperties = {
+    display: "flex",
+    flexDirection: "column",
+    justifyContent: "space-between",
+    borderRadius: 16,
+    overflow: "hidden",
+    transition: "all 0.2s ease",
+    position: "relative",
+    ...(isHighlighted
+      ? {
+        background: "linear-gradient(135deg, #EFF6FF 0%, #F0F9FF 50%, #F8FAFC 100%)",
+        border: "2px solid #3B82F6",
+        boxShadow: "0 4px 16px rgba(59, 130, 246, 0.15), 0 1px 4px rgba(59, 130, 246, 0.08)",
+      }
+      : isPending
+        ? { background: "#FFFBF0", border: "1.5px solid #FCD34D", boxShadow: "0 2px 8px rgba(252, 211, 77, 0.12)" }
+        : isRejected
+          ? { background: "#FFF5F5", border: "1.5px solid #FCA5A5", boxShadow: "0 2px 8px rgba(252, 165, 165, 0.1)" }
+          : { background: "var(--color-surface)", border: "1.5px solid var(--color-border)", boxShadow: "var(--shadow-xs)" }),
+  };
+
   return (
-    <div className="mm-card hover:border-blue-300 transition-all flex flex-col justify-between h-full bg-white">
-      <div className="space-y-3">
-        <div className="flex justify-between items-start gap-2 w-full pr-1">
-          <span className="text-xs font-semibold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full border border-blue-100 truncate max-w-[60%] inline-block">
+    <div style={cardStyle} className="hover:shadow-lg h-full">
+      {isHighlighted && (
+        <div style={{ height: 4, background: "linear-gradient(90deg, #3B82F6, #6366F1, #8B5CF6)", borderRadius: "0 0 0 0", flexShrink: 0 }} />
+      )}
+
+      <div style={{ padding: "1.25rem 1.25rem 0.75rem", flex: 1, display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "0.5rem" }}>
+          <span style={{ fontSize: "0.6875rem", fontWeight: 700, color: "#2563EB", background: "#EFF6FF", padding: "4px 10px", borderRadius: 99, border: "1px solid #BFDBFE", flexShrink: 0, textTransform: "uppercase", letterSpacing: "0.04em" }}>
             {event.type}
           </span>
           <div className="shrink-0">{statusBadge}</div>
         </div>
 
-        <h3 className="font-bold text-slate-900 text-[15px] leading-snug line-clamp-2" title={event.name}>
+        <h3 style={{ fontSize: "1.125rem", fontWeight: 800, color: "#0F172A", lineHeight: 1.3, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }} title={event.name}>
           {event.name}
         </h3>
 
         {event.result && (
-          <div className="w-full">
-            <span
-              className="text-xs font-bold text-amber-700 bg-amber-50 px-2 opacity-90 py-1 rounded-md border border-amber-200 inline-block w-auto max-w-full truncate"
-              title={event.result}
-            >
-              {event.result}
-            </span>
-          </div>
+          <span style={{ display: "inline-block", fontSize: "0.75rem", fontWeight: 700, color: "#B45309", background: "#FFFBEB", padding: "4px 8px", borderRadius: 6, border: "1px solid #FDE68A", width: "fit-content", maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={event.result}>
+            🏆 {event.result}
+          </span>
         )}
 
-        <div className="text-xs text-slate-500 space-y-2 pt-1 border-t border-slate-50">
-          <p className="flex items-center gap-2">
-            <Calendar size={13} className="text-slate-400 shrink-0" />
-            <span className="truncate">{formatDate(event.date)}</span>
+        <div style={{ paddingTop: "0.5rem", display: "flex", flexDirection: "column", gap: "0.375rem" }}>
+          <p style={{ display: "flex", alignItems: "center", gap: "0.5rem", fontSize: "0.75rem", color: "#64748B" }}>
+            <Calendar size={14} color="#94A3B8" /> <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{formatDate(event.date)}</span>
           </p>
           {(event.location || event.venue) && (
-            <p className="flex items-center gap-2">
-              <MapPin size={13} className="text-slate-400 shrink-0" />
-              <span className="truncate" title={event.venue ? `${event.venue}${event.city ? `, ${event.city}` : ""}` : event.location}>
+            <p style={{ display: "flex", alignItems: "center", gap: "0.5rem", fontSize: "0.75rem", color: "#64748B" }}>
+              <MapPin size={14} color="#94A3B8" /> <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={event.venue ? `${event.venue}${event.city ? `, ${event.city}` : ""}` : event.location}>
                 {event.venue ? `${event.venue}${event.city ? `, ${event.city}` : ""}` : event.location}
               </span>
-            </p>
-          )}
-          {event.submittedByName && (
-            <p className="text-[11px] text-slate-400 truncate mt-1 bg-slate-50 px-2 py-1 rounded inline-block w-full">
-              By <strong className="text-slate-600 font-semibold">{event.submittedByName}</strong>
             </p>
           )}
         </div>
 
         {event.description && (
-          <p className="text-xs text-slate-600 line-clamp-2 mt-2 leading-relaxed">{event.description}</p>
+          <p style={{ fontSize: "0.8125rem", color: "#475569", lineHeight: 1.5, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{event.description}</p>
         )}
       </div>
 
-      <div className="pt-3 mt-4 border-t border-slate-100 flex items-center justify-between w-full h-[32px]">
-        {event.driveLink ? (
-          <a
-            href={event.driveLink}
-            target="_blank"
-            rel="noreferrer"
-            className="text-xs text-blue-600 font-medium hover:underline flex items-center gap-1.5 px-2 py-1 bg-blue-50/50 rounded-lg transition-colors hover:bg-blue-50"
-          >
-            <Folder size={12} className="shrink-0" /> <span className="truncate max-w-[80px]">Folder</span>
-          </a>
-        ) : (
-          <div aria-hidden="true" />
-        )}
+      <div style={{ padding: "0.75rem 1.25rem 1.25rem", borderTop: "1px solid rgba(148, 163, 184, 0.12)", display: "flex", alignItems: "center", justifyContent: "space-between", gap: "0.5rem", flexWrap: "wrap" }}>
+        <p style={{ fontSize: "0.75rem", color: "#94A3B8", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1, minWidth: "80px" }}>
+          By {event.submittedByName}
+        </p>
         <Link href={`/events/${event.id}`}>
-          <Button size="sm" variant="ghost" className="h-8 text-xs px-3">View Event →</Button>
+          <Button size="md" variant={isHighlighted ? "primary" : "outline"}>
+            View Event
+          </Button>
         </Link>
       </div>
     </div>

@@ -227,9 +227,9 @@ function TeamsContent() {
           title="Teams"
           subtitle="Form, manage, and explore project teams for hackathons and group projects."
           actions={
-            <div className="flex items-center gap-2">
-              {isStaff && <Link href="/team-builder"><Button variant="outline" size="sm" icon={<Layers size={14} />}>Team Builder</Button></Link>}
-              <Button variant="primary" size="sm" icon={<Plus size={14} />} onClick={handleOpenCreate}>Create Team</Button>
+            <div className="flex items-center gap-3">
+              {isStaff && <Link href="/team-builder"><Button variant="outline" size="md" icon={<Layers size={16} />}>Team Builder</Button></Link>}
+              <Button variant="primary" size="md" icon={<Plus size={16} />} onClick={handleOpenCreate}>Create Team</Button>
             </div>
           }
         />
@@ -244,12 +244,13 @@ function TeamsContent() {
               action={{ label: "Create Team", onClick: handleOpenCreate }}
             />
           ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
               {filteredTeams.map((t) => (
                 <TeamCard key={t.id} team={t} currentUserId={user?.uid} isStaff={isStaff}
                   onApprove={() => handleApproveTeam(t)}
                   onReject={() => { setRejectingTeam(t); setRejectReason(""); }}
                   onViewInfo={() => setInfoTeam(t)}
+                  onOpenChat={() => setChatTeam(t)}
                   actionLoading={actionLoading}
                 />
               ))}
@@ -265,7 +266,9 @@ function TeamsContent() {
           isStaff={isStaff}
           onClose={() => setInfoTeam(null)}
           onOpenChat={() => {
-            if (!user || !infoTeam.memberIds.includes(user.uid)) {
+            if (!user) return;
+            // Staff and team members can access chat
+            if (!isStaff && !infoTeam.memberIds.includes(user.uid)) {
               error("Only team members can access this private chat.");
               return;
             }
@@ -441,51 +444,130 @@ function TeamsContent() {
 }
 
 // ── TeamCard ────────────────────────────────────────────────────
-function TeamCard({ team, currentUserId, isStaff, onApprove, onReject, onViewInfo, actionLoading }: {
+function TeamCard({ team, currentUserId, isStaff, onApprove, onReject, onViewInfo, onOpenChat, actionLoading }: {
   team: Team; currentUserId?: string; isStaff?: boolean;
-  onApprove?: () => void; onReject?: () => void; onViewInfo: () => void; actionLoading?: boolean;
+  onApprove?: () => void; onReject?: () => void; onViewInfo: () => void; onOpenChat?: () => void; actionLoading?: boolean;
 }) {
   const isPending = team.status === "pending_approval";
   const isRejected = team.status === "rejected";
+  const isDirectMember = currentUserId ? team.memberIds.includes(currentUserId) : false;
+  // Staff technically have access to all teams, so they get the highlighted card & chat button
+  const hasChatAccess = isDirectMember || isStaff;
+
+  // Card styling based on membership & status
+  const cardStyle: React.CSSProperties = {
+    display: "flex",
+    flexDirection: "column",
+    justifyContent: "space-between",
+    borderRadius: 16,
+    overflow: "hidden",
+    transition: "all 0.2s ease",
+    position: "relative",
+    ...(hasChatAccess
+      ? {
+        background: "linear-gradient(135deg, #EFF6FF 0%, #F0F9FF 50%, #F8FAFC 100%)",
+        border: "2px solid #3B82F6",
+        boxShadow: "0 4px 16px rgba(59, 130, 246, 0.15), 0 1px 4px rgba(59, 130, 246, 0.08)",
+      }
+      : isPending
+        ? { background: "#FFFBF0", border: "1.5px solid #FCD34D", boxShadow: "0 2px 8px rgba(252, 211, 77, 0.12)" }
+        : isRejected
+          ? { background: "#FFF5F5", border: "1.5px solid #FCA5A5", boxShadow: "0 2px 8px rgba(252, 165, 165, 0.1)" }
+          : { background: "var(--color-surface)", border: "1.5px solid var(--color-border)", boxShadow: "var(--shadow-xs)" }),
+  };
+
   return (
-    <div className={`mm-card flex flex-col justify-between space-y-4 transition-all ${isPending ? "border-amber-300 bg-amber-50/20 shadow-sm" : isRejected ? "border-red-200 bg-red-50/10" : "hover:border-blue-300"}`}>
-      <div className="space-y-2.5">
-        <div className="flex justify-between items-start gap-2">
-          <h3 className="font-bold text-slate-900 text-base leading-snug">{team.name}</h3>
-          <Badge variant={teamStatusBadge(team.status).variant}>{teamStatusBadge(team.status).label}</Badge>
+    <div style={cardStyle} className="hover:shadow-lg">
+      {/* Member indicator strip */}
+      {hasChatAccess && (
+        <div style={{ height: 4, background: "linear-gradient(90deg, #3B82F6, #6366F1, #8B5CF6)", borderRadius: "0 0 0 0", flexShrink: 0 }} />
+      )}
+
+      <div style={{ padding: "1.25rem 1.25rem 0.75rem", flex: 1, display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+        {/* Header: Team Name + Status Badge */}
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "0.75rem" }}>
+          <h3 style={{ fontSize: "1.125rem", fontWeight: 800, color: "#0F172A", lineHeight: 1.3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0, flex: 1 }}>
+            {team.name}
+          </h3>
+          <div style={{ flexShrink: 0 }}>
+            <Badge variant={teamStatusBadge(team.status).variant}>{teamStatusBadge(team.status).label}</Badge>
+          </div>
         </div>
-        {team.eventName && <p className="text-xs text-blue-600 font-semibold">{team.eventName}</p>}
-        {team.description && <p className="text-xs text-slate-600 line-clamp-2">{team.description}</p>}
-        <div className="text-xs text-slate-600 pt-2 border-t border-slate-100">
-          <p><span className="font-semibold text-slate-700">Members ({team.memberIds.length}):</span></p>
-          <p className="text-slate-500 truncate mt-0.5">{team.memberNames?.join(", ") || `${team.memberIds.length} members`}</p>
-        </div>
-        {team.leaderName && (
-          <p className="text-[11px] text-amber-700 font-semibold bg-amber-50 px-2 py-1 rounded-lg inline-flex items-center gap-1 border border-amber-100">
-            <Star size={10} fill="currentColor" /> Leader: {team.leaderName}
+
+        {/* Event name */}
+        {team.eventName && (
+          <p style={{ fontSize: "0.75rem", color: "#2563EB", fontWeight: 700, letterSpacing: "0.02em" }}>{team.eventName}</p>
+        )}
+
+        {/* Description */}
+        {team.description && (
+          <p style={{ fontSize: "0.8125rem", color: "#64748B", lineHeight: 1.5, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>
+            {team.description}
           </p>
         )}
-        {team.reviewedByName && <p className="text-[11px] text-slate-500">Reviewed by <strong>{team.reviewedByName}</strong></p>}
+
+        {/* Members section */}
+        <div style={{ paddingTop: "0.625rem", borderTop: "1px solid rgba(148, 163, 184, 0.15)" }}>
+          <p style={{ fontSize: "0.6875rem", fontWeight: 700, color: "#475569", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: "0.25rem" }}>
+            Members ({team.memberIds.length}):
+          </p>
+          <p style={{ fontSize: "0.8125rem", color: "#64748B", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {team.memberNames?.join(", ") || `${team.memberIds.length} members`}
+          </p>
+        </div>
+
+        {/* Leader badge */}
+        {team.leaderName && (
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: "0.6875rem", fontWeight: 700, color: "#92400E", background: "#FEF3C7", border: "1px solid #FDE68A", borderRadius: 8, padding: "4px 10px", width: "fit-content" }}>
+            <Star size={11} fill="currentColor" /> Leader: {team.leaderName}
+          </span>
+        )}
+
+        {/* Reviewed by */}
+        {team.reviewedByName && (
+          <p style={{ fontSize: "0.6875rem", color: "#94A3B8" }}>
+            Reviewed by <strong style={{ color: "#64748B" }}>{team.reviewedByName}</strong>
+          </p>
+        )}
+
+        {/* Rejection feedback */}
         {team.reviewFeedback && isRejected && (
-          <div className="p-2 bg-red-50 border border-red-200 rounded-lg text-xs text-red-700"><strong>Feedback:</strong> {team.reviewFeedback}</div>
+          <div style={{ padding: "0.5rem 0.75rem", background: "#FFF1F2", border: "1px solid #FECDD3", borderRadius: 10, fontSize: "0.75rem", color: "#DC2626" }}>
+            <strong>Feedback:</strong> {team.reviewFeedback}
+          </div>
+        )}
+
+        {/* Member badge */}
+        {hasChatAccess && (
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: "0.6875rem", fontWeight: 700, color: "#1D4ED8", background: "#DBEAFE", border: "1px solid #93C5FD", borderRadius: 8, padding: "4px 10px", width: "fit-content" }}>
+            <CheckCircle2 size={11} /> {isDirectMember ? "You're in this team" : "Staff Chat Access"}
+          </span>
         )}
       </div>
 
-      <div className="pt-2 border-t border-slate-100 space-y-2">
+      {/* Footer: Actions */}
+      <div style={{ padding: "0.75rem 1.25rem 1.25rem", borderTop: "1px solid rgba(148, 163, 184, 0.12)", display: "flex", flexDirection: "column", gap: "0.625rem" }}>
+        {/* Staff Approve/Reject buttons */}
         {isStaff && isPending && (
-          <div className="flex items-center gap-2 pt-1">
-            <Button size="sm" variant="primary" className="flex-1 text-xs" icon={<Check size={14} />} loading={actionLoading} onClick={onApprove}>Approve Team</Button>
-            <Button size="sm" variant="outline" className="text-xs text-red-600 hover:bg-red-50" icon={<X size={14} />} disabled={actionLoading} onClick={onReject}>Reject</Button>
+          <div style={{ display: "flex", gap: "0.5rem" }}>
+            <Button size="md" variant="primary" className="flex-1" icon={<Check size={16} />} loading={actionLoading} onClick={onApprove}>Approve</Button>
+            <Button size="md" variant="danger" icon={<X size={16} />} disabled={actionLoading} onClick={onReject}>Reject</Button>
           </div>
         )}
-        <div className="flex items-center justify-between text-xs text-slate-400">
-          <span>By {team.createdByName}</span>
-          <div className="flex items-center gap-2">
-            <button onClick={onViewInfo}
-              className="inline-flex items-center gap-1 text-xs font-semibold text-blue-600 hover:text-blue-800 hover:bg-blue-50 px-2 py-1 rounded-lg transition-colors cursor-pointer border border-transparent hover:border-blue-200">
-              <Info size={12} /> View Info
-            </button>
-            <Link href={`/teams/${team.id}`} className="font-semibold text-slate-500 hover:text-slate-700 hover:underline">Details →</Link>
+
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "0.5rem", flexWrap: "wrap" }}>
+          <span style={{ fontSize: "0.75rem", color: "#94A3B8", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1, minWidth: "80px" }}>
+            By {team.createdByName}
+          </span>
+          <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+            {hasChatAccess && onOpenChat && (
+              <Button size="md" variant="primary" icon={<MessageCircle size={15} />} onClick={onOpenChat}>
+                Chat
+              </Button>
+            )}
+            <Button size="md" variant={hasChatAccess ? "outline" : "primary"} icon={<Info size={15} />} onClick={onViewInfo}>
+              Details
+            </Button>
           </div>
         </div>
       </div>
@@ -599,21 +681,33 @@ function TeamInfoModal({ team, isStaff, onClose, onOpenChat, onDeleteTeam }: {
             )}
 
             {/* Open Chat CTA */}
-            <button onClick={onOpenChat} style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0.875rem 1rem", background: "linear-gradient(135deg,#25D366,#128C7E)", borderRadius: 12, border: "none", cursor: "pointer", color: "#fff" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: "0.625rem" }}>
-                <MessageCircle size={20} />
+            <button onClick={onOpenChat} style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0.875rem 1.125rem", background: "linear-gradient(135deg,#25D366,#128C7E)", borderRadius: 14, border: "none", cursor: "pointer", color: "#fff", transition: "all 0.15s" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+                <MessageCircle size={22} />
                 <div style={{ textAlign: "left" }}>
-                  <p style={{ fontWeight: 700, fontSize: 14 }}>Team Group Chat</p>
-                  <p style={{ fontSize: 11, opacity: 0.85 }}>Open WhatsApp-style chat</p>
+                  <p style={{ fontWeight: 700, fontSize: 15 }}>Team Group Chat</p>
+                  <p style={{ fontSize: 12, opacity: 0.85 }}>Open WhatsApp-style chat</p>
                 </div>
               </div>
-              <ChevronRight size={18} />
+              <ChevronRight size={20} />
             </button>
+
+            {/* Full Details Page Link */}
+            <Link href={`/teams/${team.id}`} style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0.875rem 1.125rem", background: "linear-gradient(135deg,#EFF6FF,#DBEAFE)", borderRadius: 14, border: "1.5px solid #93C5FD", cursor: "pointer", color: "#1D4ED8", textDecoration: "none", transition: "all 0.15s" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+                <Info size={22} />
+                <div style={{ textAlign: "left" }}>
+                  <p style={{ fontWeight: 700, fontSize: 15 }}>Full Team Details</p>
+                  <p style={{ fontSize: 12, opacity: 0.7 }}>Members, docs, links & management</p>
+                </div>
+              </div>
+              <ChevronRight size={20} />
+            </Link>
 
             {/* Delete Team (Staff/Developer only) */}
             {isStaff && onDeleteTeam && (
-              <button onClick={onDeleteTeam} style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: "0.5rem", padding: "0.75rem 1rem", background: "var(--red-50)", border: "1px solid var(--red-100)", borderRadius: 12, cursor: "pointer", color: "var(--red-600)", fontWeight: 700, fontSize: 13, transition: "all 0.15s" }}>
-                <Trash2 size={15} />
+              <button onClick={onDeleteTeam} style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: "0.5rem", padding: "0.875rem 1rem", background: "#FEF2F2", border: "1.5px solid #FECDD3", borderRadius: 14, cursor: "pointer", color: "#DC2626", fontWeight: 700, fontSize: 14, transition: "all 0.15s" }}>
+                <Trash2 size={16} />
                 Delete This Team
               </button>
             )}

@@ -90,19 +90,47 @@ function ExportCenterContent() {
     }
   };
 
+  // State to hold teams for Specific Team Export
+  const [allTeams, setAllTeams] = useState<{ id: string, name: string }[]>([]);
+  const [selectedTeam, setSelectedTeam] = useState<string>("");
+
+  React.useEffect(() => {
+    async function loadTeams() {
+      const teamsObj = await getTeams();
+      setAllTeams(teamsObj);
+    }
+    loadTeams();
+  }, []);
+
   // Team Exports
-  const handleExportTeams = async (mode: "teams_members" | "full") => {
+  const handleExportTeams = async (mode: "teams_members" | "full" | "specific") => {
     setExporting(`teams_${mode}`);
     try {
       const teams = await getTeams();
 
       let headers: string[] = ["Team ID", "Team Name", "Event", "Leader Name", "Member Count", "Member Names", "Status", "Drive Link"];
-      let rows: string[][] = teams.map((t) => [
-        t.id, t.name, t.eventName || "General", t.leaderName || "N/A", String(t.memberIds.length),
-        t.memberNames?.join("; ") || "", t.status, t.driveLink || ""
-      ]);
+      let rows: string[][] = [];
 
-      downloadCSV(`mentormesh_teams_${mode}`, [headers, ...rows]);
+      if (mode === "specific") {
+        if (!selectedTeam) {
+          error("Please select a team to export.");
+          return;
+        }
+        const teamObj = teams.find(t => t.id === selectedTeam);
+        if (teamObj) {
+          rows = [[
+            teamObj.id, teamObj.name, teamObj.eventName || "General", teamObj.leaderName || "N/A", String(teamObj.memberIds.length),
+            teamObj.memberNames?.join("; ") || "", teamObj.status, teamObj.driveLink || ""
+          ]];
+        }
+      } else {
+        rows = teams.map((t) => [
+          t.id, t.name, t.eventName || "General", t.leaderName || "N/A", String(t.memberIds.length),
+          t.memberNames?.join("; ") || "", t.status, t.driveLink || ""
+        ]);
+      }
+
+      downloadCSV(mode === "specific" ? `mentormesh_team_${selectedTeam}` : `mentormesh_teams_${mode}`, [headers, ...rows]);
       success("Teams export generated!");
     } catch {
       error("Export failed.");
@@ -117,9 +145,10 @@ function ExportCenterContent() {
     try {
       const events = await getEvents();
 
-      let headers: string[] = ["Event ID", "Event Name", "Type", "Date", "Location", "Organizer", "Status", "Drive Link"];
-      let rows: string[][] = events.map((e) => [
-        e.id, e.name, e.type, e.date, e.location || "", e.organizer || "", e.status, e.driveLink || ""
+      let headers: string[] = ["S.No", "Event Name", "Type", "Date", "Submitted By", "Team Name/Participation", "Participants", "Result / Prize", "Location", "Status"];
+      let rows: string[][] = events.map((e, index) => [
+        String(index + 1), e.name, e.type, e.date || "", e.submittedByName || "Unknown", e.teamName || "Individual",
+        e.participantNames?.join("; ") || "", e.result || "", e.location || "", e.submissionStatus || e.status
       ]);
 
       downloadCSV("mentormesh_events", [headers, ...rows]);
@@ -218,6 +247,27 @@ function ExportCenterContent() {
             >
               Full Team Reports (CSV)
             </Button>
+            <div className="pt-2 border-t border-slate-100 mt-2">
+              <select
+                className="mm-input mm-select text-xs mb-2"
+                value={selectedTeam}
+                onChange={(e) => setSelectedTeam(e.target.value)}
+              >
+                <option value="">-- Download Specific Team --</option>
+                {allTeams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+              </select>
+              <Button
+                variant="outline"
+                fullWidth
+                size="sm"
+                icon={<Download size={14} />}
+                loading={exporting === "teams_specific"}
+                onClick={() => handleExportTeams("specific")}
+                disabled={!selectedTeam}
+              >
+                Download Team Details
+              </Button>
+            </div>
           </div>
         </div>
 

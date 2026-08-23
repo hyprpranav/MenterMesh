@@ -55,7 +55,16 @@ export function LoadingState({ message = "Loading…", fullPage = false }: Loadi
   return (
     <div
       className={`mm-loading-overlay${fullPage ? " mm-loading-fullpage" : ""}`}
-      style={fullPage ? { minHeight: "60vh" } : { minHeight: "200px" }}
+      style={fullPage ? {
+        position: "absolute",
+        top: "50%",
+        left: "50%",
+        transform: "translate(-50%, -50%)",
+        width: "100%",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center"
+      } : { minHeight: "200px" }}
     >
       {/* Desktop: 3D Loader */}
       <div className="mm-loading-desktop">

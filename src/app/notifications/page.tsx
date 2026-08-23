@@ -120,7 +120,7 @@ function NotificationsContent() {
           description="You're all caught up! Updates and requests will appear here."
         />
       ) : (
-        <div className="space-y-2.5">
+        <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
           {notifications.map((n) => {
             const cfg = iconConfig[n.type] ?? iconConfig.default;
             return (
@@ -157,15 +157,15 @@ function NotificationsContent() {
                   <p className="text-xs text-slate-600 mt-1 leading-relaxed overflow-wrap-anywhere">{n.message}</p>
 
                   {n.link && (
-                    <div className="mt-2" onClick={(e) => e.stopPropagation()}>
+                    <div className="mt-3" onClick={(e) => e.stopPropagation()}>
                       <a
                         href={n.link}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="inline-flex items-center justify-center rounded-md text-[11px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring bg-primary text-primary-foreground shadow hover:bg-primary/90 h-6 px-3 py-1"
+                        className="inline-flex items-center justify-center rounded-lg text-[12px] font-bold transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 h-8 px-4 py-2 shadow-sm"
                         onClick={() => !n.read && handleMarkRead(n.id)}
                       >
-                        Send a Message
+                        Action
                       </a>
                     </div>
                   )}

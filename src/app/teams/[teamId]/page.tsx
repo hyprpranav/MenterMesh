@@ -42,6 +42,7 @@ import {
   Search,
   AlertTriangle,
   Clock,
+  Pencil,
 } from "lucide-react";
 import { addDoc, collection } from "firebase/firestore";
 import { db } from "@/lib/firebase/config";
@@ -61,6 +62,11 @@ export default function TeamDetailPage() {
   const [driveLink, setDriveLink] = useState("");
   const [linkedInPost, setLinkedInPost] = useState("");
   const [updatingLinks, setUpdatingLinks] = useState(false);
+
+  // Team Name Editing
+  const [isEditingName, setIsEditingName] = useState(false);
+  const [editNameValue, setEditNameValue] = useState("");
+  const [savingName, setSavingName] = useState(false);
 
   // Add Member Modal
   const [addMemberOpen, setAddMemberOpen] = useState(false);
@@ -108,6 +114,7 @@ export default function TeamDetailPage() {
       setTeam(teamData);
       setDriveLink(teamData.driveLink || "");
       setLinkedInPost(teamData.linkedInPost || "");
+      setEditNameValue(teamData.name || "");
       setAllStudents(studentsList);
 
       // Fetch member profiles
@@ -146,6 +153,25 @@ export default function TeamDetailPage() {
       error("Failed to update links.");
     } finally {
       setUpdatingLinks(false);
+    }
+  };
+
+  // Save Team Name
+  const handleSaveTeamName = async () => {
+    if (!editNameValue.trim()) {
+      error("Team name cannot be empty.");
+      return;
+    }
+    setSavingName(true);
+    try {
+      await updateTeam(team.id, { name: editNameValue.trim() });
+      setTeam({ ...team, name: editNameValue.trim() });
+      setIsEditingName(false);
+      success("Team name updated successfully!");
+    } catch {
+      error("Failed to update team name.");
+    } finally {
+      setSavingName(false);
     }
   };
 
@@ -297,20 +323,20 @@ export default function TeamDetailPage() {
     <AppShell>
       <div className="space-y-6 max-w-5xl mx-auto w-full mm-page-animate">
         {/* Top Header & Navigation */}
-        <div className="flex items-center justify-between">
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "0.75rem" }}>
           <Link
             href="/teams"
-            className="text-xs font-semibold text-slate-500 hover:text-blue-600 inline-flex items-center gap-1"
+            style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: "0.875rem", fontWeight: 600, color: "#3B82F6", textDecoration: "none", padding: "6px 12px", borderRadius: 10, border: "1px solid #DBEAFE", background: "#EFF6FF", transition: "all 0.15s" }}
           >
-            <ArrowLeft size={14} /> Back to Teams
+            <ArrowLeft size={16} /> Back to Teams
           </Link>
 
-          <div className="flex items-center gap-2">
+          <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexWrap: "wrap" }}>
             {canEdit && team.status !== "finalized" && (
               <Button
                 variant="outline"
-                size="sm"
-                icon={<UserPlus size={14} />}
+                size="md"
+                icon={<UserPlus size={16} />}
                 onClick={() => {
                   setMemberSearch("");
                   setAddMemberOpen(true);
@@ -323,8 +349,8 @@ export default function TeamDetailPage() {
             {isStaff && team.status !== "finalized" && (
               <Button
                 variant="primary"
-                size="sm"
-                icon={<Lock size={14} />}
+                size="md"
+                icon={<Lock size={16} />}
                 loading={finalizing}
                 onClick={handleFinalize}
               >
@@ -335,8 +361,8 @@ export default function TeamDetailPage() {
             {canEdit && (
               <Button
                 variant="danger"
-                size="sm"
-                icon={<Trash2 size={14} />}
+                size="md"
+                icon={<Trash2 size={16} />}
                 onClick={() => { setDeleteOpen(true); setDeleteSecurityCode(""); }}
               >
                 Delete Team
@@ -347,26 +373,26 @@ export default function TeamDetailPage() {
 
         {/* Staff Approval Action Banner */}
         {isPending && isStaff && (
-          <div className="p-4 bg-amber-50 border border-amber-200 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-sm">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center shrink-0">
-                <Clock size={20} />
+          <div style={{ padding: "1.25rem 1.5rem", background: "linear-gradient(135deg, #FFFBEB 0%, #FEF3C7 100%)", border: "1.5px solid #FCD34D", borderRadius: 18, display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", gap: "1rem", boxShadow: "0 4px 12px rgba(252, 211, 77, 0.15)" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "0.875rem" }}>
+              <div style={{ width: 44, height: 44, borderRadius: 14, background: "#FDE68A", color: "#92400E", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                <Clock size={22} />
               </div>
               <div>
-                <h2 className="font-bold text-amber-950 text-sm">
-                  Team Proposal Awaiting Staff Approval
+                <h2 style={{ fontWeight: 800, color: "#78350F", fontSize: "1rem" }}>
+                  Team Proposal Awaiting Approval
                 </h2>
-                <p className="text-xs text-amber-800">
+                <p style={{ fontSize: "0.8125rem", color: "#92400E", marginTop: 2 }}>
                   Submitted by {team.createdByName}. Review team composition and decide.
                 </p>
               </div>
             </div>
 
-            <div className="flex items-center gap-2 w-full sm:w-auto">
+            <div style={{ display: "flex", alignItems: "center", gap: "0.625rem" }}>
               <Button
                 variant="primary"
-                size="sm"
-                icon={<Check size={15} />}
+                size="md"
+                icon={<Check size={18} />}
                 loading={reviewing}
                 onClick={handleApproveProposal}
               >
@@ -374,8 +400,8 @@ export default function TeamDetailPage() {
               </Button>
               <Button
                 variant="destructive"
-                size="sm"
-                icon={<X size={15} />}
+                size="md"
+                icon={<X size={18} />}
                 disabled={reviewing}
                 onClick={() => {
                   setRejectReason("");
@@ -397,32 +423,56 @@ export default function TeamDetailPage() {
         )}
 
         {/* Hero Card */}
-        <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-4">
-          <div className="flex flex-wrap items-start justify-between gap-4">
-            <div>
-              <div className="flex items-center gap-3 flex-wrap">
-                <h1 className="text-2xl font-bold text-slate-900">{team.name}</h1>
+        <div style={{ background: "#fff", border: "1.5px solid #E2E8F0", borderRadius: 20, padding: "1.75rem", boxShadow: "0 4px 16px rgba(15,23,42,0.06)", display: "flex", flexDirection: "column", gap: "1rem" }}>
+          <div style={{ display: "flex", flexWrap: "wrap", alignItems: "flex-start", justifyContent: "space-between", gap: "1rem" }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", flexWrap: "wrap" }}>
+                {!isEditingName ? (
+                  <>
+                    <h1 style={{ fontSize: "clamp(1.5rem, 3vw, 2rem)", fontWeight: 800, color: "#0F172A", letterSpacing: "-0.02em", lineHeight: 1.2, overflowWrap: "anywhere" }}>{team.name}</h1>
+                    {isStaff && (
+                      <button onClick={() => setIsEditingName(true)} style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 32, height: 32, borderRadius: 10, background: "#F1F5F9", color: "#64748B", border: "none", cursor: "pointer", transition: "all 0.15s" }}>
+                        <Pencil size={15} />
+                      </button>
+                    )}
+                  </>
+                ) : (
+                  <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexWrap: "wrap", width: "100%", maxWidth: 500 }}>
+                    <input
+                      type="text"
+                      className="mm-input"
+                      style={{ flex: 1, fontSize: "1.25rem", fontWeight: 700 }}
+                      value={editNameValue}
+                      onChange={(e) => setEditNameValue(e.target.value)}
+                      placeholder="Enter new team name"
+                      autoFocus
+                    />
+                    <Button size="md" variant="primary" loading={savingName} onClick={handleSaveTeamName}>Save</Button>
+                    <Button size="md" variant="secondary" onClick={() => { setIsEditingName(false); setEditNameValue(team.name); }}>Cancel</Button>
+                  </div>
+                )}
                 <Badge variant={teamStatusBadge(team.status).variant}>
                   {teamStatusBadge(team.status).label}
                 </Badge>
               </div>
 
               {team.eventName && (
-                <p className="text-xs text-blue-600 font-semibold mt-1">
+                <p style={{ fontSize: "0.8125rem", color: "#2563EB", fontWeight: 700, marginTop: 6 }}>
                   Event: {team.eventName}
                 </p>
               )}
 
               {team.description && (
-                <p className="text-sm text-slate-600 mt-2">{team.description}</p>
+                <p style={{ fontSize: "0.9375rem", color: "#64748B", lineHeight: 1.6, marginTop: 10 }}>{team.description}</p>
               )}
             </div>
 
-            {!isMember && team.status !== "finalized" && (
+            {/* Only students (non-staff, non-member) see Request to Join */}
+            {!isMember && !isStaff && team.status !== "finalized" && (
               <Button
                 variant={joinRequested ? "secondary" : "primary"}
-                size="sm"
-                icon={<UserPlus size={16} />}
+                size="md"
+                icon={<UserPlus size={18} />}
                 disabled={joinRequested}
                 loading={requesting}
                 onClick={handleRequestJoin}
@@ -432,34 +482,34 @@ export default function TeamDetailPage() {
             )}
           </div>
 
-          <div className="flex items-center gap-4 text-xs text-slate-500 pt-3 border-t border-slate-100 flex-wrap">
+          <div style={{ display: "flex", alignItems: "center", gap: "1rem", flexWrap: "wrap", paddingTop: "0.875rem", borderTop: "1px solid #F1F5F9", fontSize: "0.8125rem", color: "#64748B" }}>
             <span>
-              Created by <strong>{team.createdByName}</strong>
+              Created by <strong style={{ color: "#334155" }}>{team.createdByName}</strong>
             </span>
             {team.leaderName && (
-              <span className="text-amber-700 font-semibold bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: "0.75rem", fontWeight: 700, color: "#92400E", background: "#FEF3C7", padding: "4px 12px", borderRadius: 8, border: "1px solid #FDE68A" }}>
                 ⭐ Leader: {team.leaderName}
               </span>
             )}
             {team.reviewedByName && (
-              <span className="text-slate-500">
-                Reviewed by <strong>{team.reviewedByName}</strong>
+              <span style={{ color: "#94A3B8" }}>
+                Reviewed by <strong style={{ color: "#64748B" }}>{team.reviewedByName}</strong>
               </span>
             )}
           </div>
         </div>
 
         {/* Member Grid */}
-        <div className="mm-card space-y-4">
-          <div className="flex items-center justify-between border-b border-slate-100 pb-2">
-            <h2 className="font-bold text-slate-900 text-lg">
+        <div style={{ background: "#fff", border: "1.5px solid #E2E8F0", borderRadius: 20, padding: "1.5rem", boxShadow: "0 2px 8px rgba(15,23,42,0.04)", display: "flex", flexDirection: "column", gap: "1rem" }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", paddingBottom: "0.75rem", borderBottom: "1px solid #F1F5F9" }}>
+            <h2 style={{ fontSize: "1.25rem", fontWeight: 800, color: "#0F172A", letterSpacing: "-0.01em" }}>
               Team Members ({members.length})
             </h2>
             {canEdit && team.status !== "finalized" && (
               <Button
                 variant="outline"
-                size="sm"
-                icon={<UserPlus size={14} />}
+                size="md"
+                icon={<UserPlus size={16} />}
                 onClick={() => {
                   setMemberSearch("");
                   setAddMemberOpen(true);
@@ -476,44 +526,44 @@ export default function TeamDetailPage() {
               return (
                 <div
                   key={m.uid}
-                  className="flex items-center justify-between p-3 rounded-xl border border-slate-200 bg-slate-50"
+                  style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0.875rem", borderRadius: 14, border: isMemberLeader ? "1.5px solid #FDE68A" : "1.5px solid #E2E8F0", background: isMemberLeader ? "#FFFBEB" : "#F8FAFC", transition: "all 0.15s" }}
                 >
-                  <div className="flex items-center gap-3 min-w-0">
+                  <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", minWidth: 0, flex: 1 }}>
                     <Avatar name={m.name} photoUrl={m.profilePhoto} size="md" />
-                    <div className="truncate">
+                    <div style={{ minWidth: 0, overflow: "hidden" }}>
                       <Link
                         href={`/students/${m.uid}`}
-                        className="font-bold text-slate-900 text-sm hover:text-blue-600 truncate block"
+                        style={{ display: "block", fontWeight: 700, color: "#0F172A", fontSize: "0.9375rem", textDecoration: "none", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
                       >
                         {m.name}
                       </Link>
-                      <p className="text-xs text-slate-500 truncate">
+                      <p style={{ fontSize: "0.75rem", color: "#94A3B8", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginTop: 2 }}>
                         {m.department} - {m.year} Yr ({m.section})
                       </p>
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-2 shrink-0">
+                  <div style={{ display: "flex", alignItems: "center", gap: "0.375rem", flexShrink: 0, marginLeft: "0.5rem" }}>
                     {isMemberLeader ? (
-                      <span className="text-[11px] font-bold text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full flex items-center gap-1 border border-amber-300">
+                      <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: "0.6875rem", fontWeight: 800, color: "#D97706", background: "#FEF3C7", border: "1px solid #FDE68A", borderRadius: 99, padding: "4px 12px" }}>
                         <Star size={12} fill="currentColor" /> Leader
                       </span>
                     ) : (
                       canEdit &&
                       team.status !== "finalized" && (
-                        <div className="flex items-center gap-1">
+                        <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
                           <button
                             onClick={() => handleAssignLeader(m)}
-                            className="text-[11px] text-slate-600 hover:text-amber-600 font-medium px-2 py-0.5 rounded border border-slate-200 hover:border-amber-400 bg-white cursor-pointer"
+                            style={{ fontSize: "0.75rem", color: "#64748B", fontWeight: 600, padding: "5px 12px", borderRadius: 8, border: "1px solid #CBD5E1", background: "#fff", cursor: "pointer", transition: "all 0.15s", whiteSpace: "nowrap" }}
                           >
                             Make Leader
                           </button>
                           <button
                             onClick={() => handleRemoveMember(m)}
-                            className="text-[11px] text-red-600 hover:bg-red-50 p-1 rounded cursor-pointer"
+                            style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 30, height: 30, borderRadius: 8, border: "none", background: "#FEF2F2", color: "#EF4444", cursor: "pointer" }}
                             title="Remove member"
                           >
-                            <X size={14} />
+                            <X size={15} />
                           </button>
                         </div>
                       )
@@ -526,8 +576,8 @@ export default function TeamDetailPage() {
         </div>
 
         {/* Links & Documentation */}
-        <div className="mm-card space-y-4">
-          <h2 className="font-bold text-slate-900 text-lg border-b border-slate-100 pb-2">
+        <div style={{ background: "#fff", border: "1.5px solid #E2E8F0", borderRadius: 20, padding: "1.5rem", boxShadow: "0 2px 8px rgba(15,23,42,0.04)", display: "flex", flexDirection: "column", gap: "1rem" }}>
+          <h2 style={{ fontSize: "1.25rem", fontWeight: 800, color: "#0F172A", paddingBottom: "0.75rem", borderBottom: "1px solid #F1F5F9", letterSpacing: "-0.01em" }}>
             Documentation & External Links
           </h2>
 
