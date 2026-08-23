@@ -344,11 +344,11 @@ function TeamsContent() {
                 })}
               </div>
             )}
-            <div className="border border-slate-200 rounded-2xl overflow-hidden bg-white shadow-sm flex flex-col h-[320px]">
-              <div className="bg-slate-50/80 p-3 sm:p-4 border-b border-slate-200 shrink-0">
+            <div className="border border-slate-200 rounded-2xl overflow-hidden bg-white shadow-sm flex flex-col h-[380px]">
+              <div className="bg-slate-50/80 p-4 sm:p-5 border-b border-slate-200 shrink-0">
                 <div className="relative">
-                  <Search size={22} className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
-                  <input type="text" placeholder="Search students by name, reg number..." className="block w-full !pl-14 pr-5 py-4 text-[16px] bg-white border border-slate-200/80 rounded-[14px] outline-none hover:border-slate-300 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all font-medium placeholder-slate-400 shadow-[0_1px_3px_rgba(0,0,0,0.03)]" value={studentSearch} onChange={(e) => setStudentSearch(e.target.value)} />
+                  <Search size={26} className="absolute left-6 top-1/2 -translate-y-1/2 text-blue-500 pointer-events-none" />
+                  <input type="text" placeholder="Search students by name, reg number..." className="block w-full !pl-[64px] pr-5 py-5 text-[18px] bg-white border-2 border-slate-200/80 rounded-2xl outline-none hover:border-slate-300 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/15 transition-all font-bold placeholder-slate-400 shadow-sm" value={studentSearch} onChange={(e) => setStudentSearch(e.target.value)} />
                 </div>
               </div>
               <div className="flex-1 overflow-y-auto p-2 sm:p-3 bg-slate-50/30">
