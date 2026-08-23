@@ -530,15 +530,15 @@ export default function EditEventPage() {
               </div>
             )}
 
-            <div className="mt-14 pt-14 border-t border-slate-200/60" /> {/* Project Context */}
-            <Row>
-              <Field label="Project Title / Theme" optional>
-                <input className={T.input} placeholder="e.g. Smart Agriculture Bot" value={projectTitle} onChange={e => setProjectTitle(e.target.value)} />
+            <div className="mt-16 pt-12 border-t-2 border-dashed border-slate-200/80" /> {/* Project Context */}
+            <div className="flex flex-col gap-10">
+              <Field label="Project Title / Theme" required>
+                <input className={`${T.input} text-[16px] md:text-[17px] py-4 min-h-[56px] shadow-sm`} placeholder="e.g. Smart Agriculture Bot" value={projectTitle} onChange={e => setProjectTitle(e.target.value)} required />
               </Field>
               <Field label="Event Track / Category" optional>
                 <input className={T.input} placeholder="e.g. AI/ML, Hardware, Fintech" value={eventTrack} onChange={e => setEventTrack(e.target.value)} />
               </Field>
-            </Row>
+            </div>
           </SectionCard>
 
           {/* 3. EXPERIENCE & RESULT */}
