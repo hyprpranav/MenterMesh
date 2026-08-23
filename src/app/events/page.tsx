@@ -37,6 +37,10 @@ function EventsContent() {
         if (!user) return;
         const list = await getEventsForViewer(user.uid, user.role);
         setEvents(list);
+        if (typeof window !== "undefined") {
+          localStorage.setItem("last_visited_events", Date.now().toString());
+          window.dispatchEvent(new Event("mentormesh_notifications_read"));
+        }
       } catch (err) {
         console.error(err);
       } finally {
@@ -132,8 +136,9 @@ function EventCard({ event, currentUserId, isStaff }: { event: Event; currentUse
   const isApproved = event.submissionStatus === "approved" || !event.submissionStatus;
   const isRejected = event.submissionStatus === "rejected";
   const isParticipant = currentUserId ? (event.participantIds || []).includes(currentUserId) : false;
-  // Similar to teams, give staff highlighted access
-  const isHighlighted = isParticipant || isStaff;
+  const isOwner = currentUserId === event.submittedBy;
+  // Highlight events if you submitted it, if you are a participant, or if you are staff looking at it
+  const isHighlighted = isParticipant || isOwner || isStaff;
 
   const statusBadge = isPending ? (
     <Badge variant="pending" icon={<Clock size={11} />}>Pending</Badge>

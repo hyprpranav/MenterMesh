@@ -357,9 +357,8 @@ export async function reviewTeamProposal(
     const message =
       decision === "approved"
         ? `Your team proposal "${teamData.name}" has been approved by ${reviewerName}.`
-        : `Your team proposal "${teamData.name}" was rejected. ${
-            feedback ? `Feedback: ${feedback}` : ""
-          }`;
+        : `Your team proposal "${teamData.name}" was rejected. ${feedback ? `Feedback: ${feedback}` : ""
+        }`;
 
     try {
       await addDoc(collection(db, "notifications"), {
@@ -545,11 +544,17 @@ export async function getStudentEvents(uid: string): Promise<Event[]> {
 
 export async function getEventsForViewer(uid: string, role: UserRole): Promise<Event[]> {
   try {
-    if (role === "staff" || role === "master") return getEvents();
-    const snap = await getDocs(query(collection(db, "events"), where("submittedBy", "==", uid)));
+    // Return all events, just like Teams.
+    const snap = await getDocs(collection(db, "events"));
     return snap.docs
       .map((d) => ({ id: d.id, ...d.data() } as Event))
-      .sort((a, b) => getTimestampMs(b.date) - getTimestampMs(a.date));
+      .sort((a, b) => {
+        // Owner's events first
+        if (a.submittedBy === uid && b.submittedBy !== uid) return -1;
+        if (a.submittedBy !== uid && b.submittedBy === uid) return 1;
+        // Then by date
+        return getTimestampMs(b.date) - getTimestampMs(a.date);
+      });
   } catch (err) {
     console.error("getEventsForViewer error:", err);
     return [];

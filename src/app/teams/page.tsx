@@ -102,6 +102,10 @@ function TeamsContent() {
     try {
       const [tmList, evList, stList] = await Promise.all([getTeams(), getEvents(), getActiveStudents()]);
       setTeams(tmList); setEvents(evList); setAvailableStudents(stList);
+      if (typeof window !== "undefined") {
+        localStorage.setItem("last_visited_teams", Date.now().toString());
+        window.dispatchEvent(new Event("mentormesh_notifications_read"));
+      }
     } catch (err) { console.error(err); }
     finally { setLoading(false); }
   };

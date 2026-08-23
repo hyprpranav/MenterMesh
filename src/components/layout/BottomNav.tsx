@@ -16,26 +16,34 @@ import { useAuth } from "@/contexts/AuthContext";
 import { cn } from "@/lib/utils";
 
 const PRIMARY_NAV = [
-  { label: "Home",     href: "/dashboard",  icon: LayoutDashboard },
-  { label: "Students", href: "/students",   icon: Users },
-  { label: "Teams",    href: "/teams",      icon: UsersRound },
-  { label: "Events",   href: "/events",     icon: Calendar },
+  { label: "Home", href: "/dashboard", icon: LayoutDashboard },
+  { label: "Students", href: "/students", icon: Users },
+  { label: "Teams", href: "/teams", icon: UsersRound },
+  { label: "Events", href: "/events", icon: Calendar },
 ];
 
 const MORE_NAV = [
-  { label: "Profile",       href: "/profile",       icon: User,       roles: ["student", "staff", "master"] },
-  { label: "Community",     href: "/community",     icon: BookOpen,   roles: ["student", "staff", "master"] },
-  { label: "Announcements", href: "/announcements", icon: Megaphone,  roles: ["student", "staff", "master"] },
-  { label: "Notifications", href: "/notifications", icon: Bell,       roles: ["student", "staff", "master"] },
-  { label: "Team Builder",  href: "/team-builder",  icon: Layers,     roles: ["staff", "master"] },
-  { label: "Manage Students",href: "/admin/students", icon: Users,    roles: ["staff", "master"] },
-  { label: "Access Requests",href: "/admin/requests", icon: UserCheck,roles: ["staff", "master"] },
-  { label: "Export Data",   href: "/admin/export",  icon: Download,   roles: ["staff", "master"] },
-  { label: "Staff Mgmt",    href: "/admin/staff",   icon: ShieldCheck,roles: ["master"] },
-  { label: "Settings",      href: "/admin/settings",icon: Settings,   roles: ["master"] },
+  { label: "Profile", href: "/profile", icon: User, roles: ["student", "staff", "master"] },
+  { label: "Community", href: "/community", icon: BookOpen, roles: ["student", "staff", "master"] },
+  { label: "Announcements", href: "/announcements", icon: Megaphone, roles: ["student", "staff", "master"] },
+  { label: "Notifications", href: "/notifications", icon: Bell, roles: ["student", "staff", "master"] },
+  { label: "Team Builder", href: "/team-builder", icon: Layers, roles: ["staff", "master"] },
+  { label: "Manage Students", href: "/admin/students", icon: Users, roles: ["staff", "master"] },
+  { label: "Access Requests", href: "/admin/requests", icon: UserCheck, roles: ["staff", "master"] },
+  { label: "Export Data", href: "/admin/export", icon: Download, roles: ["staff", "master"] },
+  { label: "Staff Mgmt", href: "/admin/staff", icon: ShieldCheck, roles: ["master"] },
+  { label: "Settings", href: "/admin/settings", icon: Settings, roles: ["master"] },
 ];
 
-export function BottomNav({ unreadCount = 0 }: { unreadCount?: number }) {
+export function BottomNav({
+  unreadCount = 0,
+  hasNewTeams = false,
+  hasNewEvents = false,
+}: {
+  unreadCount?: number;
+  hasNewTeams?: boolean;
+  hasNewEvents?: boolean;
+}) {
   const pathname = usePathname();
   const { user } = useAuth();
   const [moreOpen, setMoreOpen] = useState(false);
@@ -58,15 +66,24 @@ export function BottomNav({ unreadCount = 0 }: { unreadCount?: number }) {
         <div className="mm-bottom-nav-items">
           {PRIMARY_NAV.map(({ label, href, icon: Icon }) => {
             const active = isActive(href);
+            const showRedDot = (label === "Teams" && hasNewTeams) || (label === "Events" && hasNewEvents);
             return (
               <Link
                 key={href}
                 href={href}
                 className={cn("mm-bottom-nav-item", active && "active")}
                 aria-label={label}
+                style={{ position: "relative" }}
               >
                 <Icon size={22} strokeWidth={active ? 2.5 : 2} />
                 <span>{label}</span>
+                {showRedDot && !active && (
+                  <span style={{
+                    position: "absolute", top: "10px", right: "20px", // adjust based on icon size
+                    width: "8px", height: "8px", borderRadius: "50%",
+                    background: "#EF4444", border: "1.5px solid var(--color-surface)",
+                  }} />
+                )}
               </Link>
             );
           })}

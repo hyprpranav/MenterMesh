@@ -22,7 +22,7 @@ interface NavItem {
   href: string;
   icon: React.ReactNode;
   roles: Array<"student" | "staff" | "master">;
-  badgeKey?: "notifications";
+  badgeKey?: "notifications" | "teams" | "events";
 }
 
 const NAV_ITEMS: NavItem[] = [
@@ -43,6 +43,7 @@ const NAV_ITEMS: NavItem[] = [
     href: "/teams",
     icon: <UsersRound size={17} />,
     roles: ["student", "staff", "master"],
+    badgeKey: "teams",
   },
   {
     label: "Team Builder",
@@ -55,6 +56,7 @@ const NAV_ITEMS: NavItem[] = [
     href: "/events",
     icon: <Calendar size={17} />,
     roles: ["student", "staff", "master"],
+    badgeKey: "events",
   },
   {
     label: "Community",
@@ -124,9 +126,13 @@ const ADMIN_ITEMS: NavItem[] = [
 
 export function Sidebar({
   unreadCount = 0,
+  hasNewTeams = false,
+  hasNewEvents = false,
   isMobileDrawer = false,
 }: {
   unreadCount?: number;
+  hasNewTeams?: boolean;
+  hasNewEvents?: boolean;
   isMobileDrawer?: boolean;
 }) {
   const { user, logOut } = useAuth();
@@ -204,7 +210,8 @@ export function Sidebar({
         <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
           {filteredNav.map((item) => {
             const active = isActive(item.href);
-            const showBadge = item.badgeKey === "notifications" && unreadCount > 0;
+            const showNotifBadge = item.badgeKey === "notifications" && unreadCount > 0;
+            const showRedDot = (item.badgeKey === "teams" && hasNewTeams) || (item.badgeKey === "events" && hasNewEvents);
             return (
               <Link
                 key={item.href}
@@ -215,7 +222,7 @@ export function Sidebar({
                 <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                   {item.label}
                 </span>
-                {showBadge && (
+                {showNotifBadge && (
                   <span style={{
                     fontSize: "11px", fontWeight: 700,
                     background: "#EF4444", color: "#fff",
@@ -226,6 +233,12 @@ export function Sidebar({
                   }}>
                     {unreadCount > 9 ? "9+" : unreadCount}
                   </span>
+                )}
+                {showRedDot && !active && (
+                  <span style={{
+                    width: "8px", height: "8px", borderRadius: "50%",
+                    background: "#EF4444", flexShrink: 0,
+                  }} />
                 )}
               </Link>
             );

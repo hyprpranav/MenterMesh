@@ -59,11 +59,7 @@ service cloud.firestore {
 
     // Events Collection
     match /events/{eventId} {
-      allow read: if isAuthenticated() && (
-        isStaff() ||
-        resource.data.submittedBy == request.auth.uid ||
-        (resource.data.submissionStatus == "approved" && resource.data.participantIds.hasAny([request.auth.uid]))
-      );
+      allow read: if isAuthenticated();
       allow create: if isAuthenticated() && request.resource.data.submittedBy == request.auth.uid;
       allow update: if isStaff() || (isAuthenticated() && (resource.data.submittedBy == request.auth.uid || resource.data.createdBy == request.auth.uid));
       allow delete: if isStaff();

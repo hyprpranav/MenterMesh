@@ -9,6 +9,8 @@ import { useAuth } from "@/contexts/AuthContext";
 import { Sidebar } from "./Sidebar";
 import { BottomNav } from "./BottomNav";
 import { subscribeToNotifications } from "@/lib/firebase/firestore";
+import { collection, query, limit, orderBy, onSnapshot } from "firebase/firestore";
+import { db } from "@/lib/firebase/config";
 import type { Notification } from "@/types";
 import { Bell, Menu, X } from "lucide-react";
 import Link from "next/link";
@@ -38,6 +40,8 @@ export function AppShell({ children }: AppShellProps) {
   const pathname = usePathname();
   const [unreadNotifs, setUnreadNotifs] = useState<Notification[]>([]);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [hasNewTeams, setHasNewTeams] = useState(false);
+  const [hasNewEvents, setHasNewEvents] = useState(false);
 
   // Close drawer on route change
   useEffect(() => {
@@ -102,7 +106,41 @@ export function AppShell({ children }: AppShellProps) {
         setUnreadNotifs(dbNotifs);
       }
     });
-    return () => unsub();
+
+    // Lightweight team and event unread watchers
+    const qTeams = query(collection(db, "teams"), orderBy("createdAt", "desc"), limit(1));
+    const unsubTeams = onSnapshot(qTeams, (snap) => {
+      if (!snap.empty) {
+        const doc = snap.docs[0].data();
+        if (doc.createdAt) {
+          const latest = new Date(doc.createdAt).getTime();
+          const lastVis = localStorage.getItem("last_visited_teams");
+          if (!lastVis || latest > parseInt(lastVis)) setHasNewTeams(true);
+          else setHasNewTeams(false);
+        }
+      }
+    });
+
+    const qEvents = query(collection(db, "events"), orderBy("createdAt", "desc"), limit(1));
+    const unsubEvents = onSnapshot(qEvents, (snap) => {
+      if (!snap.empty) {
+        const doc = snap.docs[0].data();
+        if (doc.createdAt) {
+          const latest = new Date(doc.createdAt).getTime();
+          const lastVis = localStorage.getItem("last_visited_events");
+          if (!lastVis || latest > parseInt(lastVis)) setHasNewEvents(true);
+          else setHasNewEvents(false);
+        }
+      }
+    });
+
+    const handleRead = () => {
+      if (window.location.pathname.startsWith("/teams")) setHasNewTeams(false);
+      if (window.location.pathname.startsWith("/events")) setHasNewEvents(false);
+    };
+    window.addEventListener("mentormesh_notifications_read", handleRead);
+
+    return () => { unsub(); unsubTeams(); unsubEvents(); window.removeEventListener("mentormesh_notifications_read", handleRead); };
   }, [user]);
 
   const isReady = !loading && user && (user.status === "active" || user.status === "imported");
@@ -111,7 +149,7 @@ export function AppShell({ children }: AppShellProps) {
   return (
     <div className="mm-layout">
       {/* ── Desktop Sidebar ─────────────────────────────── */}
-      <Sidebar unreadCount={unreadCount} />
+      <Sidebar unreadCount={unreadCount} hasNewTeams={hasNewTeams} hasNewEvents={hasNewEvents} />
 
       {/* ── Mobile Topbar ───────────────────────────────── */}
       <header className="mm-mobile-topbar">
@@ -277,7 +315,7 @@ export function AppShell({ children }: AppShellProps) {
               style={{ flex: 1, overflowY: "auto" }}
               onClick={closeDrawer}
             >
-              <Sidebar unreadCount={unreadCount} isMobileDrawer />
+              <Sidebar unreadCount={unreadCount} hasNewTeams={hasNewTeams} hasNewEvents={hasNewEvents} isMobileDrawer />
             </div>
           </div>
         </div>
@@ -291,7 +329,7 @@ export function AppShell({ children }: AppShellProps) {
       </main>
 
       {/* ── Mobile Bottom Nav ─────────────────────────────── */}
-      <BottomNav unreadCount={unreadCount} />
+      <BottomNav unreadCount={unreadCount} hasNewTeams={hasNewTeams} hasNewEvents={hasNewEvents} />
     </div>
   );
 }
