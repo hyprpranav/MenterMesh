@@ -10,7 +10,7 @@ import {
   LayoutDashboard, Users, UsersRound, Calendar,
   Bell, Megaphone, BookOpen, Download, Settings,
   LogOut, UserCheck, ShieldCheck, Layers, User,
-  AlertTriangle,
+  AlertTriangle, MessageCircle,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { Avatar } from "@/components/ui/Avatar";
@@ -108,6 +108,12 @@ const ADMIN_ITEMS: NavItem[] = [
     label: "File Share",
     href: "/file-share",
     icon: <Download size={17} />,
+    roles: ["staff", "master"],
+  },
+  {
+    label: "Issues Inbox",
+    href: "/admin/issues",
+    icon: <MessageCircle size={17} />,
     roles: ["staff", "master"],
   },
   {

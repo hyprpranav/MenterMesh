@@ -48,6 +48,7 @@ export async function getUpcomingBirthdays(currentUser: User): Promise<Notificat
 
             const bMonth = dob.getMonth();
             const bDate = dob.getDate();
+            const turningAge = today.getFullYear() - dob.getFullYear() + 1;
 
             const bdayThisYear = new Date(today.getFullYear(), bMonth, bDate);
             if (bdayThisYear.getTime() < today.getTime()) {
@@ -57,13 +58,15 @@ export async function getUpcomingBirthdays(currentUser: User): Promise<Notificat
             const diffMs = bdayThisYear.getTime() - today.getTime();
             const diffDays = Math.round(diffMs / (1000 * 60 * 60 * 24));
 
-            if (diffDays >= 0 && diffDays <= 2) {
+            // Show for 5 days before + on the day
+            if (diffDays >= 0 && diffDays <= 5) {
+                // Self notification on the birthday day
                 if (diffDays === 0) {
                     virtualNotifs.push({
                         id: `bday_self_${u.uid}_${today.getFullYear()}`,
                         recipientId: u.uid,
-                        title: "Happy Birthday! 🎉",
-                        message: "Greetings and best wishes from MentorMesh, Developers, and Staff!",
+                        title: `🎉 Happy ${turningAge}th Birthday, ${u.name.split(" ")[0]}!`,
+                        message: "Warm wishes from the entire MentorMesh team, developers, and faculty! Have an amazing day! 🎂",
                         type: "birthday",
                         read: false,
                         priority: "high",
@@ -71,32 +74,35 @@ export async function getUpcomingBirthdays(currentUser: User): Promise<Notificat
                     });
                 }
 
+                // Notification for everyone else
                 let title = "";
                 let message = "";
-                if (diffDays === 0) {
-                    title = `It's ${u.name}'s Birthday Today! 🎂`;
-                    message = `Send ${u.name} your birthday wishes!`;
-                } else {
-                    const dayWord = diffDays === 1 ? "tomorrow" : "in 2 days";
-                    title = `${u.name}'s Birthday is ${dayWord}! 🎈`;
-                    message = `Get ready to wish ${u.name} a happy birthday!`;
-                }
-
                 const contactLink = u.phone
-                    ? `https://wa.me/${u.phone.replace(/\D/g, "")}?text=Happy%20Birthday%20${encodeURIComponent(u.name)}!`
+                    ? `https://wa.me/${u.phone.replace(/\D/g, "")}?text=Happy%20Birthday%20${encodeURIComponent(u.name)}!%20🎂`
                     : `mailto:${u.collegeEmail || u.email}?subject=Happy%20Birthday!&body=Happy%20Birthday%20${encodeURIComponent(u.name)}!`;
+
+                if (diffDays === 0) {
+                    title = `🎂 It's ${u.name}'s Birthday Today!`;
+                    message = `${u.name} is turning ${turningAge} today! Tap 'Wish Now' to send your birthday message. 🎊`;
+                } else if (diffDays === 1) {
+                    title = `🎈 ${u.name}'s Birthday is Tomorrow!`;
+                    message = `Get ready to wish ${u.name} an amazing ${turningAge}th birthday tomorrow!`;
+                } else {
+                    title = `🎁 ${u.name}'s Birthday in ${diffDays} Days!`;
+                    message = `${u.name} is turning ${turningAge} in ${diffDays} days. Don't forget to wish them!`;
+                }
 
                 virtualNotifs.push({
                     id: `bday_other_${u.uid}_${today.getFullYear()}_${diffDays}`,
                     recipientId: "all",
                     relatedId: u.uid,
-                    title: title,
-                    message: message,
+                    title,
+                    message,
                     type: "birthday",
                     read: false,
-                    priority: "normal",
+                    priority: diffDays <= 1 ? "high" : "normal",
                     link: contactLink,
-                    createdAt: new Date(today.getTime() + 1000).toISOString(),
+                    createdAt: new Date(today.getTime() + (6 - diffDays) * 1000).toISOString(),
                 });
             }
         });
@@ -105,7 +111,6 @@ export async function getUpcomingBirthdays(currentUser: User): Promise<Notificat
         lastCacheTime = now;
     }
 
-    // filter & set read status on the fly
     return cacheBirthdays.filter(n => {
         if (n.recipientId === currentUser.uid) return true;
         if (n.recipientId === "all" && n.relatedId !== currentUser.uid) return true;

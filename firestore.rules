@@ -113,6 +113,14 @@ service cloud.firestore {
       allow delete: if isMaster();
     }
 
+    // Developer Issues (created from Facing Issues page)
+    match /developerIssues/{issueId} {
+      allow read: if isStaff() || (isAuthenticated() && resource.data.userId == request.auth.uid);
+      allow create: if isAuthenticated();
+      allow update: if isStaff();
+      allow delete: if isMaster();
+    }
+
     // Team Chat Messages
     // Any authenticated user who is a member of the team OR staff can read/write
     match /teamChats/{teamId}/messages/{messageId} {
