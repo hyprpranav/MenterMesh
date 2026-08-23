@@ -31,13 +31,13 @@ const RESULTS_LIST = [
 // ─── Premium Design Tokens ─────────────────────────────────────
 const T = {
   input: [
-    "block w-full rounded-[14px] border border-slate-200 bg-slate-50/30",
-    "px-3.5 py-2.5 text-[14px] text-slate-900 placeholder-slate-400 font-medium",
+    "block w-full rounded-[12px] border border-slate-200 bg-slate-50/50",
+    "px-4 py-2.5 text-[14px] text-slate-900 placeholder-slate-400 font-medium min-h-[44px]",
     "outline-none transition-all duration-200",
     "hover:bg-white hover:border-slate-300 hover:shadow-sm",
     "focus:bg-white focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 focus:shadow-sm",
   ].join(" "),
-  divider: "border-t border-slate-100 my-4",
+  divider: "border-t border-slate-100 my-6",
 };
 
 type Accent = "blue" | "violet" | "amber" | "rose" | "teal";
@@ -54,20 +54,20 @@ function SectionCard({ step, icon, title, subtitle, accent, children }: {
 }) {
   const a = ACCENT[accent];
   return (
-    <div className="bg-white rounded-[20px] border border-slate-200/80 shadow-sm mb-7 transition-shadow hover:shadow-md outline-none">
-      <div className="px-6 md:px-8 py-5 border-b border-slate-100 bg-slate-50/30 flex items-center gap-4 rounded-t-[20px]">
-        <div className={`w-11 h-11 rounded-[12px] ${a.iconBg} ${a.iconTxt} flex items-center justify-center shrink-0`}>
+    <div className="bg-white rounded-[20px] border border-slate-200/80 shadow-sm mb-8 transition-shadow hover:shadow-md outline-none">
+      <div className="px-6 md:px-8 py-5 border-b border-slate-100 bg-slate-50/40 flex items-center gap-4 rounded-t-[20px]">
+        <div className={`w-11 h-11 rounded-[12px] ${a.iconBg} ${a.iconTxt} flex items-center justify-center shrink-0 shadow-sm`}>
           {icon}
         </div>
         <div className="flex-1">
-          <div className="flex items-center gap-2 mb-0.5">
+          <div className="flex items-center gap-2 mb-1">
             <span className={`text-[11px] font-extrabold uppercase tracking-[0.1em] ${a.badgeTxt}`}>Step {step}</span>
           </div>
           <h3 className="text-[16px] font-bold text-slate-900 tracking-tight leading-none mb-1.5">{title}</h3>
           <p className="text-[13px] text-slate-500 leading-none">{subtitle}</p>
         </div>
       </div>
-      <div className="p-6 md:p-8 space-y-7">
+      <div className="px-6 md:px-8 py-7 space-y-8">
         {children}
       </div>
     </div>
@@ -79,18 +79,18 @@ function Field({ label, required, optional, hint, children }: {
 }) {
   return (
     <div className="flex flex-col w-full h-full">
-      <div className="flex items-baseline justify-between mb-2">
+      <div className="flex items-baseline justify-between mb-2.5">
         <label className="text-[13px] font-bold text-slate-800 tracking-wide">
           {label}
           {required && <span className="text-rose-500 ml-1 font-bold">*</span>}
         </label>
         {optional && (
-          <span className="text-[11px] font-bold text-slate-400 bg-slate-100/80 px-2 py-0.5 rounded-md tracking-wide">
+          <span className="text-[10px] font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-[4px] uppercase tracking-wider">
             Optional
           </span>
         )}
       </div>
-      <div className="relative">
+      <div className="relative flex-1 flex flex-col justify-end">
         {children}
       </div>
       {hint && <p className="mt-2 text-[12px] text-slate-500 font-medium leading-relaxed">{hint}</p>}
@@ -110,7 +110,7 @@ function SelectField({ value, onChange, children, className = "" }: {
 }
 
 function Row({ cols = 2, children }: { cols?: number; children: React.ReactNode }) {
-  return <div className={cols === 3 ? "grid grid-cols-1 md:grid-cols-3 gap-6" : "grid grid-cols-1 md:grid-cols-2 gap-6"}>{children}</div>;
+  return <div className={cols === 3 ? "grid grid-cols-1 md:grid-cols-3 gap-6 md:gap-7" : "grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-7"}>{children}</div>;
 }
 
 function ParticipationCard({ active, icon, title, desc, onClick }: {
@@ -118,16 +118,16 @@ function ParticipationCard({ active, icon, title, desc, onClick }: {
 }) {
   return (
     <button type="button" onClick={onClick}
-      className={["flex flex-col items-start gap-4 p-5 rounded-[16px] border-2 transition-all duration-200 text-left w-full h-full",
-        active ? "border-violet-500 bg-violet-50/40 shadow-sm ring-2 ring-violet-500/20" : "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50/50"
+      className={["flex flex-col items-start gap-4 p-5 rounded-[16px] border-2 transition-all duration-200 text-left w-full min-h-[140px]",
+        active ? "border-violet-500 bg-violet-50/40 shadow-[0_4px_12px_rgba(139,92,246,0.06)]" : "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50/50"
       ].join(" ")}>
       <div className="flex items-center justify-between w-full">
         <div className={`w-11 h-11 rounded-[12px] flex items-center justify-center shrink-0 transition-colors ${active ? "bg-violet-600 text-white shadow-md shadow-violet-500/20" : "bg-slate-100 text-slate-500"}`}>{icon}</div>
-        <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 transition-all ${active ? "border-violet-600 bg-violet-600" : "border-slate-300"}`}>
+        <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 transition-all ${active ? "border-violet-600 bg-violet-600" : "border-slate-300 bg-white"}`}>
           {active && <Check size={12} strokeWidth={4} className="text-white" />}
         </div>
       </div>
-      <div className="mt-1 flex-1 flex flex-col justify-end">
+      <div className="mt-1 flex flex-col">
         <p className={`text-[14px] font-bold mb-1 ${active ? "text-violet-950" : "text-slate-800"}`}>{title}</p>
         <p className={`text-[12px] leading-relaxed ${active ? "text-violet-700/80" : "text-slate-500"}`}>{desc}</p>
       </div>
@@ -372,7 +372,9 @@ export default function CreateEventPage() {
           {/* 2. TEAM & PARTICIPATION */}
           <SectionCard step={2} accent="violet" icon={<Users size={20} strokeWidth={2.5} />} title="Team & Participation" subtitle="Who participated at this event?">
             <div>
-              <label className={T.label}>Participation Type<span className={T.req}>*</span></label>
+              <div className="flex items-baseline justify-between mb-3">
+                <label className="text-[13px] font-bold text-slate-800 tracking-wide">Participation Type<span className="text-rose-500 ml-1 font-bold">*</span></label>
+              </div>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
                 <ParticipationCard active={partType === "individual"} icon={<UserIcon size={20} />} title="Individual" desc="Only me — no teammates" onClick={() => setPartType("individual")} />
                 {userTeams.length > 0 && <ParticipationCard active={partType === "team"} icon={<Users size={20} />} title="MentorMesh Team" desc="One of my existing teams" onClick={() => setPartType("team")} />}
@@ -573,9 +575,9 @@ export default function CreateEventPage() {
           </SectionCard>
 
           {/* SUBMIT BAR */}
-          <div className="mt-12 flex flex-col sm:flex-row items-center justify-between gap-4 bg-white border border-slate-200 rounded-[24px] px-8 py-6 shadow-[0_8px_30px_rgb(0,0,0,0.04)] sticky bottom-6 z-10">
+          <div className="mt-12 flex flex-col sm:flex-row items-center justify-between gap-4 bg-white border border-slate-200 rounded-[20px] px-8 py-6 shadow-[0_8px_30px_rgb(0,0,0,0.04)] sticky bottom-6 z-10 w-full mb-8">
             <Link href="/events" className="w-full sm:w-auto">
-              <Button type="button" variant="secondary" className="w-full sm:w-auto px-6 py-3">Cancel</Button>
+              <Button type="button" variant="secondary" className="w-full sm:w-auto px-6 py-3 font-semibold hover:bg-slate-100">Cancel</Button>
             </Link>
             <div className="flex flex-col sm:flex-row items-center gap-4 w-full sm:w-auto">
               {!isStaff && (
@@ -583,7 +585,7 @@ export default function CreateEventPage() {
                   Save as Draft
                 </Button>
               )}
-              <Button type="submit" variant="primary" loading={saving} className="w-full sm:w-auto px-8 py-3 bg-blue-600 hover:bg-blue-700 text-[15px] shadow-lg shadow-blue-500/20">
+              <Button type="submit" variant="primary" loading={saving} className="w-full sm:w-auto px-8 py-3 bg-blue-600 hover:bg-blue-700 text-[15px] font-bold shadow-lg shadow-blue-500/20">
                 {isStaff ? "Publish Event" : "Submit for Faculty Review"}
               </Button>
             </div>
