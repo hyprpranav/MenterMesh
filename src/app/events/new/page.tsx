@@ -54,7 +54,7 @@ function SectionCard({ step, icon, title, subtitle, accent, children }: {
 }) {
   const a = ACCENT[accent];
   return (
-    <div className="mb-16 md:mb-20 flex flex-col w-full relative">
+    <div className="flex flex-col w-full relative">
       <div className="mb-8 md:mb-10 flex items-center gap-5">
         <div className={`w-14 h-14 rounded-[16px] ${a.iconBg} ${a.iconTxt} flex items-center justify-center shrink-0 shadow-sm border border-white/50`}>
           {icon}
@@ -70,6 +70,9 @@ function SectionCard({ step, icon, title, subtitle, accent, children }: {
       <div className="space-y-10 md:space-y-12">
         {children}
       </div>
+      {step < 5 && (
+        <div className="w-full mt-12 md:mt-16 border-t-2 border-dashed border-slate-200/80" />
+      )}
     </div>
   );
 }
@@ -327,7 +330,7 @@ export default function CreateEventPage() {
           </div>
         </div>
 
-        <form onSubmit={e => { e.preventDefault(); handleSave(false); }} className="space-y-4">
+        <form onSubmit={e => { e.preventDefault(); handleSave(false); }} className="flex flex-col gap-12 md:gap-16">
 
           {/* 1. EVENT DETAILS */}
           <SectionCard step={1} accent="blue" icon={<FileText size={20} strokeWidth={2.5} />} title="Event Details" subtitle="Basic information about the event">
