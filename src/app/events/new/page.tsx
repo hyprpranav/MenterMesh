@@ -54,7 +54,7 @@ function SectionCard({ step, icon, title, subtitle, accent, children }: {
 }) {
   const a = ACCENT[accent];
   return (
-    <div className="bg-white rounded-[20px] border border-slate-200/80 shadow-sm mb-10 transition-shadow hover:shadow-md outline-none">
+    <div className="bg-white rounded-[20px] border border-slate-200/80 shadow-sm mb-10 transition-shadow hover:shadow-md outline-none overflow-hidden flex flex-col w-full relative">
       <div className="px-6 md:px-8 py-5 border-b border-slate-100 bg-slate-50/40 flex items-center gap-4 rounded-t-[20px]">
         <div className={`w-11 h-11 rounded-[12px] ${a.iconBg} ${a.iconTxt} flex items-center justify-center shrink-0 shadow-sm`}>
           {icon}
@@ -106,7 +106,7 @@ function SelectField({ value, onChange, children, className = "" }: {
 }
 
 function Row({ cols = 2, children }: { cols?: number; children: React.ReactNode }) {
-  return <div className={cols === 3 ? "grid grid-cols-1 md:grid-cols-3 gap-6 md:gap-8" : "grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-8"}>{children}</div>;
+  return <div className={cols === 3 ? "grid grid-cols-1 lg:grid-cols-3 gap-6 md:gap-8" : "grid grid-cols-1 lg:grid-cols-2 gap-6 md:gap-8"}>{children}</div>;
 }
 
 function ParticipationCard({ active, icon, title, desc, onClick }: {
@@ -305,7 +305,7 @@ export default function CreateEventPage() {
 
   return (
     <AppShell>
-      <div className="w-full max-w-5xl mx-auto px-4 sm:px-8 pb-32 mm-page-animate">
+      <div className="w-full max-w-5xl mx-auto px-4 sm:px-6 md:px-10 lg:px-12 pb-32 mm-page-animate">
 
         {/* ── PAGE HEADER ── */}
         <div className="pt-6 pb-12">
@@ -371,7 +371,7 @@ export default function CreateEventPage() {
               <div className="flex items-center gap-2 mb-4">
                 <label className="text-[14px] font-bold text-slate-800 tracking-wide flex items-center gap-2">Participation Type<span className="text-rose-500 font-bold">*</span></label>
               </div>
-              <div className={`grid grid-cols-1 gap-6 ${userTeams.length > 0 ? "md:grid-cols-3" : "md:grid-cols-2"}`}>
+              <div className={`grid grid-cols-1 gap-6 ${userTeams.length > 0 ? "lg:grid-cols-3 md:grid-cols-2" : "md:grid-cols-2"}`}>
                 <ParticipationCard active={partType === "individual"} icon={<UserIcon size={20} />} title="Individual" desc="Only me — no teammates" onClick={() => setPartType("individual")} />
                 {userTeams.length > 0 && <ParticipationCard active={partType === "team"} icon={<Users size={20} />} title="MentorMesh Team" desc="One of my existing teams" onClick={() => setPartType("team")} />}
                 <ParticipationCard active={partType === "custom"} icon={<UserPlus size={20} />} title="Custom Group" desc="Platform students + external peers" onClick={() => setPartType("custom")} />
@@ -407,8 +407,8 @@ export default function CreateEventPage() {
               <div className="space-y-8 animate-in fade-in slide-in-from-top-2 duration-300">
                 <Row>
                   {/* Platform Students */}
-                  <div className="rounded-[20px] border border-slate-200 shadow-sm overflow-hidden flex flex-col h-[400px]">
-                    <div className="bg-white px-5 py-5 border-b border-slate-100 shrink-0 space-y-4">
+                  <div className="rounded-[20px] border border-slate-200 shadow-sm overflow-hidden flex flex-col h-[350px] md:h-[420px] bg-white">
+                    <div className="bg-white px-4 sm:px-5 py-4 sm:py-5 border-b border-slate-100 shrink-0 space-y-4">
                       <div className="flex items-center justify-between">
                         <div>
                           <p className="text-[13px] font-extrabold text-slate-800 uppercase tracking-wider">MentorMesh Students</p>
@@ -419,7 +419,7 @@ export default function CreateEventPage() {
                       <div className="relative">
                         <Search size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
                         <input type="text" placeholder="Search by name or reg number…" value={memberSearch} onChange={e => setMemberSearch(e.target.value)}
-                          className="w-full pl-10 pr-4 py-3 text-[14px] rounded-xl border border-slate-200 bg-slate-50 outline-none focus:bg-white focus:border-violet-500 focus:ring-2 focus:ring-violet-500/10 transition" />
+                          className="w-full !pl-11 pr-4 py-3 text-[14px] rounded-xl border border-slate-200 bg-slate-50 outline-none focus:bg-white focus:border-violet-500 focus:ring-2 focus:ring-violet-500/10 transition" />
                       </div>
                     </div>
                     <div className="divide-y divide-slate-100 overflow-y-auto flex-1 bg-white">
@@ -429,22 +429,22 @@ export default function CreateEventPage() {
                   </div>
 
                   {/* External Participants */}
-                  <div className="rounded-[20px] border border-slate-200 shadow-sm overflow-hidden flex flex-col h-[400px]">
-                    <div className="bg-slate-50/50 px-5 py-5 border-b border-slate-100 shrink-0">
+                  <div className="rounded-[20px] border border-slate-200 shadow-sm overflow-hidden flex flex-col h-[350px] md:h-[420px] bg-white">
+                    <div className="bg-slate-50/50 px-4 sm:px-5 py-4 sm:py-5 border-b border-slate-100 shrink-0">
                       <p className="text-[13px] font-extrabold text-slate-800 uppercase tracking-wider">External Teammates</p>
                       <p className="text-[12px] text-slate-500 mt-0.5">Add people not on the platform</p>
                     </div>
-                    <div className="p-5 flex flex-col flex-1 bg-white">
-                      <div className="flex gap-3 mb-5 shrink-0">
+                    <div className="p-4 sm:p-5 flex flex-col flex-1 bg-white">
+                      <div className="flex gap-2 sm:gap-3 mb-4 sm:mb-5 shrink-0">
                         <div className="relative flex-1">
                           <UserPlus size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
                           <input type="text" placeholder="Type full name & add…" value={externalInput} onChange={e => setExternalInput(e.target.value)}
                             onKeyDown={e => e.key === "Enter" && (e.preventDefault(), addExternal())}
-                            className="w-full pl-10 pr-4 py-3 text-[14px] rounded-xl border border-slate-200 bg-slate-50 outline-none focus:bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10 transition" />
+                            className="w-full !pl-11 pr-4 py-3 text-[14px] rounded-xl border border-slate-200 bg-slate-50 outline-none focus:bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10 transition" />
                         </div>
                         <button type="button" onClick={addExternal} disabled={!externalInput.trim()}
-                          className="flex items-center gap-2 px-5 py-3 rounded-xl bg-slate-900 text-white text-[14px] font-bold hover:bg-slate-800 disabled:opacity-40 transition-colors shrink-0">
-                          <Plus size={16} /> Add
+                          className="flex items-center justify-center gap-1.5 px-4 sm:px-5 py-3 rounded-xl bg-slate-900 text-white text-[14px] font-bold hover:bg-slate-800 disabled:opacity-40 transition-colors shrink-0">
+                          <Plus size={16} /> <span className="hidden sm:inline">Add</span>
                         </button>
                       </div>
                       <div className="flex-1 overflow-y-auto">
