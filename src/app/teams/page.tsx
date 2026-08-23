@@ -301,22 +301,22 @@ function TeamsContent() {
           </>
         }
       >
-        <form id="create-team-form" onSubmit={handleCreateTeam} className="space-y-4">
+        <form id="create-team-form" onSubmit={handleCreateTeam} className="space-y-7">
           <div>
-            <label className="mm-label">Team Name <span style={{ color: "var(--color-danger)" }}>*</span></label>
-            <input className="mm-input" placeholder="e.g. Team ByteCrafters" value={name} onChange={(e) => setName(e.target.value)} required />
+            <label className="block text-[14px] font-bold text-slate-800 mb-2">Team Name <span className="text-rose-500 ml-0.5">*</span></label>
+            <input className="block w-full rounded-[14px] border border-slate-200 bg-slate-50/50 px-5 py-3.5 text-[15px] font-medium min-h-[52px] outline-none hover:bg-white hover:border-slate-300 focus:bg-white focus:border-blue-500 transition focus:ring-4 focus:ring-blue-500/10 placeholder-slate-400" placeholder="e.g. Team ByteCrafters" value={name} onChange={(e) => setName(e.target.value)} required />
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
             <div>
-              <label className="mm-label">Associated Event (optional)</label>
-              <select className="mm-input mm-select" value={eventId} onChange={(e) => setEventId(e.target.value)}>
+              <label className="block text-[14px] font-bold text-slate-800 mb-2">Associated Event <span className="text-[12px] text-slate-400 font-medium ml-1">Optional</span></label>
+              <select className="block w-full rounded-[14px] border border-slate-200 bg-slate-50/50 px-5 py-3.5 text-[15px] font-medium min-h-[52px] outline-none hover:bg-white hover:border-slate-300 focus:bg-white focus:border-blue-500 transition" value={eventId} onChange={(e) => setEventId(e.target.value)}>
                 <option value="">No specific event</option>
                 {events.map((ev) => <option key={ev.id} value={ev.id}>{ev.name} ({ev.type})</option>)}
               </select>
             </div>
             <div>
-              <label className="mm-label">Team Leader</label>
-              <select className="mm-input mm-select" value={selectedLeaderId} onChange={(e) => setSelectedLeaderId(e.target.value)}>
+              <label className="block text-[14px] font-bold text-slate-800 mb-2">Team Leader <span className="text-[12px] text-slate-400 font-medium ml-1">Optional</span></label>
+              <select className="block w-full rounded-[14px] border border-amber-200/80 bg-amber-50/40 text-amber-900 px-5 py-3.5 text-[15px] font-bold min-h-[52px] outline-none hover:bg-amber-50 hover:border-amber-300 focus:bg-amber-50 focus:border-amber-500 transition" value={selectedLeaderId} onChange={(e) => setSelectedLeaderId(e.target.value)}>
                 {selectedMemberIds.map((id) => {
                   const s = id === user?.uid ? user : availableStudents.find((st) => st.uid === id);
                   return <option key={id} value={id}>{s?.name || id} {id === user?.uid ? "(You)" : ""}</option>;
@@ -324,50 +324,52 @@ function TeamsContent() {
               </select>
             </div>
           </div>
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <label className="mm-label mb-0">Select Team Members ({selectedMemberIds.length} chosen)</label>
-              <span className="text-xs text-slate-500">Click to add/remove</span>
+          <div className="space-y-4">
+            <div className="flex items-center justify-between px-1">
+              <label className="block text-[15px] font-bold text-slate-800 mb-0">Select Team Members ({selectedMemberIds.length} chosen)</label>
+              <span className="text-[13px] font-medium text-slate-500 hidden sm:block tracking-wide">Search & click to add</span>
             </div>
             {selectedMemberIds.length > 0 && (
-              <div className="flex flex-wrap gap-1.5 p-2 bg-slate-50 rounded-xl border border-slate-200">
+              <div className="flex flex-wrap gap-2.5 p-4 bg-gradient-to-tr from-blue-50/80 to-indigo-50/30 rounded-2xl border border-blue-100 shadow-sm animate-in fade-in duration-300">
                 {selectedMemberIds.map((id) => {
                   const s = id === user?.uid ? user : availableStudents.find((st) => st.uid === id);
                   const isLeader = id === selectedLeaderId;
                   return (
-                    <span key={id} className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold ${isLeader ? "bg-amber-100 text-amber-800 border border-amber-300" : "bg-blue-100 text-blue-800 border border-blue-200"}`}>
-                      {isLeader && <Star size={11} fill="currentColor" />}
+                    <span key={id} className={`inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-[13.5px] font-bold shadow-sm transition-transform animate-in zoom-in duration-200 ${isLeader ? "bg-amber-400 text-amber-950 border border-amber-500" : "bg-white text-blue-900 border border-blue-200 hover:border-rose-300 group"}`}>
+                      {isLeader && <Star size={14} strokeWidth={2.5} fill="currentColor" />}
                       {s?.name || id} {id === user?.uid ? "(You)" : ""}
-                      {id !== user?.uid && <button type="button" onClick={() => handleToggleMember(s || ({ uid: id } as User))} className="hover:text-red-600 cursor-pointer ml-1"><X size={12} /></button>}
+                      {id !== user?.uid && <button type="button" onClick={() => handleToggleMember(s || ({ uid: id } as User))} className="text-slate-400 hover:text-rose-500 cursor-pointer ml-1.5 bg-slate-100 group-hover:bg-rose-50 rounded-full p-0.5 transition-colors"><X size={13} strokeWidth={3} /></button>}
                     </span>
                   );
                 })}
               </div>
             )}
-            <div className="border border-slate-200 rounded-xl p-2.5 space-y-2 bg-white">
-              <div className="relative">
-                <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
-                <input type="text" placeholder="Search students..." className="w-full pl-8 pr-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg outline-none focus:border-blue-500" value={studentSearch} onChange={(e) => setStudentSearch(e.target.value)} />
+            <div className="border border-slate-200 rounded-2xl overflow-hidden bg-white shadow-sm flex flex-col h-[320px]">
+              <div className="bg-slate-50/80 p-3 sm:p-4 border-b border-slate-200 shrink-0">
+                <div className="relative">
+                  <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                  <input type="text" placeholder="Search students by name, reg number..." className="block w-full !pl-12 pr-4 py-3.5 text-[14px] bg-white border border-slate-200/80 rounded-[12px] outline-none hover:border-slate-300 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all font-medium placeholder-slate-400 shadow-[0_1px_3px_rgba(0,0,0,0.03)]" value={studentSearch} onChange={(e) => setStudentSearch(e.target.value)} />
+                </div>
               </div>
-              <div className="max-h-44 overflow-y-auto space-y-1 pr-1">
+              <div className="flex-1 overflow-y-auto p-2 sm:p-3 bg-slate-50/30">
                 {filteredAvailableStudents.length === 0 ? (
-                  <p className="text-xs text-slate-400 py-3 text-center">No matching students found.</p>
+                  <p className="text-[13px] font-medium text-slate-400 py-8 text-center animate-pulse">No matching students found.</p>
                 ) : filteredAvailableStudents.map((st) => {
                   const isSelected = selectedMemberIds.includes(st.uid);
                   return (
                     <div key={st.uid} onClick={() => handleToggleMember(st)}
-                      className={`flex items-center justify-between p-2 rounded-lg cursor-pointer text-xs transition-colors ${isSelected ? "bg-blue-50/80 border border-blue-200 text-blue-900 font-semibold" : "hover:bg-slate-50 border border-transparent text-slate-700"}`}>
-                      <div className="flex items-center gap-2 min-w-0">
-                        <Avatar name={st.name} photoUrl={st.profilePhoto} size="sm" />
+                      className={`flex items-center justify-between p-3 mb-1.5 rounded-xl cursor-pointer transition-all border outline-none select-none ${isSelected ? "bg-blue-50 border-blue-300 text-blue-950 shadow-[0_2px_8px_rgba(37,99,235,0.08)]" : "bg-white hover:bg-slate-50 border-slate-100 hover:border-slate-200 text-slate-800"}`}>
+                      <div className="flex items-center gap-3.5 min-w-0">
+                        <Avatar name={st.name} photoUrl={st.profilePhoto} size="md" />
                         <div className="truncate">
-                          <p className="truncate font-medium">{st.name} {st.uid === user?.uid ? "(You)" : ""}</p>
-                          <p className="text-[11px] text-slate-400 truncate">{st.registerNumber ? `${st.registerNumber} · ` : ""}{st.department || "ECE"} · {st.year || "Yr"} · Sec {st.section || "A"}</p>
+                          <p className={`truncate ${isSelected ? "font-bold text-[14px]" : "font-semibold text-[14px]"}`}>{st.name} {st.uid === user?.uid ? "(You)" : ""}</p>
+                          <p className="text-[12px] font-medium text-slate-500 truncate mt-0.5">{st.registerNumber ? `${st.registerNumber} · ` : ""}{st.department || "ECE"} · {st.year || "Yr"} · Sec {st.section || "A"}</p>
                         </div>
                       </div>
-                      <div className="shrink-0 ml-2">
+                      <div className="shrink-0 ml-3">
                         {isSelected
-                          ? <span className="w-5 h-5 rounded-full bg-blue-600 text-white flex items-center justify-center"><Check size={12} strokeWidth={3} /></span>
-                          : <span className="w-5 h-5 rounded-full border border-slate-300 flex items-center justify-center hover:border-blue-400">+</span>}
+                          ? <span className="w-[26px] h-[26px] rounded-full bg-blue-600 text-white flex items-center justify-center shadow-[0_2px_6px_rgba(37,99,235,0.4)] animate-in zoom-in duration-200"><Check size={14} strokeWidth={3.5} /></span>
+                          : <span className="w-[26px] h-[26px] rounded-full border-2 border-slate-200 flex items-center justify-center text-slate-400 hover:border-blue-400 hover:text-blue-500 transition-colors bg-slate-50"><Plus size={14} strokeWidth={2.5} /></span>}
                       </div>
                     </div>
                   );
@@ -376,13 +378,13 @@ function TeamsContent() {
             </div>
           </div>
           <div>
-            <label className="mm-label">Project Description (optional)</label>
-            <textarea className="mm-input resize-none" rows={2} placeholder="Briefly describe your team's project..." value={description} onChange={(e) => setDescription(e.target.value)} />
+            <label className="block text-[14px] font-bold text-slate-800 mb-2">Project Description <span className="text-[12px] text-slate-400 font-medium ml-1">Optional</span></label>
+            <textarea className="block w-full rounded-[14px] border border-slate-200 bg-slate-50/50 px-5 py-4 text-[15px] font-medium min-h-[90px] resize-y outline-none hover:bg-white hover:border-slate-300 focus:bg-white focus:border-blue-500 transition focus:ring-4 focus:ring-blue-500/10 placeholder-slate-400" rows={2} placeholder="Briefly describe your team's project..." value={description} onChange={(e) => setDescription(e.target.value)} />
           </div>
           {!isStaff && (
-            <div className="flex items-center gap-2 p-3 bg-blue-50/60 rounded-xl border border-blue-100">
-              <input type="checkbox" id="submit-approval-toggle" checked={submitForApproval} onChange={(e) => setSubmitForApproval(e.target.checked)} className="rounded text-blue-600 w-4 h-4 cursor-pointer" />
-              <label htmlFor="submit-approval-toggle" className="text-xs text-blue-900 font-medium cursor-pointer">Submit proposal to Staff / Admin for approval</label>
+            <div className="flex items-center gap-3 p-4 bg-gradient-to-r from-blue-50/80 to-white rounded-xl border border-blue-100 shadow-sm mt-2">
+              <input type="checkbox" id="submit-approval-toggle" checked={submitForApproval} onChange={(e) => setSubmitForApproval(e.target.checked)} className="rounded text-blue-600 w-[18px] h-[18px] cursor-pointer border-slate-300 focus:ring-blue-500" />
+              <label htmlFor="submit-approval-toggle" className="text-[14px] text-blue-950 font-bold cursor-pointer select-none">Submit proposal to Staff / Admin for approval</label>
             </div>
           )}
         </form>
