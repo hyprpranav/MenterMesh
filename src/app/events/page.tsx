@@ -137,8 +137,9 @@ function EventCard({ event, currentUserId, isStaff }: { event: Event; currentUse
   const isRejected = event.submissionStatus === "rejected";
   const isParticipant = currentUserId ? (event.participantIds || []).includes(currentUserId) : false;
   const isOwner = currentUserId === event.submittedBy;
-  // Highlight events if you submitted it, if you are a participant, or if you are staff looking at it
-  const isHighlighted = isParticipant || isOwner || isStaff;
+  const isParticipantOnly = !isOwner && isParticipant;
+  // Master/Staff don't get the premium blue owner highlight unless they submitted it themselves
+  const isOwnerHighlight = isOwner;
 
   const statusBadge = isPending ? (
     <Badge variant="pending" icon={<Clock size={11} />}>Pending</Badge>
@@ -158,23 +159,32 @@ function EventCard({ event, currentUserId, isStaff }: { event: Event; currentUse
     overflow: "hidden",
     transition: "all 0.2s ease",
     position: "relative",
-    ...(isHighlighted
+    ...(isOwnerHighlight
       ? {
         background: "linear-gradient(135deg, #EFF6FF 0%, #F0F9FF 50%, #F8FAFC 100%)",
         border: "2px solid #3B82F6",
         boxShadow: "0 4px 16px rgba(59, 130, 246, 0.15), 0 1px 4px rgba(59, 130, 246, 0.08)",
       }
-      : isPending
-        ? { background: "#FFFBF0", border: "1.5px solid #FCD34D", boxShadow: "0 2px 8px rgba(252, 211, 77, 0.12)" }
-        : isRejected
-          ? { background: "#FFF5F5", border: "1.5px solid #FCA5A5", boxShadow: "0 2px 8px rgba(252, 165, 165, 0.1)" }
-          : { background: "var(--color-surface)", border: "1.5px solid var(--color-border)", boxShadow: "var(--shadow-xs)" }),
+      : isParticipantOnly
+        ? {
+          background: "linear-gradient(135deg, #F5F3FF 0%, #FAFAF9 50%, #FFFFFF 100%)",
+          border: "2px solid #8B5CF6",
+          boxShadow: "0 4px 16px rgba(139, 92, 246, 0.12), 0 1px 4px rgba(139, 92, 246, 0.08)",
+        }
+        : isPending
+          ? { background: "#FFFBF0", border: "1.5px solid #FCD34D", boxShadow: "0 2px 8px rgba(252, 211, 77, 0.12)" }
+          : isRejected
+            ? { background: "#FFF5F5", border: "1.5px solid #FCA5A5", boxShadow: "0 2px 8px rgba(252, 165, 165, 0.1)" }
+            : { background: "var(--color-surface)", border: "1.5px solid var(--color-border)", boxShadow: "var(--shadow-xs)" }),
   };
 
   return (
     <div style={cardStyle} className="hover:shadow-lg h-full">
-      {isHighlighted && (
+      {isOwnerHighlight && (
         <div style={{ height: 4, background: "linear-gradient(90deg, #3B82F6, #6366F1, #8B5CF6)", borderRadius: "0 0 0 0", flexShrink: 0 }} />
+      )}
+      {isParticipantOnly && (
+        <div style={{ height: 4, background: "linear-gradient(90deg, #8B5CF6, #A855F7, #D946EF)", borderRadius: "0 0 0 0", flexShrink: 0 }} />
       )}
 
       <div style={{ padding: "1.25rem 1.25rem 0.75rem", flex: 1, display: "flex", flexDirection: "column", gap: "0.75rem" }}>
@@ -214,11 +224,28 @@ function EventCard({ event, currentUserId, isStaff }: { event: Event; currentUse
       </div>
 
       <div style={{ padding: "0.75rem 1.25rem 1.25rem", borderTop: "1px solid rgba(148, 163, 184, 0.12)", display: "flex", alignItems: "center", justifyContent: "space-between", gap: "0.5rem", flexWrap: "wrap" }}>
-        <p style={{ fontSize: "0.75rem", color: "#94A3B8", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1, minWidth: "80px" }}>
-          By {event.submittedByName}
-        </p>
+        <div style={{ display: "flex", flexDirection: "column", gap: "3px", flex: 1, minWidth: "80px" }}>
+          <p style={{ fontSize: "0.75rem", color: "#64748B", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            By {event.submittedByName}
+          </p>
+          {isParticipantOnly && (
+            <span style={{
+              display: "inline-block",
+              fontSize: "0.65rem",
+              fontWeight: 700,
+              color: "#7C3AED",
+              background: "#F3E8FF",
+              padding: "2px 6px",
+              borderRadius: "4px",
+              width: "fit-content",
+              textTransform: "uppercase"
+            }}>
+              Participated
+            </span>
+          )}
+        </div>
         <Link href={`/events/${event.id}`}>
-          <Button size="md" variant={isHighlighted ? "primary" : "outline"}>
+          <Button size="md" variant={isOwnerHighlight ? "primary" : "outline"}>
             View Event
           </Button>
         </Link>
