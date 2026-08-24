@@ -253,6 +253,39 @@ export interface Announcement {
   createdAt: string;
 }
 
+// ─── Meeting ────────────────────────────────────────────────
+export type MeetingMode = "Online" | "Offline" | "Hybrid";
+export type MeetingStatus = "pending" | "approved" | "rejected";
+
+export interface Meeting {
+  id: string;
+  title: string;
+  purpose: string;
+  description: string;
+  mode: MeetingMode;
+  date: string;
+  time: string;
+  link?: string;
+  location?: string;
+  attendeeIds: string[];
+  attendeeNames?: string[];
+  attendeeCount: number;
+  status: MeetingStatus;
+  submittedBy: string;
+  submittedByName?: string;
+  submittedAt: TimestampValue;
+  approvedAt?: TimestampValue;
+  approvedBy?: string;
+  approvedByName?: string;
+  rejectedAt?: TimestampValue;
+  rejectedBy?: string;
+  rejectedByName?: string;
+  reviewFeedback?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+
 // ─── Notification ────────────────────────────────────────────
 export type NotificationType =
   | "announcement"
@@ -287,7 +320,7 @@ export interface ActivityLog {
   actorName: string;
   actorRole: UserRole;
   action: string;
-  targetType: "user" | "team" | "event" | "post" | "request" | "settings";
+  targetType: "user" | "team" | "event" | "post" | "request" | "settings" | "meeting";
   targetId?: string;
   targetName?: string;
   metadata?: Record<string, unknown>;

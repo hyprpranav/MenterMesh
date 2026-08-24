@@ -10,7 +10,7 @@ import {
   LayoutDashboard, Users, UsersRound, Calendar,
   Bell, Megaphone, BookOpen, Download, Settings,
   LogOut, UserCheck, ShieldCheck, Layers, User,
-  AlertTriangle, MessageCircle,
+  AlertTriangle, MessageCircle, Presentation,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { Avatar } from "@/components/ui/Avatar";
@@ -57,6 +57,12 @@ const NAV_ITEMS: NavItem[] = [
     icon: <Calendar size={17} />,
     roles: ["student", "staff", "master"],
     badgeKey: "events",
+  },
+  {
+    label: "Meetings",
+    href: "/meetings",
+    icon: <Presentation size={17} />,
+    roles: ["student", "staff", "master"],
   },
   {
     label: "Community",

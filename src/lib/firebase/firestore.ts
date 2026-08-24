@@ -24,7 +24,7 @@ import {
   increment,
 } from "firebase/firestore";
 import { db } from "./config";
-import type { User, Team, Event, Post, Announcement, Notification, AccessRequest, ActivityLog, UserRole, TeamChatAttachment, TeamChatMessageType, FileShare } from "@/types";
+import type { User, Team, Event, Post, Announcement, Notification, AccessRequest, ActivityLog, UserRole, TeamChatAttachment, TeamChatMessageType, FileShare, Meeting } from "@/types";
 
 // Helper to safely extract milliseconds from Firestore Timestamp object, Date string, or number
 function getTimestampMs(val: any): number {
@@ -774,4 +774,113 @@ export function subscribeToTeamChat(
       callback([]);
     }
   );
+}
+
+// ─── Meetings ────────────────────────────────────────────────
+
+export async function getMeetingsForViewer(uid: string, role: string): Promise<Meeting[]> {
+  try {
+    const snap = await getDocs(collection(db, "meetings"));
+    return snap.docs.map((d) => ({ id: d.id, ...d.data() } as Meeting)).sort((a, b) => getTimestampMs(b.date) - getTimestampMs(a.date));
+  } catch (err) {
+    console.error("error getting meetings:", err);
+    return [];
+  }
+}
+
+export async function getMeeting(meetingId: string): Promise<Meeting | null> {
+  const snap = await getDoc(doc(db, "meetings", meetingId));
+  if (!snap.exists()) return null;
+  return { id: snap.id, ...snap.data() } as Meeting;
+}
+
+export async function createMeeting(data: Omit<Meeting, "id" | "createdAt" | "updatedAt" | "submittedAt">): Promise<string> {
+  const ref = await addDoc(collection(db, "meetings"), stripUndefined({
+    ...data,
+    submittedAt: serverTimestamp(),
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  }));
+  return ref.id;
+}
+
+export async function updateMeeting(meetingId: string, data: Partial<Meeting>): Promise<void> {
+  await updateDoc(doc(db, "meetings", meetingId), stripUndefined({
+    ...data,
+    updatedAt: serverTimestamp(),
+  }));
+}
+
+export async function reviewMeetingSubmission(
+  meetingId: string,
+  reviewerId: string,
+  reviewerName: string,
+  status: "approved" | "rejected",
+  feedback?: string
+): Promise<void> {
+  const docRef = doc(db, "meetings", meetingId);
+  const snap = await getDoc(docRef);
+  if (!snap.exists()) throw new Error("Meeting not found");
+
+  const meetingData = snap.data() as Meeting;
+  const now = serverTimestamp();
+
+  const updates: any = {
+    status,
+    updatedAt: now,
+  };
+
+  if (status === "approved") {
+    updates.approvedAt = now;
+    updates.approvedBy = reviewerId;
+    updates.approvedByName = reviewerName;
+  } else if (status === "rejected") {
+    updates.rejectedAt = now;
+    updates.rejectedBy = reviewerId;
+    updates.rejectedByName = reviewerName;
+    if (feedback) updates.reviewFeedback = feedback;
+  }
+
+  await updateDoc(docRef, updates);
+
+  // Send notifications
+  if (status === "approved" && meetingData.attendeeIds && meetingData.attendeeIds.length > 0) {
+    const title = `Meeting Approved!`;
+    const message = `Your meeting record '${meetingData.title}' has been approved by ${reviewerName}.`;
+
+    // Notify all attendees
+    for (const attendeeId of meetingData.attendeeIds) {
+      // Don't await each if it's many, just create promises, but we'll do sequential for safety
+      try {
+        await addDoc(collection(db, "notifications"), {
+          recipientId: attendeeId,
+          title,
+          message,
+          type: "system",
+          read: false,
+          priority: "normal",
+          link: `/meetings/${meetingId}`,
+          createdAt: now,
+        });
+      } catch (err) {
+        console.warn("Failed to notify attendee", attendeeId, err);
+      }
+    }
+  } else if (status === "rejected" && meetingData.submittedBy) {
+    // Notify submitter of rejection
+    try {
+      await addDoc(collection(db, "notifications"), {
+        recipientId: meetingData.submittedBy,
+        title: "Meeting Rejected",
+        message: `Your meeting submission '${meetingData.title}' was rejected.`,
+        type: "system",
+        read: false,
+        priority: "high",
+        link: `/meetings/${meetingId}`,
+        createdAt: now,
+      });
+    } catch (err) {
+      console.warn("Failed to notify submitter", err);
+    }
+  }
 }

@@ -65,6 +65,14 @@ service cloud.firestore {
       allow delete: if isStaff();
     }
 
+    // Meetings Collection
+    match /meetings/{meetingId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && request.resource.data.submittedBy == request.auth.uid;
+      allow update: if isStaff() || (isAuthenticated() && resource.data.submittedBy == request.auth.uid);
+      allow delete: if isStaff();
+    }
+
     // Posts / Achievements Collection
     match /posts/{postId} {
       allow read: if isActive();
