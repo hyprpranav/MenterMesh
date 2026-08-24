@@ -7,11 +7,12 @@ import React, { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { AppShell } from "@/components/layout/AppShell";
 import { useAuth } from "@/contexts/AuthContext";
-import { getMeeting, reviewMeetingSubmission } from "@/lib/firebase/firestore";
+import { getMeeting, reviewMeetingSubmission, getAllUsers } from "@/lib/firebase/firestore";
 import type { Meeting } from "@/types";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
+import { Avatar } from "@/components/ui/Avatar";
 import { Loader2, ArrowLeft, Clock, MapPin, Users, CheckCircle2, XCircle, Link as LinkIcon } from "lucide-react";
 import { formatDate } from "@/lib/utils";
 import { useToast } from "@/components/ui/ToastProvider";
@@ -32,6 +33,7 @@ function MeetingDetailsContent() {
     const meetingId = params.meetingId as string;
 
     const [meeting, setMeeting] = useState<Meeting | null>(null);
+    const [usersMap, setUsersMap] = useState<Record<string, any>>({});
     const [loading, setLoading] = useState(true);
     const [reviewing, setReviewing] = useState(false);
 
@@ -42,6 +44,17 @@ function MeetingDetailsContent() {
             try {
                 const data = await getMeeting(meetingId);
                 setMeeting(data);
+
+                if (data?.attendeeIds) {
+                    try {
+                        const allUsers = await getAllUsers();
+                        const map: Record<string, any> = {};
+                        for (const u of allUsers) {
+                            map[u.uid] = u;
+                        }
+                        setUsersMap(map);
+                    } catch (e) { console.error("Error loading users", e); }
+                }
             } catch (err) {
                 console.error(err);
             } finally {
@@ -199,11 +212,18 @@ function MeetingDetailsContent() {
                         <div><span className="mm-event-label">Attendance</span><h2>Attendees & Participants ({meeting.attendeeCount})</h2></div>
                     </div>
                     <div className="mm-event-participants">
-                        {meeting.attendeeNames.map((name, i) => (
-                            <span key={i} className="bg-slate-50 border border-slate-200 px-3 py-1 rounded-full text-xs font-semibold text-slate-800">
-                                {name}
-                            </span>
-                        ))}
+                        {(meeting.attendeeIds || []).map((uid: string, i: number) => {
+                            const u = usersMap[uid];
+                            const name = u?.name || meeting.attendeeNames?.[i] || uid;
+                            return (
+                                <div key={uid} className="bg-slate-50 border border-slate-200 pr-4 pl-1.5 py-1.5 rounded-full flex items-center gap-2 hover:bg-slate-100 transition-colors shadow-[0_2px_8px_rgba(0,0,0,0.02)]">
+                                    <Avatar name={name} photoUrl={u?.profilePhoto} size="sm" className="w-[28px] h-[28px]" />
+                                    <span className="text-[13px] font-bold text-slate-800 tracking-tight shrink-0">
+                                        {name}
+                                    </span>
+                                </div>
+                            );
+                        })}
                     </div>
                 </div>
             )}
