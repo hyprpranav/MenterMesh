@@ -45,6 +45,10 @@ function CommunityContent() {
       try {
         const list = await getPosts();
         setPosts(list);
+        if (typeof window !== "undefined") {
+          localStorage.setItem("last_visited_community", Date.now().toString());
+          window.dispatchEvent(new Event("mentormesh_notifications_read"));
+        }
       } catch (err) {
         console.error(err);
       } finally {
@@ -110,7 +114,7 @@ function CommunityContent() {
   };
 
   return (
-    <div className="space-y-6 w-full max-w-6xl mx-auto mm-page-animate">
+    <div className="space-y-6 w-full max-w-[1400px] mx-auto mm-page-animate">
       <PageHeader
         icon={<BookOpen size={20} />}
         iconClass="bg-violet-100 text-violet-600"
@@ -143,7 +147,7 @@ function CommunityContent() {
             const config = postStyles[post.type as keyof typeof postStyles] || postStyles.general;
 
             return (
-              <div key={post.id} className="relative bg-white rounded-[32px] shadow-[0_8px_40px_rgba(0,0,0,0.04)] border border-slate-200/80 mb-6 overflow-hidden flex flex-col">
+              <div key={post.id} className="relative bg-white rounded-[32px] shadow-[0_8px_40px_rgba(0,0,0,0.04)] border border-slate-200/80 mb-6 overflow-hidden flex flex-col min-h-[380px]">
                 {/* Top colored accent using a normal block, totally preventing any border-overlap/clipping issues */}
                 <div className={`w-full h-3 bg-gradient-to-r ${config.color} shrink-0`} />
 
@@ -193,8 +197,8 @@ function CommunityContent() {
                         target="_blank"
                         rel="noreferrer"
                         className={`inline-flex items-center justify-center gap-3 px-10 py-4 sm:px-12 sm:py-5 rounded-2xl font-black text-[17px] sm:text-xl text-white shadow-[0_8px_24px_rgba(0,0,0,0.12)] hover:shadow-2xl hover:-translate-y-1 transition-all outline-none focus:ring-4 focus:ring-offset-2 w-full sm:w-auto text-center ${post.link.includes("linkedin.com")
-                            ? "bg-[#0A66C2] hover:bg-[#004182] focus:ring-[#0A66C2]/50"
-                            : "bg-slate-900 hover:bg-slate-800 focus:ring-slate-900/50 border border-slate-900"
+                          ? "bg-[#0A66C2] hover:bg-[#004182] focus:ring-[#0A66C2]/50"
+                          : "bg-slate-900 hover:bg-slate-800 focus:ring-slate-900/50 border border-slate-900"
                           }`}
                       >
                         <ArrowUpRight size={24} className={post.link.includes("linkedin.com") ? "hidden" : "block"} />

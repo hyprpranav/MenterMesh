@@ -42,6 +42,7 @@ export function AppShell({ children }: AppShellProps) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [hasNewTeams, setHasNewTeams] = useState(false);
   const [hasNewEvents, setHasNewEvents] = useState(false);
+  const [hasNewCommunity, setHasNewCommunity] = useState(false);
   const [birthdayPopupOpen, setBirthdayPopupOpen] = useState(false);
   const [devPhotoUrl, setDevPhotoUrl] = useState<string | null>(null);
 
@@ -171,13 +172,27 @@ export function AppShell({ children }: AppShellProps) {
       }
     });
 
+    const qCommunity = query(collection(db, "posts"), orderBy("createdAt", "desc"), limit(1));
+    const unsubCommunity = onSnapshot(qCommunity, (snap) => {
+      if (!snap.empty) {
+        const doc = snap.docs[0].data();
+        if (doc.createdAt) {
+          const latest = new Date(doc.createdAt).getTime();
+          const lastVis = localStorage.getItem("last_visited_community");
+          if (!lastVis || latest > parseInt(lastVis)) setHasNewCommunity(true);
+          else setHasNewCommunity(false);
+        }
+      }
+    });
+
     const handleRead = () => {
       if (window.location.pathname.startsWith("/teams")) setHasNewTeams(false);
       if (window.location.pathname.startsWith("/events")) setHasNewEvents(false);
+      if (window.location.pathname.startsWith("/community")) setHasNewCommunity(false);
     };
     window.addEventListener("mentormesh_notifications_read", handleRead);
 
-    return () => { unsub(); unsubTeams(); unsubEvents(); window.removeEventListener("mentormesh_notifications_read", handleRead); };
+    return () => { unsub(); unsubTeams(); unsubEvents(); unsubCommunity(); window.removeEventListener("mentormesh_notifications_read", handleRead); };
   }, [user]);
 
   const isReady = !loading && user && (user.status === "active" || user.status === "imported");
@@ -186,7 +201,7 @@ export function AppShell({ children }: AppShellProps) {
   return (
     <div className="mm-layout">
       {/* ── Desktop Sidebar ─────────────────────────────── */}
-      <Sidebar unreadCount={unreadCount} hasNewTeams={hasNewTeams} hasNewEvents={hasNewEvents} />
+      <Sidebar unreadCount={unreadCount} hasNewTeams={hasNewTeams} hasNewEvents={hasNewEvents} hasNewCommunity={hasNewCommunity} />
 
       {/* ── Mobile Topbar ───────────────────────────────── */}
       <header className="mm-mobile-topbar">
@@ -352,7 +367,7 @@ export function AppShell({ children }: AppShellProps) {
               style={{ flex: 1, overflowY: "auto" }}
               onClick={closeDrawer}
             >
-              <Sidebar unreadCount={unreadCount} hasNewTeams={hasNewTeams} hasNewEvents={hasNewEvents} isMobileDrawer />
+              <Sidebar unreadCount={unreadCount} hasNewTeams={hasNewTeams} hasNewEvents={hasNewEvents} hasNewCommunity={hasNewCommunity} isMobileDrawer />
             </div>
           </div>
         </div>
@@ -366,7 +381,7 @@ export function AppShell({ children }: AppShellProps) {
       </main>
 
       {/* ── Mobile Bottom Nav ─────────────────────────────── */}
-      <BottomNav unreadCount={unreadCount} hasNewTeams={hasNewTeams} hasNewEvents={hasNewEvents} />
+      <BottomNav unreadCount={unreadCount} hasNewTeams={hasNewTeams} hasNewEvents={hasNewEvents} hasNewCommunity={hasNewCommunity} />
 
       {/* ── Birthday Popup ────────────────────────────────── */}
       {birthdayPopupOpen && user && (

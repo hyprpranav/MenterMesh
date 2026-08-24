@@ -22,7 +22,7 @@ interface NavItem {
   href: string;
   icon: React.ReactNode;
   roles: Array<"student" | "staff" | "master">;
-  badgeKey?: "notifications" | "teams" | "events";
+  badgeKey?: "notifications" | "teams" | "events" | "community";
 }
 
 const NAV_ITEMS: NavItem[] = [
@@ -63,6 +63,7 @@ const NAV_ITEMS: NavItem[] = [
     href: "/community",
     icon: <BookOpen size={17} />,
     roles: ["student", "staff", "master"],
+    badgeKey: "community",
   },
   {
     label: "Announcements",
@@ -134,11 +135,13 @@ export function Sidebar({
   unreadCount = 0,
   hasNewTeams = false,
   hasNewEvents = false,
+  hasNewCommunity = false,
   isMobileDrawer = false,
 }: {
   unreadCount?: number;
   hasNewTeams?: boolean;
   hasNewEvents?: boolean;
+  hasNewCommunity?: boolean;
   isMobileDrawer?: boolean;
 }) {
   const { user, logOut } = useAuth();
@@ -217,7 +220,7 @@ export function Sidebar({
           {filteredNav.map((item) => {
             const active = isActive(item.href);
             const showNotifBadge = item.badgeKey === "notifications" && unreadCount > 0;
-            const showRedDot = (item.badgeKey === "teams" && hasNewTeams) || (item.badgeKey === "events" && hasNewEvents);
+            const showRedDot = (item.badgeKey === "teams" && hasNewTeams) || (item.badgeKey === "events" && hasNewEvents) || (item.badgeKey === "community" && hasNewCommunity);
             return (
               <Link
                 key={item.href}

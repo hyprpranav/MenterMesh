@@ -39,10 +39,12 @@ export function BottomNav({
   unreadCount = 0,
   hasNewTeams = false,
   hasNewEvents = false,
+  hasNewCommunity = false,
 }: {
   unreadCount?: number;
   hasNewTeams?: boolean;
   hasNewEvents?: boolean;
+  hasNewCommunity?: boolean;
 }) {
   const pathname = usePathname();
   const { user } = useAuth();
@@ -66,7 +68,7 @@ export function BottomNav({
         <div className="mm-bottom-nav-items">
           {PRIMARY_NAV.map(({ label, href, icon: Icon }) => {
             const active = isActive(href);
-            const showRedDot = (label === "Teams" && hasNewTeams) || (label === "Events" && hasNewEvents);
+            const showRedDot = (label === "Teams" && hasNewTeams) || (label === "Events" && hasNewEvents) || (label === "Community" && hasNewCommunity);
             return (
               <Link
                 key={href}
