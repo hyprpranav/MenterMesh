@@ -190,17 +190,22 @@ function CommunityContent() {
       >
         <form id="community-post-form" onSubmit={handleCreatePost} className="space-y-4">
           <div>
-            <label className="mm-label">Post Type</label>
-            <div className="flex gap-2 mt-1 flex-wrap">
+            <label className="mm-label mb-2 block">Post Type</label>
+            <div className="flex gap-2 flex-wrap">
               {(["achievement", "project", "general"] as const).map((t) => (
                 <button
                   key={t}
                   type="button"
                   onClick={() => setPostType(t)}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold capitalize transition-all ${
-                    postType === t ? "bg-blue-600 text-white shadow-sm" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-                  }`}
+                  className={`px-4 py-2 rounded-xl text-sm font-bold capitalize transition-all border ${postType === t
+                      ? "bg-blue-50 border-blue-600 text-blue-700 shadow-sm ring-1 ring-blue-600"
+                      : "bg-white border-slate-200 text-slate-500 hover:bg-slate-50 hover:border-slate-300 hover:text-slate-700"
+                    }`}
+                  style={{ minWidth: "max-content" }}
                 >
+                  {t === "achievement" && "🏆 "}
+                  {t === "project" && "🚀 "}
+                  {t === "general" && "📢 "}
                   {t}
                 </button>
               ))}
