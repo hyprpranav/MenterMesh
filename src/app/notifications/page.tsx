@@ -217,14 +217,59 @@ function NotificationsContent() {
     </div>
   );
 
+  // ── DEVELOPER INJECTION TOOLS ──
+  const isMaster = user?.role === "master";
+
+  const injectSampleNotification = (diffDays: number) => {
+    if (!user) return;
+    const fakeId = `bday_other_devtest_${diffDays}_${Date.now()}`;
+    const newNotif: Notification = {
+      id: fakeId,
+      recipientId: user.uid,
+      relatedId: user.uid,
+      title: diffDays === 0 ? `🎂 It's Test Student's Birthday Today!` : `🎁 Test Student's Birthday in ${diffDays} Days!`,
+      message: diffDays === 0 ? "Test Student is turning 20 today! Tap 'Wish Now' to send your birthday message. 🎊" : `Test Student is turning 20 in ${diffDays} days. Don't forget to wish them!`,
+      type: "birthday",
+      priority: diffDays <= 1 ? "high" : "normal",
+      read: false,
+      createdAt: new Date().toISOString(),
+      link: "https://wa.me/something",
+    };
+    setNotifications(prev => [newNotif, ...prev]);
+  };
+
   const fabFixed: React.CSSProperties = fabPos.x || fabPos.y
     ? { position: "fixed", left: fabPos.x, top: fabPos.y, zIndex: 9990, cursor: dragging ? "grabbing" : "grab" }
     : { position: "fixed", bottom: "100px", right: "24px", zIndex: 9990, cursor: "grab" };
 
   return (
     <>
-      {/* ── Notification list card ──────────────────────── */}
       <div className="mm-card space-y-6 w-full max-w-4xl mx-auto mm-page-animate">
+        {/* DEVELOPER TESTING TOOLS */}
+        {isMaster && (
+          <div className="p-4 rounded-xl border-2 border-dashed border-pink-300 bg-pink-50/50 relative overflow-hidden">
+            <h4 className="text-sm font-bold text-pink-700 mb-3 flex items-center gap-2">
+              <Cake size={16} /> Developer Birthday Testing Dashboard
+            </h4>
+            <div className="flex flex-wrap gap-2 relative z-10">
+              <Button size="sm" variant="outline" onClick={() => injectSampleNotification(4)}>
+                Test Card (+4 Days)
+              </Button>
+              <Button size="sm" variant="outline" onClick={() => injectSampleNotification(0)}>
+                Test Card (Today)
+              </Button>
+              <Button size="sm" variant="primary" onClick={() => window.dispatchEvent(new Event("mm-test-birthday-popup"))}>
+                Test Celebration Popup
+              </Button>
+            </div>
+            <p className="text-[11px] text-pink-500 font-medium mt-3 leading-relaxed">
+              Clicking standard notification cards (e.g. 4 days out) will just dismiss them (mark read).
+              Clicking the "Wish Now" button on Today's card opens the Wish Modal.
+              Clicking the "Test Celebration Popup" perfectly replicates the full-screen student view.
+            </p>
+          </div>
+        )}
+
         <PageHeader
           icon={<Bell size={20} />}
           iconClass="bg-blue-100 text-blue-600"

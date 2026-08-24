@@ -96,6 +96,13 @@ export function AppShell({ children }: AppShellProps) {
     }).catch(() => { });
   }, []);
 
+  // Developer testing tool listener
+  useEffect(() => {
+    const handleTestPopup = () => setBirthdayPopupOpen(true);
+    window.addEventListener('mm-test-birthday-popup', handleTestPopup);
+    return () => window.removeEventListener('mm-test-birthday-popup', handleTestPopup);
+  }, []);
+
   // Request browser notification permissions
   useEffect(() => {
     if (typeof window !== "undefined" && "Notification" in window) {
