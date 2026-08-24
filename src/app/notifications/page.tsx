@@ -11,6 +11,7 @@ import {
   markNotificationRead,
   markAllNotificationsRead,
   getActiveStudents,
+  getAllUsers,
 } from "@/lib/firebase/firestore";
 import { getUpcomingBirthdays, markVirtualNotificationRead, markAllVirtualNotificationsRead } from "@/lib/birthdays";
 import type { Notification } from "@/types";
@@ -45,6 +46,7 @@ function NotificationsContent() {
   const { success, error: toastError } = useToast();
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [loading, setLoading] = useState(true);
+  const [devPhotoUrl, setDevPhotoUrl] = useState<string | null>(null);
 
   // Compose message
   const [composeOpen, setComposeOpen] = useState(false);
@@ -82,6 +84,20 @@ function NotificationsContent() {
     }
     load();
   }, [user]);
+
+  // Fetch developer photo once
+  useEffect(() => {
+    async function loadDev() {
+      try {
+        const masters = await getAllUsers("master");
+        if (masters.length > 0) {
+          const dev = masters[0];
+          setDevPhotoUrl(dev.professionalPhoto || dev.profilePhoto || null);
+        }
+      } catch { /* ignore */ }
+    }
+    loadDev();
+  }, []);
 
   // Draggable FAB
   const handleFabMouseDown = (e: React.MouseEvent) => {
@@ -190,6 +206,17 @@ function NotificationsContent() {
     default: { icon: <Bell size={18} />, classes: "bg-blue-100 text-blue-600" },
   };
 
+  // Developer photo icon displayed on all birthday notifications
+  const devIcon = devPhotoUrl ? (
+    <div style={{ width: 36, height: 36, borderRadius: "50%", overflow: "hidden", border: "2.5px solid #F9A8D4", flexShrink: 0, boxShadow: "0 0 0 2px #fbcfe8" }}>
+      <img src={devPhotoUrl} alt="Dev" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+    </div>
+  ) : (
+    <div className="w-9 h-9 rounded-full bg-pink-100 text-pink-600 flex items-center justify-center shrink-0 mt-0.5">
+      <Cake size={18} />
+    </div>
+  );
+
   const fabFixed: React.CSSProperties = fabPos.x || fabPos.y
     ? { position: "fixed", left: fabPos.x, top: fabPos.y, zIndex: 9990, cursor: dragging ? "grabbing" : "grab" }
     : { position: "fixed", bottom: "100px", right: "24px", zIndex: 9990, cursor: "grab" };
@@ -233,9 +260,14 @@ function NotificationsContent() {
                   onKeyDown={e => e.key === "Enter" && !n.read && handleMarkRead(n.id)}
                   aria-label={n.title}
                 >
-                  <div className={cn("w-9 h-9 rounded-full flex items-center justify-center shrink-0 mt-0.5", cfg.classes)}>
-                    {cfg.icon}
-                  </div>
+                  {/* Birthday notifications show developer photo, others use standard icon */}
+                  {n.type === "birthday" ? (
+                    <div className="shrink-0 mt-0.5">{devIcon}</div>
+                  ) : (
+                    <div className={cn("w-9 h-9 rounded-full flex items-center justify-center shrink-0 mt-0.5", cfg.classes)}>
+                      {cfg.icon}
+                    </div>
+                  )}
                   <div className="mm-notification-content">
                     <div className="mm-notification-heading">
                       <h3 className="font-bold text-slate-900 text-sm leading-snug overflow-wrap-anywhere">{n.title}</h3>

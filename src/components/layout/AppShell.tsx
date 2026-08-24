@@ -8,7 +8,7 @@ import { useRouter, usePathname } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
 import { Sidebar } from "./Sidebar";
 import { BottomNav } from "./BottomNav";
-import { subscribeToNotifications } from "@/lib/firebase/firestore";
+import { subscribeToNotifications, getAllUsers } from "@/lib/firebase/firestore";
 import { collection, query, limit, orderBy, onSnapshot } from "firebase/firestore";
 import { db } from "@/lib/firebase/config";
 import type { Notification } from "@/types";
@@ -43,6 +43,7 @@ export function AppShell({ children }: AppShellProps) {
   const [hasNewTeams, setHasNewTeams] = useState(false);
   const [hasNewEvents, setHasNewEvents] = useState(false);
   const [birthdayPopupOpen, setBirthdayPopupOpen] = useState(false);
+  const [devPhotoUrl, setDevPhotoUrl] = useState<string | null>(null);
 
   // Close drawer on route change
   useEffect(() => {
@@ -84,6 +85,16 @@ export function AppShell({ children }: AppShellProps) {
       }
     } catch { /* ignore */ }
   }, [user]);
+
+  // Fetch developer photo for birthday popup
+  useEffect(() => {
+    getAllUsers("master").then(masters => {
+      if (masters.length > 0) {
+        const dev = masters[0];
+        setDevPhotoUrl((dev as any).professionalPhoto || (dev as any).profilePhoto || null);
+      }
+    }).catch(() => { });
+  }, []);
 
   // Request browser notification permissions
   useEffect(() => {
@@ -383,16 +394,26 @@ export function AppShell({ children }: AppShellProps) {
 
             {/* Developer photo */}
             <div style={{ position: "relative", display: "inline-block", marginBottom: "1.25rem" }}>
-              <div style={{
-                width: "80px", height: "80px", borderRadius: "50%",
-                background: "linear-gradient(135deg, #7C3AED, #3B82F6)",
-                display: "flex", alignItems: "center", justifyContent: "center",
-                margin: "0 auto",
-                boxShadow: "0 0 0 4px rgba(139,92,246,0.4), 0 8px 24px rgba(139,92,246,0.3)",
-                fontSize: "2.5rem", lineHeight: 1,
-              }}>
-                🎂
-              </div>
+              {devPhotoUrl ? (
+                <div style={{
+                  width: "88px", height: "88px", borderRadius: "50%", overflow: "hidden",
+                  margin: "0 auto",
+                  boxShadow: "0 0 0 4px rgba(139,92,246,0.5), 0 0 0 8px rgba(139,92,246,0.2), 0 8px 24px rgba(139,92,246,0.4)",
+                }}>
+                  <img src={devPhotoUrl} alt="Developer" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                </div>
+              ) : (
+                <div style={{
+                  width: "80px", height: "80px", borderRadius: "50%",
+                  background: "linear-gradient(135deg, #7C3AED, #3B82F6)",
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  margin: "0 auto",
+                  boxShadow: "0 0 0 4px rgba(139,92,246,0.4), 0 8px 24px rgba(139,92,246,0.3)",
+                  fontSize: "2.5rem", lineHeight: 1,
+                }}>
+                  🎂
+                </div>
+              )}
               {/* Sparkles */}
               {["✨", "🎉", "⭐"].map((s, i) => (
                 <span key={i} style={{
