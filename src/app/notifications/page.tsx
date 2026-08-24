@@ -247,26 +247,31 @@ function NotificationsContent() {
       <div className="mm-card space-y-6 w-full max-w-4xl mx-auto mm-page-animate">
         {/* DEVELOPER TESTING TOOLS */}
         {isMaster && (
-          <div className="p-4 rounded-xl border-2 border-dashed border-pink-300 bg-pink-50/50 relative overflow-hidden">
-            <h4 className="text-sm font-bold text-pink-700 mb-3 flex items-center gap-2">
-              <Cake size={16} /> Developer Birthday Testing Dashboard
-            </h4>
-            <div className="flex flex-wrap gap-2 relative z-10">
-              <Button size="sm" variant="outline" onClick={() => injectSampleNotification(4)}>
-                Test Card (+4 Days)
-              </Button>
-              <Button size="sm" variant="outline" onClick={() => injectSampleNotification(0)}>
-                Test Card (Today)
-              </Button>
-              <Button size="sm" variant="primary" onClick={() => window.dispatchEvent(new Event("mm-test-birthday-popup"))}>
-                Test Celebration Popup
-              </Button>
+          <div className="mb-6 rounded-2xl border border-indigo-100 bg-white shadow-sm overflow-hidden flex flex-col">
+            <div className="bg-gradient-to-r from-indigo-500 to-purple-600 px-5 py-3 flex items-center justify-between">
+              <h4 className="text-[13px] font-extrabold tracking-wide text-white flex items-center gap-2 uppercase">
+                <Cake size={16} className="text-pink-200" /> Developer Birthday Test Panel
+              </h4>
+              <span className="text-[10px] uppercase font-bold tracking-wider bg-black/20 text-white px-2 py-0.5 rounded-full">Dev Only</span>
             </div>
-            <p className="text-[11px] text-pink-500 font-medium mt-3 leading-relaxed">
-              Clicking standard notification cards (e.g. 4 days out) will just dismiss them (mark read).
-              Clicking the "Wish Now" button on Today's card opens the Wish Modal.
-              Clicking the "Test Celebration Popup" perfectly replicates the full-screen student view.
-            </p>
+            <div className="p-5 bg-indigo-50/40">
+              <div className="flex flex-wrap items-center gap-3">
+                <Button size="sm" variant="outline" className="bg-white border-indigo-200 text-indigo-700 hover:bg-indigo-50 hover:text-indigo-800" onClick={() => injectSampleNotification(4)}>
+                  <span className="font-semibold">Test Card (+4 Days)</span>
+                </Button>
+                <Button size="sm" variant="outline" className="bg-white border-indigo-200 text-indigo-700 hover:bg-indigo-50 hover:text-indigo-800" onClick={() => injectSampleNotification(0)}>
+                  <span className="font-semibold">Test Card (Today)</span>
+                </Button>
+                <div className="h-6 w-px bg-indigo-200 mx-1 hidden sm:block"></div>
+                <Button size="sm" variant="primary" className="bg-indigo-600 hover:bg-indigo-700 border-none shadow-md" onClick={() => window.dispatchEvent(new Event("mm-test-birthday-popup"))}>
+                  Test Celebration Popup ✨
+                </Button>
+              </div>
+              <p className="text-[12px] text-indigo-900/60 font-medium mt-4 leading-relaxed max-w-3xl">
+                <strong className="text-indigo-900/80">Usage:</strong> Standard cards (e.g. 4 days out) will just dismiss on click.
+                The <strong>"Today"</strong> card features the Wish Modal. Trigger the <strong>"Celebration Popup"</strong> to perfectly replicate the confetti-filled student view.
+              </p>
+            </div>
           </div>
         )}
 
@@ -371,9 +376,19 @@ function NotificationsContent() {
         }
       >
         <div className="space-y-3">
-          <div className="bg-pink-50 border border-pink-200 rounded-xl p-3 text-sm text-pink-800">
-            <strong>{wishNotif?.title}</strong>
-            <p className="text-xs mt-1 text-pink-700">{wishNotif?.message}</p>
+          <div className="relative bg-gradient-to-br from-pink-50 to-purple-50 border border-pink-200/80 rounded-2xl p-4 shadow-[inset_0_2px_10px_rgba(255,255,255,1)] overflow-hidden">
+            <div className="absolute -right-3 -top-3 text-pink-400/10 transform rotate-12 pointer-events-none">
+              <Gift size={90} />
+            </div>
+            <div className="relative z-10 w-full mb-1">
+              <span className="inline-block px-2.5 py-0.5 bg-pink-100 text-pink-700 text-[10px] font-bold tracking-wider uppercase rounded-full mb-2">Notification Preview</span>
+              <h4 className="text-[16px] font-extrabold text-slate-800 leading-snug tracking-tight pr-6">
+                {wishNotif?.title}
+              </h4>
+            </div>
+            <p className="relative z-10 text-[13px] text-slate-600 leading-relaxed font-medium mt-1">
+              {wishNotif?.message}
+            </p>
           </div>
           <div>
             <label className="mm-label">Your Personal Message (optional)</label>
