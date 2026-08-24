@@ -107,151 +107,106 @@ function MeetingDetailsContent() {
 
     return (
         <div className="space-y-6 max-w-4xl mx-auto mm-page-animate pb-24">
-            <div>
-                <Button variant="ghost" size="sm" icon={<ArrowLeft size={16} />} onClick={() => router.push("/meetings")} className="-ml-3 mb-4">
+            {/* Navigation */}
+            <div className="flex items-center justify-between">
+                <Button variant="ghost" size="sm" icon={<ArrowLeft size={16} />} onClick={() => router.push("/meetings")} className="-ml-3 block">
                     Back to Meetings
                 </Button>
-                <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
-                    <PageHeader
-                        title={meeting.title}
-                        subtitle={`Meeting Purpose: ${meeting.purpose}`}
-                    />
-                    <div className="shrink-0 mt-2">
-                        {isPending ? (
-                            <Badge variant="pending" icon={<Clock size={14} />} className="text-sm py-1.5 px-3">Pending Review</Badge>
-                        ) : isRejected ? (
-                            <Badge variant="rejected" icon={<XCircle size={14} />} className="text-sm py-1.5 px-3">Rejected</Badge>
-                        ) : isApproved ? (
-                            <Badge variant="approved" icon={<CheckCircle2 size={14} />} className="text-sm py-1.5 px-3">Approved</Badge>
-                        ) : null}
-                    </div>
-                </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-
-                {/* Main Details */}
-                <div className="md:col-span-2 space-y-6">
-                    <div className="bg-white border border-slate-200/60 rounded-[20px] shadow-sm p-6 sm:p-8 space-y-6">
-                        <h2 className="text-[17px] font-bold text-slate-900 border-b border-slate-100 pb-3">Meeting Overview</h2>
-
-                        <p className="text-[15px] text-slate-700 leading-relaxed whitespace-pre-wrap">
-                            {meeting.description}
-                        </p>
-
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-6">
-                            <div className="flex items-center gap-3 p-4 bg-slate-50 rounded-xl border border-slate-100">
-                                <Clock className="text-blue-500 shrink-0" size={20} />
-                                <div>
-                                    <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wide">Date & Time</p>
-                                    <p className="font-semibold text-slate-800 text-[14px]">{formatDate(meeting.date)}, {meeting.time}</p>
-                                </div>
-                            </div>
-                            <div className="flex items-center gap-3 p-4 bg-slate-50 rounded-xl border border-slate-100">
-                                <Users className="text-purple-500 shrink-0" size={20} />
-                                <div>
-                                    <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wide">Type / Mode</p>
-                                    <p className="font-semibold text-slate-800 text-[14px]">{meeting.mode}</p>
-                                </div>
-                            </div>
-                            {meeting.location && (
-                                <div className="flex items-center gap-3 p-4 bg-slate-50 rounded-xl border border-slate-100 sm:col-span-2">
-                                    <MapPin className="text-rose-500 shrink-0" size={20} />
-                                    <div>
-                                        <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wide">Location</p>
-                                        <p className="font-semibold text-slate-800 text-[14px]">{meeting.location}</p>
-                                    </div>
-                                </div>
-                            )}
-                            {meeting.link && (
-                                <div className="flex items-center gap-3 p-4 bg-slate-50 rounded-xl border border-slate-100 sm:col-span-2">
-                                    <LinkIcon className="text-emerald-500 shrink-0" size={20} />
-                                    <div className="min-w-0">
-                                        <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wide">Meeting Link</p>
-                                        <a href={meeting.link} target="_blank" rel="noreferrer" className="font-semibold text-blue-600 text-[14px] hover:underline truncate block">
-                                            {meeting.link}
-                                        </a>
-                                    </div>
-                                </div>
-                            )}
+            {/* Staff Review Banner if Pending */}
+            {isStaff && isPending && (
+                <div className="bg-amber-50 border border-amber-200 rounded-2xl p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                    <div className="flex items-start gap-3">
+                        <div className="w-10 h-10 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center shrink-0">
+                            <Clock size={22} />
                         </div>
-                    </div>
-
-                    {/* Attendees List */}
-                    <div className="bg-white border border-slate-200/60 rounded-[20px] shadow-sm p-6 sm:p-8 space-y-6">
-                        <h2 className="text-[17px] font-bold text-slate-900 border-b border-slate-100 pb-3 flex items-center justify-between">
-                            <span>Attendees</span>
-                            <span className="text-sm text-slate-500 bg-slate-100 px-2.5 py-0.5 rounded-full">{meeting.attendeeCount}</span>
-                        </h2>
-                        <div className="space-y-2 max-h-[300px] overflow-y-auto pr-2">
-                            {(meeting.attendeeNames || []).map((name, idx) => (
-                                <div key={idx} className="flex items-center gap-3 p-3 bg-slate-50 border border-slate-100 rounded-xl">
-                                    <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center font-bold text-sm shrink-0">
-                                        {name.charAt(0).toUpperCase()}
-                                    </div>
-                                    <span className="font-semibold text-[14px] text-slate-800">{name}</span>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-                </div>
-
-                {/* Sidebar (System Info & Actions) */}
-                <div className="space-y-6">
-                    <div className="bg-white border border-slate-200/60 rounded-[20px] shadow-sm p-6 space-y-6">
-                        <h2 className="text-[15px] font-bold text-slate-900 border-b border-slate-100 pb-3">System Information</h2>
-
-                        <div className="space-y-4">
-                            <div>
-                                <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wide">Submitted By</p>
-                                <p className="font-semibold text-[14px] text-slate-800">{meeting.submittedByName || "Unknown"}</p>
-                                <p className="text-[12px] text-slate-500 mt-0.5">{getSystemDateFormatted(meeting.submittedAt)}</p>
-                            </div>
-
-                            {isApproved && (
-                                <div>
-                                    <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wide">Approved By</p>
-                                    <p className="font-semibold text-[14px] text-emerald-700">{meeting.approvedByName || "Unknown"}</p>
-                                    <p className="text-[12px] text-slate-500 mt-0.5">{getSystemDateFormatted(meeting.approvedAt)}</p>
-                                </div>
-                            )}
-
-                            {isRejected && (
-                                <div>
-                                    <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wide">Rejected By</p>
-                                    <p className="font-semibold text-[14px] text-rose-700">{meeting.rejectedByName || "Unknown"}</p>
-                                    <p className="text-[12px] text-slate-500 mt-0.5">{getSystemDateFormatted(meeting.rejectedAt)}</p>
-                                </div>
-                            )}
-                        </div>
-                    </div>
-
-                    {/* Admin Review Action (Only for Staff/Master) */}
-                    {isStaff && isPending && (
-                        <div className="bg-slate-50 border border-slate-200/60 rounded-[20px] shadow-sm p-6 space-y-5">
-                            <h2 className="text-[15px] font-bold text-slate-900 border-b border-slate-200 pb-3">Staff Review</h2>
-                            <p className="text-[13px] text-slate-600">
-                                Please review the meeting details and verify the attendees before approving.
+                        <div>
+                            <h3 className="font-bold text-amber-900 text-sm">Meeting Submission Pending Review</h3>
+                            <p className="text-xs text-amber-700 mt-0.5">
+                                Submitted by <strong>{meeting.submittedByName || "Student"}</strong>. Please verify details before approving.
                             </p>
-                            <div className="space-y-3">
-                                <Button variant="primary" className="w-full justify-center bg-emerald-600 hover:bg-emerald-700 focus:ring-emerald-500" onClick={() => handleReview("approved")} disabled={reviewing}>
-                                    {reviewing ? <Loader2 className="animate-spin" size={16} /> : "Approve Meeting"}
-                                </Button>
-                                <Button variant="outline" className="w-full justify-center text-rose-600 border-rose-200 hover:bg-rose-50" onClick={() => handleReview("rejected")} disabled={reviewing}>
-                                    Reject
-                                </Button>
-                            </div>
                         </div>
-                    )}
+                    </div>
 
-                    {isStaff && !isPending && (
-                        <div className="bg-slate-50 border border-slate-200/60 rounded-[20px] shadow-sm p-6 text-center">
-                            <h2 className="text-[14px] font-bold text-slate-900 mb-1">Review Completed</h2>
-                            <p className="text-[13px] text-slate-500">This meeting has already been {meeting.status}.</p>
-                        </div>
+                    <div className="flex items-center gap-2 shrink-0 flex-wrap">
+                        <Button variant="primary" size="md" icon={<CheckCircle2 size={16} />} loading={reviewing} onClick={() => handleReview("approved")}>Approve</Button>
+                        <Button variant="destructive" size="md" icon={<XCircle size={16} />} loading={reviewing} onClick={() => handleReview("rejected")}>Reject</Button>
+                    </div>
+                </div>
+            )}
+
+            {/* Hero Card */}
+            <div className="mm-event-hero">
+                <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-4">
+                    <div className="min-w-0">
+                        <span className="mm-event-kicker">
+                            {meeting.mode} Meeting
+                        </span>
+                        <h1 className="mm-event-title">{meeting.title}</h1>
+                        {meeting.purpose && (
+                            <p className="mm-event-subtitle">Purpose: {meeting.purpose}</p>
+                        )}
+                    </div>
+
+                    {/* Status Badge */}
+                    {isPending ? (
+                        <Badge variant="pending">PENDING REVIEW</Badge>
+                    ) : isApproved ? (
+                        <Badge variant="approved">APPROVED</Badge>
+                    ) : (
+                        <Badge variant="rejected">REJECTED</Badge>
                     )}
                 </div>
+
+                {isStaff && (
+                    <div className="mm-event-audit">
+                        <div><strong>Submitted</strong><span>{getSystemDateFormatted(meeting.submittedAt)}</span></div>
+                        {isApproved && <div><strong>Approved</strong><span>{getSystemDateFormatted(meeting.approvedAt)} by {meeting.approvedByName || "Staff"}</span></div>}
+                        {isRejected && <div><strong>Rejected</strong><span>{getSystemDateFormatted(meeting.rejectedAt)} by {meeting.rejectedByName || "Staff"}</span></div>}
+                    </div>
+                )}
+
+                <div className="mm-event-meta-grid">
+                    <span className="mm-event-meta"><Clock size={16} /> <span><strong>Date & Time</strong>{formatDate(meeting.date)}, {meeting.time}</span></span>
+
+                    {meeting.location && (
+                        <span className="mm-event-meta"><MapPin size={16} /> <span><strong>Location</strong>{meeting.location}</span></span>
+                    )}
+
+                    {meeting.link && (
+                        <span className="mm-event-meta"><LinkIcon size={16} /> <span><strong>Meeting Link</strong><a href={meeting.link} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline">{meeting.link}</a></span></span>
+                    )}
+
+                    {meeting.submittedByName && !isStaff && (
+                        <span className="mm-event-meta"><span className="mm-event-meta-dot" /><span><strong>Submitted by</strong>{meeting.submittedByName}</span></span>
+                    )}
+                </div>
+
+                {meeting.description && (
+                    <div className="mm-event-description">
+                        <span className="mm-event-label">Meeting Overview & Details</span>
+                        <p>{meeting.description}</p>
+                    </div>
+                )}
             </div>
+
+            {/* Attendees List */}
+            {meeting.attendeeNames && meeting.attendeeNames.length > 0 && (
+                <div className="mm-event-section mm-event-section-participants">
+                    <div className="mm-event-section-heading">
+                        <span className="mm-event-section-icon"><Users size={18} /></span>
+                        <div><span className="mm-event-label">Attendance</span><h2>Attendees & Participants ({meeting.attendeeCount})</h2></div>
+                    </div>
+                    <div className="mm-event-participants">
+                        {meeting.attendeeNames.map((name, i) => (
+                            <span key={i} className="bg-slate-50 border border-slate-200 px-3 py-1 rounded-full text-xs font-semibold text-slate-800">
+                                {name}
+                            </span>
+                        ))}
+                    </div>
+                </div>
+            )}
         </div>
     );
 }
