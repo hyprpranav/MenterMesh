@@ -1,6 +1,20 @@
 import { getAllUsers } from "./firebase/firestore";
 import type { User, Notification } from "@/types";
 
+function parseDate(d: string | undefined): Date | null {
+    if (!d) return null;
+    const parts = d.split(/[-/.]/);
+    if (parts.length === 3) {
+        if (parts[0].length === 4) {
+            return new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
+        } else {
+            return new Date(parseInt(parts[2]), parseInt(parts[1]) - 1, parseInt(parts[0]));
+        }
+    }
+    const val = new Date(d);
+    return isNaN(val.getTime()) ? null : val;
+}
+
 let cacheBirthdays: Notification[] | null = null;
 let lastCacheTime = 0;
 const CACHE_DURATION = 1000 * 60 * 30; // 30 minutes
@@ -38,9 +52,8 @@ export async function getUpcomingBirthdays(currentUser: User): Promise<Notificat
         const virtualNotifs: Notification[] = [];
 
         users.forEach((u) => {
-            if (!u.dateOfBirth) return;
-            const dob = new Date(u.dateOfBirth);
-            if (isNaN(dob.getTime())) return;
+            const dob = parseDate(u.dateOfBirth);
+            if (!dob) return;
 
             const bMonth = dob.getMonth();
             const bDate = dob.getDate();
@@ -104,9 +117,8 @@ export async function getTodayBirthdays(): Promise<User[]> {
     const today = new Date();
 
     return users.filter(u => {
-        if (!u.dateOfBirth) return false;
-        const dob = new Date(u.dateOfBirth);
-        if (isNaN(dob.getTime())) return false;
+        const dob = parseDate(u.dateOfBirth);
+        if (!dob) return false;
         return dob.getMonth() === today.getMonth() && dob.getDate() === today.getDate();
     });
 }
