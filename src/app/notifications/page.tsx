@@ -13,6 +13,7 @@ import {
   getActiveStudents,
   getAllUsers,
 } from "@/lib/firebase/firestore";
+import { getUpcomingBirthdays, markVirtualNotificationRead, markAllVirtualNotificationsRead } from "@/lib/birthdays";
 
 import type { Notification } from "@/types";
 import { Button } from "@/components/ui/Button";
@@ -75,7 +76,8 @@ function NotificationsContent() {
       if (!user) return;
       try {
         const dbList = await getUserNotifications(user.uid);
-        const all = [...dbList];
+        const bdayList = await getUpcomingBirthdays(user);
+        const all = [...bdayList, ...dbList];
         all.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
         setNotifications(all);
       } catch (err) { console.error(err); }
@@ -117,13 +119,15 @@ function NotificationsContent() {
 
   const handleMarkAllRead = async () => {
     if (!user) return;
+    markAllVirtualNotificationsRead();
     await markAllNotificationsRead(user.uid);
     setNotifications(prev => prev.map(n => ({ ...n, read: true })));
   };
 
   const handleMarkRead = async (id: string, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
-    await markNotificationRead(id);
+    if (id.startsWith("bday_")) markVirtualNotificationRead(id);
+    else await markNotificationRead(id);
     setNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true } : n));
   };
 
@@ -182,7 +186,7 @@ function NotificationsContent() {
         message: wishMsg, type: "birthday", read: false, priority: "high",
         relatedId: user.uid, createdAt: serverTimestamp(),
       });
-      await markNotificationRead(wishNotif.id);
+      markVirtualNotificationRead(wishNotif.id);
       setNotifications(prev => prev.map(n => n.id === wishNotif.id ? { ...n, read: true } : n));
       success("Birthday wish sent! 🎊");
       setWishNotif(null); setWishText("");

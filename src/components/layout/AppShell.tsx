@@ -144,21 +144,29 @@ export function AppShell({ children }: AppShellProps) {
   useEffect(() => {
     if (!user || (user.status !== "active" && user.status !== "imported")) return;
     const unsub = subscribeToNotifications(user.uid, async (dbNotifs) => {
-      const allUnread = [...dbNotifs];
-      allUnread.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      try {
+        const { getUpcomingBirthdays } = await import("@/lib/birthdays");
+        const bdayNotifs = await getUpcomingBirthdays(user);
 
-      // Trigger browser notification for new items
-      if (initialLoad.current && typeof window !== "undefined" && "Notification" in window && Notification.permission === "granted") {
-        for (const n of allUnread) {
-          if (!prevNotifs.current.has(n.id)) {
-            new Notification(n.title, { body: n.message, icon: "/icon.jpg" });
+        const allUnread = [...bdayNotifs.filter(n => !n.read), ...dbNotifs];
+        allUnread.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+        // Trigger browser notification for new items
+        if (initialLoad.current && typeof window !== "undefined" && "Notification" in window && Notification.permission === "granted") {
+          for (const n of allUnread) {
+            if (!prevNotifs.current.has(n.id)) {
+              new Notification(n.title, { body: n.message, icon: "/icon.jpg" });
+            }
           }
         }
-      }
 
-      prevNotifs.current = new Set(allUnread.map(n => n.id));
-      initialLoad.current = true;
-      setUnreadNotifs(allUnread);
+        prevNotifs.current = new Set(allUnread.map(n => n.id));
+        initialLoad.current = true;
+        setUnreadNotifs(allUnread);
+      } catch (err) {
+        console.error("Error loading birthday notifs:", err);
+        setUnreadNotifs(dbNotifs);
+      }
     });
 
     // Lightweight team and event unread watchers
