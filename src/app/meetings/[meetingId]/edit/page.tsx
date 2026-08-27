@@ -4,10 +4,10 @@
 // MentorMesh — Submit Meeting Details
 // ============================================================
 import React, { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useParams } from "next/navigation";
 import { AppShell } from "@/components/layout/AppShell";
 import { useAuth } from "@/contexts/AuthContext";
-import { getActiveStudents, createMeeting } from "@/lib/firebase/firestore";
+import { getActiveStudents, getMeeting, updateMeeting } from "@/lib/firebase/firestore";
 import type { User, MeetingMode } from "@/types";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Button } from "@/components/ui/Button";
@@ -17,10 +17,10 @@ import { Avatar } from "@/components/ui/Avatar";
 import { CloudinaryImageUpload } from "@/components/ui/CloudinaryImageUpload";
 import { cn } from "@/lib/utils";
 
-export default function SubmitMeetingPage() {
+export default function EditMeetingPage() {
     return (
         <AppShell>
-            <SubmitMeetingContent />
+            <EditMeetingContent />
         </AppShell>
     );
 }
@@ -32,7 +32,7 @@ const T = {
     card: "bg-white border border-slate-200/80 rounded-[24px] shadow-[0_8px_30px_rgb(0,0,0,0.04)] overflow-hidden",
 };
 
-function SubmitMeetingContent() {
+function EditMeetingContent() {
     const router = useRouter();
     const { user } = useAuth();
     const { success, error } = useToast();
@@ -56,6 +56,8 @@ function SubmitMeetingContent() {
         load();
     }, []);
 
+    const meetingId = useParams().meetingId as string;
+
     const [form, setForm] = useState({
         title: "",
         purpose: "",
@@ -69,6 +71,32 @@ function SubmitMeetingContent() {
     });
 
     const [selectedIds, setSelectedIds] = useState<string[]>([]);
+
+    useEffect(() => {
+        async function loadMeeting() {
+            if (!meetingId) return;
+            try {
+                const data = await getMeeting(meetingId);
+                if (data) {
+                    setForm({
+                        title: data.title || "",
+                        purpose: data.purpose || "",
+                        description: data.description || "",
+                        mode: data.mode || "Online",
+                        date: data.date || "",
+                        time: data.time || "",
+                        link: data.link || "",
+                        location: data.location || "",
+                        images: (data as any).images || [],
+                    });
+                    setSelectedIds(data.attendeeIds || []);
+                }
+            } catch (error) {
+                console.error(error);
+            }
+        }
+        loadMeeting();
+    }, [meetingId]);
 
     // Automatically select the submitter
     useEffect(() => {
@@ -108,7 +136,7 @@ function SubmitMeetingContent() {
                 (id) => students.find((s) => s.uid === id)?.name || (id === user?.uid ? user?.name : "Unknown")
             );
 
-            await createMeeting({
+            await updateMeeting(meetingId, {
                 title: form.title.trim(),
                 purpose: form.purpose.trim(),
                 description: form.description.trim(),
@@ -121,13 +149,10 @@ function SubmitMeetingContent() {
                 attendeeNames: selectedNames,
                 images: form.images,
                 attendeeCount: selectedIds.length,
-                status: "pending",
-                submittedBy: user!.uid,
-                submittedByName: user!.name,
             });
 
-            success("Meeting successfully submitted for review!");
-            router.push("/meetings");
+            success("Meeting successfully updated!");
+            router.push(`/meetings/${meetingId}`);
         } catch (err: any) {
             console.error(err);
             error(err.message || "Failed to submit meeting.");
@@ -145,8 +170,8 @@ function SubmitMeetingContent() {
                 <PageHeader
                     icon={<Presentation size={24} strokeWidth={2.5} />}
                     iconClass="bg-blue-100 text-blue-600 rounded-xl"
-                    title="Submit Meeting Details"
-                    subtitle="Record a new meeting or discussion."
+                    title="Edit Meeting Details"
+                    subtitle="Update existing meeting information."
                 />
             </div>
 
@@ -313,7 +338,7 @@ function SubmitMeetingContent() {
                         className="w-full sm:w-auto px-8 min-w-[180px] shadow-lg shadow-blue-500/20 text-[15px] font-bold justify-center"
                         icon={saving ? <Loader2 className="animate-spin" size={18} /> : undefined}
                     >
-                        {saving ? "Submitting..." : "Submit Meeting"}
+                        {saving ? "Updating..." : "Update Meeting"}
                     </Button>
                 </div>
             </div >

@@ -268,6 +268,7 @@ export interface Meeting {
   link?: string;
   location?: string;
   attendeeIds: string[];
+  images?: string[];
   attendeeNames?: string[];
   attendeeCount: number;
   status: MeetingStatus;

@@ -69,23 +69,47 @@ export function AppShell({ children }: AppShellProps) {
     if (user.status === "inactive") { router.push("/inactive"); return; }
   }, [user, loading, router]);
 
-  // Birthday popup — shown once per day when today === user's DOB
+  const [othersBirthdayToasts, setOthersBirthdayToasts] = useState<any[]>([]);
+
+  // Birthday popup — checking all today birthdays
   useEffect(() => {
-    if (!user?.dateOfBirth) return;
-    try {
-      const dob = new Date(user.dateOfBirth);
-      if (isNaN(dob.getTime())) return;
-      const today = new Date();
-      const isBirthday = dob.getMonth() === today.getMonth() && dob.getDate() === today.getDate();
-      if (!isBirthday) return;
-      const todayStr = today.toDateString();
-      const lastShown = localStorage.getItem(`mm_bday_popup_${user.uid}`);
-      if (lastShown !== todayStr) {
-        setBirthdayPopupOpen(true);
-        localStorage.setItem(`mm_bday_popup_${user.uid}`, todayStr);
-      }
-    } catch { /* ignore */ }
+    if (!user) return;
+
+    async function checkBirthdays() {
+      try {
+        const { getTodayBirthdays } = await import("@/lib/birthdays");
+        const todayBdays = await getTodayBirthdays();
+        const todayStr = new Date().toDateString();
+        const others = [];
+
+        for (const b of todayBdays) {
+          if (b.uid === user?.uid) {
+            const lastShown = localStorage.getItem(`mm_bday_popup_${user?.uid}`);
+            if (lastShown !== todayStr) {
+              setBirthdayPopupOpen(true);
+              localStorage.setItem(`mm_bday_popup_${user?.uid}`, todayStr);
+            }
+          } else {
+            const lastShownOther = localStorage.getItem(`mm_bday_toast_${b.uid}_${todayStr}`);
+            if (!lastShownOther) {
+              others.push(b);
+            }
+          }
+        }
+
+        if (others.length > 0) {
+          setOthersBirthdayToasts(others);
+        }
+      } catch { /* ignore */ }
+    }
+
+    checkBirthdays();
   }, [user]);
+
+  const dismissOtherBirthday = (uid: string) => {
+    setOthersBirthdayToasts(prev => prev.filter(u => u.uid !== uid));
+    localStorage.setItem(`mm_bday_toast_${uid}_${new Date().toDateString()}`, "true");
+  };
 
   // Fetch developer photo for birthday popup
   useEffect(() => {
@@ -120,29 +144,21 @@ export function AppShell({ children }: AppShellProps) {
   useEffect(() => {
     if (!user || (user.status !== "active" && user.status !== "imported")) return;
     const unsub = subscribeToNotifications(user.uid, async (dbNotifs) => {
-      try {
-        const { getUpcomingBirthdays } = await import("@/lib/birthdays");
-        const bdayNotifs = await getUpcomingBirthdays(user);
+      const allUnread = [...dbNotifs];
+      allUnread.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
-        const allUnread = [...bdayNotifs.filter(n => !n.read), ...dbNotifs];
-        allUnread.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-
-        // Trigger browser notification for new items
-        if (initialLoad.current && typeof window !== "undefined" && "Notification" in window && Notification.permission === "granted") {
-          for (const n of allUnread) {
-            if (!prevNotifs.current.has(n.id)) {
-              new Notification(n.title, { body: n.message, icon: "/icon.jpg" });
-            }
+      // Trigger browser notification for new items
+      if (initialLoad.current && typeof window !== "undefined" && "Notification" in window && Notification.permission === "granted") {
+        for (const n of allUnread) {
+          if (!prevNotifs.current.has(n.id)) {
+            new Notification(n.title, { body: n.message, icon: "/icon.jpg" });
           }
         }
-
-        prevNotifs.current = new Set(allUnread.map(n => n.id));
-        initialLoad.current = true;
-        setUnreadNotifs(allUnread);
-      } catch (err) {
-        console.error("Error loading birthday notifs:", err);
-        setUnreadNotifs(dbNotifs);
       }
+
+      prevNotifs.current = new Set(allUnread.map(n => n.id));
+      initialLoad.current = true;
+      setUnreadNotifs(allUnread);
     });
 
     // Lightweight team and event unread watchers
@@ -508,6 +524,34 @@ export function AppShell({ children }: AppShellProps) {
               <X size={18} />
             </button>
           </div>
+        </div>
+      )}
+
+      {/* ── Other Birthdays Toasts ────────────────────────────────── */}
+      {othersBirthdayToasts.length > 0 && (
+        <div style={{ position: "fixed", bottom: "80px", right: "20px", display: "flex", flexDirection: "column", gap: "10px", zIndex: 9999 }}>
+          {othersBirthdayToasts.map(bdayUser => {
+            const contactLink = bdayUser.phone
+              ? `https://wa.me/${bdayUser.phone.replace(/\D/g, "")}?text=Happy%20Birthday%20${encodeURIComponent(bdayUser.name)}!%20🎂`
+              : `mailto:${bdayUser.collegeEmail || bdayUser.email}?subject=Happy%20Birthday!&body=Happy%20Birthday%20${encodeURIComponent(bdayUser.name)}!`;
+            return (
+              <div key={bdayUser.uid} style={{ animation: "mm-slide-up 0.4s ease" }} className="bg-white rounded-[20px] shadow-[0_8px_30px_rgb(0,0,0,0.12)] border border-blue-500/20 p-4 w-[320px] sm:w-[340px] flex gap-3 relative">
+                <button onClick={() => dismissOtherBirthday(bdayUser.uid)} style={{ position: "absolute", top: "10px", right: "10px", background: "none", border: "none", cursor: "pointer", color: "#94A3B8" }}>
+                  <X size={16} />
+                </button>
+                <div className="w-12 h-12 rounded-full overflow-hidden shrink-0 border-2 border-indigo-100 flex items-center justify-center bg-indigo-50 shadow-sm text-2xl">
+                  {bdayUser.profilePhoto ? <img src={bdayUser.profilePhoto} className="w-full h-full object-cover" alt="" /> : "🎂"}
+                </div>
+                <div className="flex-1 min-w-0 pr-6">
+                  <h4 className="text-[14px] font-bold text-slate-800 leading-tight">Today is {bdayUser.name.split(" ")[0]}'s Birthday! 🎉</h4>
+                  <p className="text-[12px] text-slate-500 mt-1 mb-2.5 line-clamp-1">Wish your teammate a happy birthday.</p>
+                  <a href={contactLink} target="_blank" rel="noreferrer" onClick={() => dismissOtherBirthday(bdayUser.uid)} className="inline-flex items-center justify-center w-full bg-gradient-to-r from-blue-600 to-indigo-600 text-white text-[13px] font-bold px-4 py-2 rounded-xl hover:opacity-90 transition shadow-sm border border-transparent">
+                    Wish {bdayUser.name.split(" ")[0]} Now ✨
+                  </a>
+                </div>
+              </div>
+            )
+          })}
         </div>
       )}
     </div>

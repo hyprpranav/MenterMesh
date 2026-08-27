@@ -13,7 +13,7 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { Avatar } from "@/components/ui/Avatar";
-import { Loader2, ArrowLeft, Clock, MapPin, Users, CheckCircle2, XCircle, Link as LinkIcon } from "lucide-react";
+import { Loader2, ArrowLeft, Clock, MapPin, Users, CheckCircle2, XCircle, Link as LinkIcon, Image as ImageIcon } from "lucide-react";
 import { formatDate } from "@/lib/utils";
 import { useToast } from "@/components/ui/ToastProvider";
 
@@ -125,6 +125,13 @@ function MeetingDetailsContent() {
                 <Button variant="ghost" size="sm" icon={<ArrowLeft size={16} />} onClick={() => router.push("/meetings")} className="-ml-3 block">
                     Back to Meetings
                 </Button>
+
+                {/* Edit Button: Visible to Submitter, Staff, and Master */}
+                {(isStaff || user?.uid === meeting.submittedBy) && (
+                    <Button variant="outline" size="sm" onClick={() => router.push(`/meetings/${meetingId}/edit`)}>
+                        Edit Meeting
+                    </Button>
+                )}
             </div>
 
             {/* Staff Review Banner if Pending */}
@@ -203,6 +210,23 @@ function MeetingDetailsContent() {
                     </div>
                 )}
             </div>
+
+            {/* Screenshots */}
+            {meeting.images && meeting.images.length > 0 && (
+                <div className="mm-event-section">
+                    <div className="mm-event-section-heading">
+                        <span className="mm-event-section-icon"><ImageIcon size={18} /></span>
+                        <div><span className="mm-event-label">Attachments</span><h2>Meeting Screenshots</h2></div>
+                    </div>
+                    <div className="flex flex-wrap gap-4 mt-4">
+                        {meeting.images.map((url, i) => (
+                            <a key={i} href={url} target="_blank" rel="noreferrer" className="w-40 h-40 rounded-xl overflow-hidden border border-slate-200 block shadow-sm hover:shadow-md transition-shadow">
+                                <img src={url} alt={`Screenshot ${i + 1}`} className="w-full h-full object-cover hover:scale-105 transition-transform" />
+                            </a>
+                        ))}
+                    </div>
+                </div>
+            )}
 
             {/* Attendees List */}
             {meeting.attendeeNames && meeting.attendeeNames.length > 0 && (

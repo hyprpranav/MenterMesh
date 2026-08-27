@@ -13,7 +13,7 @@ import {
   getActiveStudents,
   getAllUsers,
 } from "@/lib/firebase/firestore";
-import { getUpcomingBirthdays, markVirtualNotificationRead, markAllVirtualNotificationsRead } from "@/lib/birthdays";
+
 import type { Notification } from "@/types";
 import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
@@ -75,8 +75,7 @@ function NotificationsContent() {
       if (!user) return;
       try {
         const dbList = await getUserNotifications(user.uid);
-        const bdayList = await getUpcomingBirthdays(user);
-        const all = [...bdayList, ...dbList];
+        const all = [...dbList];
         all.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
         setNotifications(all);
       } catch (err) { console.error(err); }
@@ -118,15 +117,13 @@ function NotificationsContent() {
 
   const handleMarkAllRead = async () => {
     if (!user) return;
-    markAllVirtualNotificationsRead();
     await markAllNotificationsRead(user.uid);
     setNotifications(prev => prev.map(n => ({ ...n, read: true })));
   };
 
   const handleMarkRead = async (id: string, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
-    if (id.startsWith("bday_")) markVirtualNotificationRead(id);
-    else await markNotificationRead(id);
+    await markNotificationRead(id);
     setNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true } : n));
   };
 
@@ -185,7 +182,7 @@ function NotificationsContent() {
         message: wishMsg, type: "birthday", read: false, priority: "high",
         relatedId: user.uid, createdAt: serverTimestamp(),
       });
-      markVirtualNotificationRead(wishNotif.id);
+      await markNotificationRead(wishNotif.id);
       setNotifications(prev => prev.map(n => n.id === wishNotif.id ? { ...n, read: true } : n));
       success("Birthday wish sent! 🎊");
       setWishNotif(null); setWishText("");
@@ -245,35 +242,6 @@ function NotificationsContent() {
   return (
     <>
       <div className="mm-card space-y-6 w-full max-w-4xl mx-auto mm-page-animate">
-        {/* DEVELOPER TESTING TOOLS */}
-        {isMaster && (
-          <div className="mb-6 rounded-2xl border border-indigo-100 bg-white shadow-sm overflow-hidden flex flex-col">
-            <div className="bg-gradient-to-r from-indigo-500 to-purple-600 px-5 py-3 flex items-center justify-between">
-              <h4 className="text-[13px] font-extrabold tracking-wide text-white flex items-center gap-2 uppercase">
-                <Cake size={16} className="text-pink-200" /> Developer Birthday Test Panel
-              </h4>
-              <span className="text-[10px] uppercase font-bold tracking-wider bg-black/20 text-white px-2 py-0.5 rounded-full">Dev Only</span>
-            </div>
-            <div className="p-5 bg-indigo-50/40">
-              <div className="flex flex-wrap items-center gap-3">
-                <Button size="sm" variant="outline" className="bg-white border-indigo-200 text-indigo-700 hover:bg-indigo-50 hover:text-indigo-800" onClick={() => injectSampleNotification(4)}>
-                  <span className="font-semibold">Test Card (+4 Days)</span>
-                </Button>
-                <Button size="sm" variant="outline" className="bg-white border-indigo-200 text-indigo-700 hover:bg-indigo-50 hover:text-indigo-800" onClick={() => injectSampleNotification(0)}>
-                  <span className="font-semibold">Test Card (Today)</span>
-                </Button>
-                <div className="h-6 w-px bg-indigo-200 mx-1 hidden sm:block"></div>
-                <Button size="sm" variant="primary" className="bg-indigo-600 hover:bg-indigo-700 border-none shadow-md" onClick={() => window.dispatchEvent(new Event("mm-test-birthday-popup"))}>
-                  Test Celebration Popup ✨
-                </Button>
-              </div>
-              <p className="text-[12px] text-indigo-900/60 font-medium mt-4 leading-relaxed max-w-3xl">
-                <strong className="text-indigo-900/80">Usage:</strong> Standard cards (e.g. 4 days out) will just dismiss on click.
-                The <strong>"Today"</strong> card features the Wish Modal. Trigger the <strong>"Celebration Popup"</strong> to perfectly replicate the confetti-filled student view.
-              </p>
-            </div>
-          </div>
-        )}
 
         <PageHeader
           icon={<Bell size={20} />}

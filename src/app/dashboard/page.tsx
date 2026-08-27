@@ -22,7 +22,6 @@ import { Badge, teamStatusBadge } from "@/components/ui/Badge";
 import { Avatar } from "@/components/ui/Avatar";
 import { LoadingState } from "@/components/ui/States";
 import { formatDate, timeAgo } from "@/lib/utils";
-import { getUpcomingBirthdays } from "@/lib/birthdays";
 import type { Notification } from "@/types";
 
 export default function DashboardPage() {
@@ -61,7 +60,7 @@ function DashboardContent() {
             getPosts(5),
             getUserTeams(user.uid),
             user.role === "master" ? getAllUsers("staff") : Promise.resolve([]),
-            getUpcomingBirthdays(user),
+            Promise.resolve([]),
           ]);
         setStudents(stList); setTeams(tmList); setEvents(evList);
         setRequests(reqList); setAnnouncements(annList); setPosts(postList);
