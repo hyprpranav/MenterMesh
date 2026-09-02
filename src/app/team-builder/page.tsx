@@ -25,6 +25,7 @@ interface BuilderTeam {
 
 // ── Drag state shared across components ──
 let _dragId: string | null = null;
+let _dragSource: string | null = null;
 
 export default function TeamBuilderPage() {
   const { user } = useAuth();
@@ -45,6 +46,7 @@ export default function TeamBuilderPage() {
   const [teams, setTeams] = useState<BuilderTeam[]>([]);
   const [unassignedIds, setUnassignedIds] = useState<string[]>([]);
   const [activeDragId, setActiveDragId] = useState<string | null>(null);
+  const [activeDragSource, setActiveDragSource] = useState<string | null>(null);
   const [dragTargetId, setDragTargetId] = useState<string | null>(null);
 
   // Dialogs
@@ -92,32 +94,68 @@ export default function TeamBuilderPage() {
   };
 
   // ── Move helpers ──
-  const handleMoveToTeam = useCallback((studentId: string, targetTeamId: string) => {
-    setUnassignedIds((prev) => prev.filter((id) => id !== studentId));
+  const handleMoveToTeam = useCallback((studentId: string, targetTeamId: string, source: string) => {
+    // If pulling directly from unassigned, it shouldn't strip them from other teams
+    // allowing them to exist in multiple teams (duplication support).
     setTeams((prev) =>
       prev.map((t) => {
-        if (t.id === targetTeamId) return t.memberIds.includes(studentId) ? t : { ...t, memberIds: [...t.memberIds, studentId] };
-        return { ...t, memberIds: t.memberIds.filter((id) => id !== studentId), leaderId: t.leaderId === studentId ? undefined : t.leaderId };
+        if (t.id === targetTeamId) {
+          // Add to target
+          return t.memberIds.includes(studentId) ? t : { ...t, memberIds: [...t.memberIds, studentId] };
+        }
+        if (t.id === source && source !== "unassigned") {
+          // If we dragged from another team (Move), remove them from THAT source team
+          return { ...t, memberIds: t.memberIds.filter((id) => id !== studentId), leaderId: t.leaderId === studentId ? undefined : t.leaderId };
+        }
+        // Don't modify other teams the student might belong to
+        return t;
       })
     );
+
+    // If source was unassigned, DO NOT remove them from the pool permanently (so they can be duplicated).
+    // Or, remove them from unassigned, and they can click "Duplicate" to put them back.
+    // User requested "a button Duplicate to make the person available for another team".
+    if (source === "unassigned") {
+      setUnassignedIds((prev) => prev.filter((id) => id !== studentId));
+    }
   }, []);
 
-  const handleMoveToUnassigned = useCallback((studentId: string) => {
-    setTeams((prev) => prev.map((t) => ({
-      ...t, memberIds: t.memberIds.filter((id) => id !== studentId),
-      leaderId: t.leaderId === studentId ? undefined : t.leaderId,
-    })));
-    setUnassignedIds((prev) => [...prev.filter((id) => id !== studentId), studentId]);
+  const handleDuplicateToPool = useCallback((studentId: string) => {
+    // Puts student back into the unassigned pool so they can be assigned to a 2nd team
+    setUnassignedIds((prev) => prev.includes(studentId) ? prev : [studentId, ...prev]);
+  }, []);
+
+  const handleMoveToUnassigned = useCallback((studentId: string, source: string) => {
+    if (source && source !== "unassigned") {
+      setTeams((prev) => prev.map((t) => (t.id === source ? {
+        ...t, memberIds: t.memberIds.filter((id) => id !== studentId),
+        leaderId: t.leaderId === studentId ? undefined : t.leaderId,
+      } : t)));
+    } else {
+      // If we don't know source, just wipe them from all teams to be safe
+      setTeams((prev) => prev.map((t) => ({
+        ...t, memberIds: t.memberIds.filter((id) => id !== studentId),
+        leaderId: t.leaderId === studentId ? undefined : t.leaderId,
+      })));
+    }
+    setUnassignedIds((prev) => prev.includes(studentId) ? prev : [studentId, ...prev]);
   }, []);
 
   // ── Drop handler (shared) ──
   const handleDrop = useCallback((e: React.DragEvent, targetId: string) => {
     e.preventDefault();
     setDragTargetId(null);
-    const studentId = e.dataTransfer.getData("text/plain");
-    if (!studentId) return;
-    if (targetId === "unassigned") handleMoveToUnassigned(studentId);
-    else handleMoveToTeam(studentId, targetId);
+    const dataStr = e.dataTransfer.getData("text/plain");
+    if (!dataStr) return;
+    try {
+      const data = JSON.parse(dataStr);
+      if (targetId === "unassigned") handleMoveToUnassigned(data.id, data.source);
+      else handleMoveToTeam(data.id, targetId, data.source);
+    } catch {
+      // Fallback
+      if (targetId === "unassigned") handleMoveToUnassigned(dataStr, "unknown");
+      else handleMoveToTeam(dataStr, targetId, "unknown");
+    }
   }, [handleMoveToUnassigned, handleMoveToTeam]);
 
   // ── Touch DnD ──
@@ -125,10 +163,12 @@ export default function TeamBuilderPage() {
   const ghostRef = React.useRef<HTMLDivElement | null>(null);
   const touchStudentRef = React.useRef<string | null>(null);
 
-  const handleTouchStart = useCallback((e: React.TouchEvent, studentId: string, studentName: string) => {
+  const handleTouchStart = useCallback((e: React.TouchEvent, studentId: string, studentName: string, source: string) => {
     touchStudentRef.current = studentId;
     _dragId = studentId;
+    _dragSource = source;
     setActiveDragId(studentId);
+    setActiveDragSource(source);
 
     // Create ghost
     const ghost = document.createElement("div");
@@ -168,16 +208,19 @@ export default function TeamBuilderPage() {
     if (ghost) { ghost.remove(); ghostRef.current = null; }
 
     const studentId = touchStudentRef.current;
+    const source = _dragSource;
     touchStudentRef.current = null;
     _dragId = null;
+    _dragSource = null;
     setActiveDragId(null);
+    setActiveDragSource(null);
     setDragTargetId(null);
     document.querySelectorAll("[data-dropzone]").forEach((z) => z.classList.remove("mm-drop-active"));
 
     if (!studentId || !dragTargetId) return;
     const target = dragTargetId;
-    if (target === "unassigned") handleMoveToUnassigned(studentId);
-    else handleMoveToTeam(studentId, target);
+    if (target === "unassigned") handleMoveToUnassigned(studentId, source || "unknown");
+    else handleMoveToTeam(studentId, target, source || "unknown");
   }, [dragTargetId, handleMoveToUnassigned, handleMoveToTeam]);
 
   // ── Randomize ──
@@ -254,7 +297,14 @@ export default function TeamBuilderPage() {
         .mm-pool-panel { display:flex; flex-direction:column; border:1.5px solid var(--color-border); border-radius:14px; background:var(--color-surface); overflow:hidden; min-height:0; }
         .mm-pool-header { padding:0.75rem; border-bottom:1px solid var(--color-border); background:var(--color-bg); flex-shrink:0; }
         .mm-pool-list { flex:1; overflow-y:auto; padding:0.5rem; min-height:0; }
-        @media(max-width:768px){ .mm-pool-list { max-height:220px; } }
+        
+        /* Mobile horizontal layout for unassigned pool avoiding "no team" illusion */
+        @media(max-width:768px){ 
+          .mm-pool-panel { max-height: 200px; }
+          .mm-pool-list { display: flex; flex-direction: row; overflow-x: auto; overflow-y: hidden; max-height: none; gap: 0.5rem; flex-wrap: nowrap; padding-bottom: 0.75rem; }
+          .mm-drag-chip { min-width: 140px; max-width: 140px; flex-shrink: 0; margin-bottom: 0; }
+        }
+
         .mm-teams-panel { display:flex; flex-direction:column; min-height:0; overflow:hidden; }
         .mm-teams-grid { flex:1; overflow-y:auto; display:grid; grid-template-columns:repeat(auto-fill,minmax(200px,1fr)); gap:0.75rem; padding:0.25rem; align-content:start; }
         @media(max-width:768px){ .mm-teams-grid { grid-template-columns:1fr 1fr; overflow-y:visible; } }
@@ -360,22 +410,22 @@ export default function TeamBuilderPage() {
                   <div key={s.uid}
                     className="mm-drag-chip"
                     draggable
-                    onDragStart={(e) => { e.dataTransfer.setData("text/plain", s.uid); setActiveDragId(s.uid); }}
-                    onDragEnd={() => setActiveDragId(null)}
-                    onTouchStart={(e) => handleTouchStart(e, s.uid, s.name)}
+                    onDragStart={(e) => { e.dataTransfer.setData("text/plain", JSON.stringify({ id: s.uid, source: "unassigned" })); setActiveDragId(s.uid); setActiveDragSource("unassigned"); }}
+                    onDragEnd={() => { setActiveDragId(null); setActiveDragSource(null); }}
+                    onTouchStart={(e) => handleTouchStart(e, s.uid, s.name, "unassigned")}
                     onTouchMove={handleTouchMove}
                     onTouchEnd={handleTouchEnd}
                     style={{ opacity: isDragging ? 0.35 : 1 }}
                   >
                     <GripVertical size={12} color="#94A3B8" style={{ flexShrink: 0 }} />
                     <Avatar name={s.name} photoUrl={s.profilePhoto} size="xs" />
-                    <div style={{ minWidth: 0, flex: 1 }}>
-                      <p style={{ fontSize: 12, fontWeight: 600, color: "var(--color-text)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{s.name}</p>
-                      <p style={{ fontSize: 10, color: "var(--color-muted)" }}>{s.department} · {s.registerNumber}</p>
+                    <div style={{ minWidth: 0, flex: 1, whiteSpace: "nowrap" }}>
+                      <p style={{ fontSize: 12, fontWeight: 600, color: "var(--color-text)", overflow: "hidden", textOverflow: "ellipsis" }}>{s.name}</p>
+                      <p style={{ fontSize: 10, color: "var(--color-muted)", overflow: "hidden", textOverflow: "ellipsis" }}>{s.department} · {s.registerNumber}</p>
                     </div>
                     {/* Quick assign */}
-                    <select defaultValue="" style={{ fontSize: 10, border: "1px solid var(--color-border)", borderRadius: 6, padding: "2px 4px", background: "#F1F5F9", cursor: "pointer", flexShrink: 0, outline: "none" }}
-                      onChange={(e) => { if (e.target.value) { handleMoveToTeam(s.uid, e.target.value); e.target.value = ""; } }}>
+                    <select defaultValue="" style={{ fontSize: 10, border: "1px solid var(--color-border)", borderRadius: 6, padding: "2px 4px", background: "#F1F5F9", cursor: "pointer", flexShrink: 0, outline: "none", width: 34 }}
+                      onChange={(e) => { if (e.target.value) { handleMoveToTeam(s.uid, e.target.value, "unassigned"); e.target.value = ""; } }}>
                       <option value="" disabled>→</option>
                       {teams.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
                     </select>
@@ -428,28 +478,34 @@ export default function TeamBuilderPage() {
                             <div key={s.uid}
                               className="mm-drag-chip"
                               draggable
-                              onDragStart={(e) => { e.dataTransfer.setData("text/plain", s.uid); setActiveDragId(s.uid); }}
-                              onDragEnd={() => setActiveDragId(null)}
-                              onTouchStart={(e) => handleTouchStart(e, s.uid, s.name)}
+                              onDragStart={(e) => { e.dataTransfer.setData("text/plain", JSON.stringify({ id: s.uid, source: team.id })); setActiveDragId(s.uid); setActiveDragSource(team.id); }}
+                              onDragEnd={() => { setActiveDragId(null); setActiveDragSource(null); }}
+                              onTouchStart={(e) => handleTouchStart(e, s.uid, s.name, team.id)}
                               onTouchMove={handleTouchMove}
                               onTouchEnd={handleTouchEnd}
-                              style={{ opacity: isDragging ? 0.35 : 1, borderColor: isLeader ? "#FDE68A" : undefined, background: isLeader ? "#FFFBEB" : undefined }}
+                              style={{ opacity: isDragging ? 0.35 : 1, borderColor: isLeader ? "#FDE68A" : undefined, background: isLeader ? "#FFFBEB" : undefined, flexDirection: "column", alignItems: "stretch", padding: "0.25rem 0.5rem" }}
                             >
-                              <GripVertical size={11} color="#94A3B8" style={{ flexShrink: 0 }} />
-                              <Avatar name={s.name} photoUrl={s.profilePhoto} size="xs" />
-                              <div style={{ minWidth: 0, flex: 1 }}>
-                                <p style={{ fontSize: 11, fontWeight: isLeader ? 700 : 600, color: "var(--color-text)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{s.name}</p>
-                                {isLeader && <p style={{ fontSize: 10, color: "#D97706", fontWeight: 700 }}>★ Leader</p>}
-                              </div>
-                              <div style={{ display: "flex", gap: 2, flexShrink: 0 }}>
-                                <button title={isLeader ? "Remove Leader" : "Set as Leader"} onClick={() => handleToggleLeader(team.id, s.uid)}
-                                  style={{ border: "none", background: "none", cursor: "pointer", padding: 3, color: isLeader ? "#F59E0B" : "#CBD5E1", borderRadius: 4 }}>
-                                  <Star size={12} fill={isLeader ? "currentColor" : "none"} />
-                                </button>
-                                <button title="Remove from team" onClick={() => handleMoveToUnassigned(s.uid)}
-                                  style={{ border: "none", background: "none", cursor: "pointer", padding: 3, color: "#CBD5E1", borderRadius: 4 }}>
-                                  <Trash2 size={11} />
-                                </button>
+                              <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                                <GripVertical size={11} color="#94A3B8" style={{ flexShrink: 0 }} />
+                                <Avatar name={s.name} photoUrl={s.profilePhoto} size="xs" />
+                                <div style={{ minWidth: 0, flex: 1 }}>
+                                  <p style={{ fontSize: 11, fontWeight: isLeader ? 700 : 600, color: "var(--color-text)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{s.name}</p>
+                                  {isLeader && <p style={{ fontSize: 10, color: "#D97706", fontWeight: 700 }}>★ Leader</p>}
+                                </div>
+                                <div style={{ display: "flex", flexShrink: 0, gap: 1 }}>
+                                  <button title="Duplicate & return copy to Pool" onClick={() => handleDuplicateToPool(s.uid)}
+                                    style={{ border: "none", background: "none", cursor: "pointer", padding: 3, color: "#9CA3AF", borderRadius: 4 }}>
+                                    <Layers size={11} />
+                                  </button>
+                                  <button title={isLeader ? "Remove Leader" : "Set as Leader"} onClick={() => handleToggleLeader(team.id, s.uid)}
+                                    style={{ border: "none", background: "none", cursor: "pointer", padding: 3, color: isLeader ? "#F59E0B" : "#CBD5E1", borderRadius: 4 }}>
+                                    <Star size={12} fill={isLeader ? "currentColor" : "none"} />
+                                  </button>
+                                  <button title="Remove from team" onClick={() => handleMoveToUnassigned(s.uid, team.id)}
+                                    style={{ border: "none", background: "none", cursor: "pointer", padding: 3, color: "#CBD5E1", borderRadius: 4 }}>
+                                    <Trash2 size={11} />
+                                  </button>
+                                </div>
                               </div>
                             </div>
                           );

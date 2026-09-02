@@ -591,8 +591,9 @@ function TeamInfoModal({ team, isStaff, onClose, onOpenChat, onDeleteTeam }: {
       style={{
         position: "fixed", inset: 0, zIndex: 60,
         background: "rgba(15,23,42,0.55)", backdropFilter: "blur(4px)",
-        display: "flex", alignItems: "center", justifyContent: "center",
-        padding: "1rem", animation: "mm-fade-in 0.2s ease",
+        display: "flex", alignItems: "flex-start", justifyContent: "center",
+        padding: "2rem 1rem", animation: "mm-fade-in 0.2s ease",
+        overflowY: "auto",
       }}
     >
       <div
@@ -600,10 +601,11 @@ function TeamInfoModal({ team, isStaff, onClose, onOpenChat, onDeleteTeam }: {
         style={{
           background: "var(--color-surface)",
           borderRadius: 20, width: "100%", maxWidth: 480,
-          maxHeight: "88dvh", display: "flex", flexDirection: "column",
+          display: "flex", flexDirection: "column",
           boxShadow: "0 25px 50px -12px rgba(0,0,0,0.25)",
           animation: "mm-modal-in 0.22s cubic-bezier(0.16,1,0.3,1)",
           overflow: "hidden",
+          margin: "auto",
         }}
       >
         {/* Header */}
