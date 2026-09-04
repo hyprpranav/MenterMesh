@@ -586,143 +586,156 @@ function TeamInfoModal({ team, isStaff, onClose, onOpenChat, onDeleteTeam }: {
   team: Team; isStaff: boolean; onClose: () => void; onOpenChat: () => void; onDeleteTeam?: () => void;
 }) {
   return (
-    <div
-      onClick={onClose}
-      style={{
-        position: "fixed", inset: 0, zIndex: 60,
-        background: "rgba(15,23,42,0.55)", backdropFilter: "blur(4px)",
-        display: "flex", alignItems: "flex-start", justifyContent: "center",
-        padding: "2rem 1rem", animation: "mm-fade-in 0.2s ease",
-        overflowY: "auto",
-      }}
-    >
-      <div
-        onClick={(e) => e.stopPropagation()}
-        style={{
-          background: "var(--color-surface)",
-          borderRadius: 20, width: "100%", maxWidth: 480,
-          display: "flex", flexDirection: "column",
-          boxShadow: "0 25px 50px -12px rgba(0,0,0,0.25)",
-          animation: "mm-modal-in 0.22s cubic-bezier(0.16,1,0.3,1)",
-          overflow: "hidden",
-          margin: "auto",
-        }}
-      >
-        {/* Header */}
-        <div style={{ padding: "1.125rem 1.25rem", borderBottom: "1px solid var(--color-border)", display: "flex", alignItems: "center", gap: "0.75rem", flexShrink: 0 }}>
-          <div style={{ width: 36, height: 36, borderRadius: 10, background: "var(--color-primary-light)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-            <Users size={18} color="var(--color-primary)" />
-          </div>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <p style={{ fontWeight: 700, fontSize: 15, color: "var(--color-text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{team.name}</p>
-            <p style={{ fontSize: 11, color: "var(--color-muted)" }}>Team Information</p>
-          </div>
-          <button onClick={onClose} style={{ width: 32, height: 32, borderRadius: 8, border: "none", background: "var(--color-surface-2)", cursor: "pointer", color: "var(--color-muted)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-            <X size={16} />
-          </button>
-        </div>
-
-        {/* Body */}
-        <div style={{ flex: 1, overflowY: "auto", padding: "1.125rem" }}>
-          <div style={{ display: "flex", flexDirection: "column", gap: "0.875rem" }}>
-
-            {/* Status */}
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0.75rem 1rem", background: "var(--color-surface-2)", borderRadius: 12, border: "1px solid var(--color-border)" }}>
-              <span style={{ fontSize: 13, fontWeight: 600, color: "var(--color-text)" }}>Status</span>
-              <Badge variant={teamStatusBadge(team.status).variant}>{teamStatusBadge(team.status).label}</Badge>
+    <>
+      <style>{`
+        .mm-custom-team-overlay {
+          position: fixed; inset: 0; z-index: 60;
+          background: rgba(15,23,42,0.55); backdrop-filter: blur(4px);
+          display: flex; align-items: flex-start; justify-content: center;
+          padding: 2rem 1rem; animation: mm-fade-in 0.2s ease;
+          overflow-y: auto;
+        }
+        .mm-custom-team-modal {
+          background: var(--color-surface);
+          border-radius: 20px; width: 100%; max-width: 480px;
+          display: flex; flex-direction: column;
+          box-shadow: 0 25px 50px -12px rgba(0,0,0,0.25);
+          animation: mm-modal-in 0.22s cubic-bezier(0.16,1,0.3,1);
+          overflow: hidden; margin: auto;
+        }
+        @media (max-width: 640px) {
+          .mm-custom-team-overlay {
+            padding: 0; align-items: flex-end; 
+          }
+          .mm-custom-team-modal {
+            max-width: 100%; border-radius: 24px 24px 0 0; 
+            margin: 0; max-height: 92dvh;
+            animation: mm-slide-up 0.3s cubic-bezier(0.16,1,0.3,1);
+          }
+        }
+        @keyframes mm-slide-up {
+          from { transform: translateY(100%); opacity: 0; }
+          to { transform: translateY(0); opacity: 1; }
+        }
+      `}</style>
+      <div className="mm-custom-team-overlay" onClick={onClose}>
+        <div className="mm-custom-team-modal" onClick={(e) => e.stopPropagation()}>
+          {/* Header */}
+          <div style={{ padding: "1.125rem 1.25rem", borderBottom: "1px solid var(--color-border)", display: "flex", alignItems: "center", gap: "0.75rem", flexShrink: 0 }}>
+            <div style={{ width: 36, height: 36, borderRadius: 10, background: "var(--color-primary-light)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+              <Users size={18} color="var(--color-primary)" />
             </div>
-
-            {team.description && (
-              <div style={{ padding: "0.875rem 1rem", background: "#EFF6FF", borderRadius: 12, border: "1px solid #DBEAFE" }}>
-                <p style={{ fontSize: 11, fontWeight: 700, color: "#1E40AF", marginBottom: 4 }}>About</p>
-                <p style={{ fontSize: 13, color: "#1D4ED8", lineHeight: 1.55 }}>{team.description}</p>
-              </div>
-            )}
-
-            {/* Timeline */}
-            <div style={{ padding: "0.875rem 1rem", background: "var(--color-surface)", borderRadius: 12, border: "1px solid var(--color-border)", display: "flex", flexDirection: "column", gap: "0.75rem" }}>
-              <p style={{ fontSize: 11, fontWeight: 700, color: "var(--color-text-2)", textTransform: "uppercase", letterSpacing: "0.06em" }}>Timeline</p>
-              <TimelineRow icon={<Calendar size={14} color="#D97706" />} iconBg="#FEF3C7" label={`Submitted by ${team.createdByName}`} value={fmtDT(team.createdAt)} />
-              {team.reviewedByName && (
-                <TimelineRow
-                  icon={<Shield size={14} color={team.status === "rejected" ? "#DC2626" : "#16A34A"} />}
-                  iconBg={team.status === "rejected" ? "#FFE4E6" : "#DCFCE7"}
-                  label={`${team.status === "rejected" ? "Rejected" : "Approved"} by ${team.reviewedByName}`}
-                  value={fmtDT(team.reviewedAt)}
-                />
-              )}
-              {team.finalizedAt && (
-                <TimelineRow icon={<CheckCircle2 size={14} color="#2563EB" />} iconBg="#EFF6FF" label="Finalized" value={fmtDT(team.finalizedAt)} />
-              )}
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <p style={{ fontWeight: 700, fontSize: 15, color: "var(--color-text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{team.name}</p>
+              <p style={{ fontSize: 11, color: "var(--color-muted)" }}>Team Information</p>
             </div>
-
-            {/* Members */}
-            <div style={{ background: "var(--color-surface)", borderRadius: 12, border: "1px solid var(--color-border)", overflow: "hidden" }}>
-              <div style={{ padding: "0.75rem 1rem", borderBottom: "1px solid var(--color-border)", display: "flex", alignItems: "center", gap: "0.5rem" }}>
-                <Users size={14} color="var(--color-muted)" />
-                <p style={{ fontSize: 13, fontWeight: 700, color: "var(--color-text)" }}>Members ({team.memberIds.length})</p>
-              </div>
-              <div style={{ padding: "0.5rem" }}>
-                {(team.memberNames || []).map((memberName, idx) => {
-                  const isLeader = memberName === team.leaderName;
-                  return (
-                    <div key={idx} style={{ display: "flex", alignItems: "center", gap: "0.625rem", padding: "0.5rem 0.625rem", borderRadius: 8, background: isLeader ? "#FFFBEB" : "transparent" }}>
-                      <Avatar name={memberName} size="sm" />
-                      <p style={{ flex: 1, fontSize: 13, fontWeight: isLeader ? 700 : 500, color: "var(--color-text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{memberName}</p>
-                      {isLeader && (
-                        <span style={{ display: "inline-flex", alignItems: "center", gap: 3, fontSize: 10, fontWeight: 700, color: "#D97706", background: "#FEF3C7", border: "1px solid #FDE68A", borderRadius: 99, padding: "2px 8px", flexShrink: 0 }}>
-                          <Star size={9} fill="currentColor" /> Leader
-                        </span>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* Rejection feedback */}
-            {team.reviewFeedback && team.status === "rejected" && (
-              <div style={{ padding: "0.875rem 1rem", background: "#FFF1F2", borderRadius: 12, border: "1px solid #FFE4E6" }}>
-                <p style={{ fontSize: 12, fontWeight: 700, color: "#B91C1C", marginBottom: 4 }}>Rejection Feedback</p>
-                <p style={{ fontSize: 13, color: "#DC2626" }}>{team.reviewFeedback}</p>
-              </div>
-            )}
-
-            {/* Open Chat CTA */}
-            <button onClick={onOpenChat} style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0.875rem 1.125rem", background: "linear-gradient(135deg,#25D366,#128C7E)", borderRadius: 14, border: "none", cursor: "pointer", color: "#fff", transition: "all 0.15s" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
-                <MessageCircle size={22} />
-                <div style={{ textAlign: "left" }}>
-                  <p style={{ fontWeight: 700, fontSize: 15 }}>Team Group Chat</p>
-                  <p style={{ fontSize: 12, opacity: 0.85 }}>Open WhatsApp-style chat</p>
-                </div>
-              </div>
-              <ChevronRight size={20} />
+            <button onClick={onClose} style={{ width: 32, height: 32, borderRadius: 8, border: "none", background: "var(--color-surface-2)", cursor: "pointer", color: "var(--color-muted)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+              <X size={16} />
             </button>
+          </div>
 
-            {/* Full Details Page Link */}
-            <Link href={`/teams/${team.id}`} style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0.875rem 1.125rem", background: "linear-gradient(135deg,#EFF6FF,#DBEAFE)", borderRadius: 14, border: "1.5px solid #93C5FD", cursor: "pointer", color: "#1D4ED8", textDecoration: "none", transition: "all 0.15s" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
-                <Info size={22} />
-                <div style={{ textAlign: "left" }}>
-                  <p style={{ fontWeight: 700, fontSize: 15 }}>Full Team Details</p>
-                  <p style={{ fontSize: 12, opacity: 0.7 }}>Members, docs, links & management</p>
+          {/* Body */}
+          <div style={{ flex: 1, overflowY: "auto", padding: "1.125rem" }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: "0.875rem" }}>
+
+              {/* Status */}
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0.75rem 1rem", background: "var(--color-surface-2)", borderRadius: 12, border: "1px solid var(--color-border)" }}>
+                <span style={{ fontSize: 13, fontWeight: 600, color: "var(--color-text)" }}>Status</span>
+                <Badge variant={teamStatusBadge(team.status).variant}>{teamStatusBadge(team.status).label}</Badge>
+              </div>
+
+              {team.description && (
+                <div style={{ padding: "0.875rem 1rem", background: "#EFF6FF", borderRadius: 12, border: "1px solid #DBEAFE" }}>
+                  <p style={{ fontSize: 11, fontWeight: 700, color: "#1E40AF", marginBottom: 4 }}>About</p>
+                  <p style={{ fontSize: 13, color: "#1D4ED8", lineHeight: 1.55 }}>{team.description}</p>
+                </div>
+              )}
+
+              {/* Timeline */}
+              <div style={{ padding: "0.875rem 1rem", background: "var(--color-surface)", borderRadius: 12, border: "1px solid var(--color-border)", display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+                <p style={{ fontSize: 11, fontWeight: 700, color: "var(--color-text-2)", textTransform: "uppercase", letterSpacing: "0.06em" }}>Timeline</p>
+                <TimelineRow icon={<Calendar size={14} color="#D97706" />} iconBg="#FEF3C7" label={`Submitted by ${team.createdByName}`} value={fmtDT(team.createdAt)} />
+                {team.reviewedByName && (
+                  <TimelineRow
+                    icon={<Shield size={14} color={team.status === "rejected" ? "#DC2626" : "#16A34A"} />}
+                    iconBg={team.status === "rejected" ? "#FFE4E6" : "#DCFCE7"}
+                    label={`${team.status === "rejected" ? "Rejected" : "Approved"} by ${team.reviewedByName}`}
+                    value={fmtDT(team.reviewedAt)}
+                  />
+                )}
+                {team.finalizedAt && (
+                  <TimelineRow icon={<CheckCircle2 size={14} color="#2563EB" />} iconBg="#EFF6FF" label="Finalized" value={fmtDT(team.finalizedAt)} />
+                )}
+              </div>
+
+              {/* Members */}
+              <div style={{ background: "var(--color-surface)", borderRadius: 12, border: "1px solid var(--color-border)", overflow: "hidden" }}>
+                <div style={{ padding: "0.75rem 1rem", borderBottom: "1px solid var(--color-border)", display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                  <Users size={14} color="var(--color-muted)" />
+                  <p style={{ fontSize: 13, fontWeight: 700, color: "var(--color-text)" }}>Members ({team.memberIds.length})</p>
+                </div>
+                <div style={{ padding: "0.5rem" }}>
+                  {(team.memberNames || []).map((memberName, idx) => {
+                    const isLeader = memberName === team.leaderName;
+                    return (
+                      <div key={idx} style={{ display: "flex", alignItems: "center", gap: "0.625rem", padding: "0.5rem 0.625rem", borderRadius: 8, background: isLeader ? "#FFFBEB" : "transparent" }}>
+                        <Avatar name={memberName} size="sm" />
+                        <p style={{ flex: 1, fontSize: 13, fontWeight: isLeader ? 700 : 500, color: "var(--color-text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{memberName}</p>
+                        {isLeader && (
+                          <span style={{ display: "inline-flex", alignItems: "center", gap: 3, fontSize: 10, fontWeight: 700, color: "#D97706", background: "#FEF3C7", border: "1px solid #FDE68A", borderRadius: 99, padding: "2px 8px", flexShrink: 0 }}>
+                            <Star size={9} fill="currentColor" /> Leader
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
-              <ChevronRight size={20} />
-            </Link>
 
-            {/* Delete Team (Staff/Developer only) */}
-            {isStaff && onDeleteTeam && (
-              <button onClick={onDeleteTeam} style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: "0.5rem", padding: "0.875rem 1rem", background: "#FEF2F2", border: "1.5px solid #FECDD3", borderRadius: 14, cursor: "pointer", color: "#DC2626", fontWeight: 700, fontSize: 14, transition: "all 0.15s" }}>
-                <Trash2 size={16} />
-                Delete This Team
+              {/* Rejection feedback */}
+              {team.reviewFeedback && team.status === "rejected" && (
+                <div style={{ padding: "0.875rem 1rem", background: "#FFF1F2", borderRadius: 12, border: "1px solid #FFE4E6" }}>
+                  <p style={{ fontSize: 12, fontWeight: 700, color: "#B91C1C", marginBottom: 4 }}>Rejection Feedback</p>
+                  <p style={{ fontSize: 13, color: "#DC2626" }}>{team.reviewFeedback}</p>
+                </div>
+              )}
+
+              {/* Open Chat CTA */}
+              <button onClick={onOpenChat} style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0.875rem 1.125rem", background: "linear-gradient(135deg,#25D366,#128C7E)", borderRadius: 14, border: "none", cursor: "pointer", color: "#fff", transition: "all 0.15s" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+                  <MessageCircle size={22} />
+                  <div style={{ textAlign: "left" }}>
+                    <p style={{ fontWeight: 700, fontSize: 15 }}>Team Group Chat</p>
+                    <p style={{ fontSize: 12, opacity: 0.85 }}>Open WhatsApp-style chat</p>
+                  </div>
+                </div>
+                <ChevronRight size={20} />
               </button>
-            )}
+
+              {/* Full Details Page Link */}
+              <Link href={`/teams/${team.id}`} style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0.875rem 1.125rem", background: "linear-gradient(135deg,#EFF6FF,#DBEAFE)", borderRadius: 14, border: "1.5px solid #93C5FD", cursor: "pointer", color: "#1D4ED8", textDecoration: "none", transition: "all 0.15s" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+                  <Info size={22} />
+                  <div style={{ textAlign: "left" }}>
+                    <p style={{ fontWeight: 700, fontSize: 15 }}>Full Team Details</p>
+                    <p style={{ fontSize: 12, opacity: 0.7 }}>Members, docs, links & management</p>
+                  </div>
+                </div>
+                <ChevronRight size={20} />
+              </Link>
+
+              {/* Delete Team (Staff/Developer only) */}
+              {isStaff && onDeleteTeam && (
+                <button onClick={onDeleteTeam} style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: "0.5rem", padding: "0.875rem 1rem", background: "#FEF2F2", border: "1.5px solid #FECDD3", borderRadius: 14, cursor: "pointer", color: "#DC2626", fontWeight: 700, fontSize: 14, transition: "all 0.15s" }}>
+                  <Trash2 size={16} />
+                  Delete This Team
+                </button>
+              )}
+            </div>
           </div>
         </div>
       </div>
-    </div>
+    </>
   );
 }
 
