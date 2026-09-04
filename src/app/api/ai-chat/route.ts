@@ -33,7 +33,17 @@ function isStaffOrMaster(role: string) {
 
 // ── Normalise string for fuzzy matching ───────────────────────
 function norm(s: string) {
-    return (s || "").toLowerCase().replace(/[\s\-_.]/g, "");
+    return (s || "").toLowerCase().trim();
+}
+
+function tokenize(s: string) {
+    const skipWords = new Set([
+        "student", "staff", "mentor", "details", "of", "about", "find", "search",
+        "show", "who", "is", "the", "get", "for", "a", "an", "what", "can", "you",
+        "tell", "me", "hi", "hello", "hey", "i", "need", "some", "my", "give",
+        "create", "make", "draft", "write", "meeting", "event", "team"
+    ]);
+    return s.toLowerCase().replace(/[^a-z0-9\s]/g, " ").split(/\s+/).filter(w => w.length > 2 && !skipWords.has(w));
 }
 
 // ── Secure Data Fetchers (server-side only) ───────────────────
@@ -46,16 +56,17 @@ async function getCurrentUser(uid: string) {
 async function searchStudents(query: string, requestingUserRole: string) {
     const snap = await db.collection("users").get();
     const users = snap.docs.map((d) => ({ uid: d.id, ...d.data() } as Record<string, any>));
-    const q = norm(query);
+    const tokens = tokenize(query);
 
-    const matches = users.filter((u) => (
-        norm(u.name || "").includes(q) ||
-        norm(u.registerNumber || "").includes(q) ||
-        norm(u.rollNumber || "").includes(q) ||
-        norm(u.email || "").includes(q) ||
-        norm(u.department || "").includes(q) ||
-        norm(u.section || "").includes(q)
-    ));
+    if (tokens.length === 0) return []; // No useful keywords to search
+
+    const matches = users.filter((u) => {
+        const searchableText = [
+            u.name, u.registerNumber, u.rollNumber, u.email, u.department, u.section, u.role
+        ].map(s => norm(s)).join(" ");
+
+        return tokens.some((token) => searchableText.includes(token));
+    });
 
     return matches.map((u) => sanitizeUser(u, requestingUserRole));
 }
@@ -199,23 +210,21 @@ async function buildContext(
             context += `\n[MY MEETINGS]\n${JSON.stringify(myMeetings.map((m) => ({ id: m.id, title: m.title, mode: m.mode, date: m.date, status: m.status })), null, 2)}\n`;
         }
 
-        if (searchMatch && searchMatch[1]) {
-            const searchQuery = searchMatch[1].trim();
-            if (searchQuery.length > 1) {
-                const results = await searchStudents(searchQuery, role);
-                context += `\n[STUDENT SEARCH RESULTS for "${searchQuery}"]\n${JSON.stringify(results, null, 2)}\n`;
+        // Always do a general fuzzy search on the message for any matching students
+        const results = await searchStudents(message, role);
+        if (results.length > 0) {
+            context += `\n[STUDENT SEARCH RESULTS]\n${JSON.stringify(results, null, 2)}\n`;
 
-                if (results.length === 1) {
-                    const foundUid = results[0].uid;
-                    const [foundTeams, foundEvents, foundMeetings] = await Promise.all([
-                        getStudentTeams(foundUid),
-                        getStudentEvents(foundUid),
-                        getStudentMeetings(foundUid),
-                    ]);
-                    context += `\n[FOUND STUDENT TEAMS]\n${JSON.stringify(foundTeams, null, 2)}\n`;
-                    context += `\n[FOUND STUDENT EVENTS]\n${JSON.stringify(foundEvents, null, 2)}\n`;
-                    context += `\n[FOUND STUDENT MEETINGS]\n${JSON.stringify(foundMeetings, null, 2)}\n`;
-                }
+            if (results.length === 1) {
+                const foundUid = results[0].uid;
+                const [foundTeams, foundEvents, foundMeetings] = await Promise.all([
+                    getStudentTeams(foundUid),
+                    getStudentEvents(foundUid),
+                    getStudentMeetings(foundUid),
+                ]);
+                context += `\n[FOUND STUDENT TEAMS]\n${JSON.stringify(foundTeams, null, 2)}\n`;
+                context += `\n[FOUND STUDENT EVENTS]\n${JSON.stringify(foundEvents, null, 2)}\n`;
+                context += `\n[FOUND STUDENT MEETINGS]\n${JSON.stringify(foundMeetings, null, 2)}\n`;
             }
         }
 
@@ -300,6 +309,7 @@ CAPABILITIES:
 - Search for students, teams, events, and meetings by name, register number, etc.
 - Understand follow-up questions using conversation history.
 - Fuzzy match student names (e.g. "Harish Pranv" should match "Harish Pranav S.").
+- Draft content (e.g., meeting notes, event descriptions) if the user provides keywords or prompts.
 
 RESTRICTIONS:
 - Never expose Firebase credentials, API keys, or security rules.
