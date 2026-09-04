@@ -70,6 +70,8 @@ function TeamsContent() {
   const [availableStudents, setAvailableStudents] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [filterStatus, setFilterStatus] = useState("all");
+  const [globalSearch, setGlobalSearch] = useState("");
+  const [sortBy, setSortBy] = useState("Date (Newest)");
 
   // Create Team
   const [createOpen, setCreateOpen] = useState(false);
@@ -209,11 +211,29 @@ function TeamsContent() {
 
   const pendingCount = teams.filter((t) => t.status === "pending_approval").length;
   const filteredTeams = useMemo(() => {
-    if (filterStatus === "all") return teams;
-    if (filterStatus === "pending") return teams.filter((t) => t.status === "pending_approval");
-    if (filterStatus === "approved") return teams.filter((t) => t.status === "approved" || t.status === "active");
-    return teams.filter((t) => t.status === filterStatus);
-  }, [teams, filterStatus]);
+    let result = teams;
+    if (filterStatus === "pending") result = result.filter((t) => t.status === "pending_approval");
+    else if (filterStatus === "approved") result = result.filter((t) => t.status === "approved" || t.status === "active");
+    else if (filterStatus !== "all") result = result.filter((t) => t.status === filterStatus);
+
+    if (globalSearch.trim()) {
+      const q = globalSearch.toLowerCase();
+      result = result.filter(t =>
+        (t.name && t.name.toLowerCase().includes(q)) ||
+        (t.eventName && t.eventName.toLowerCase().includes(q)) ||
+        (t.leaderName && t.leaderName.toLowerCase().includes(q)) ||
+        (t.memberNames && t.memberNames.some(m => m && m.toLowerCase().includes(q)))
+      );
+    }
+
+    return result.sort((a, b) => {
+      if (sortBy === "Date (Newest)") return new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime();
+      if (sortBy === "Date (Oldest)") return new Date(a.createdAt || 0).getTime() - new Date(b.createdAt || 0).getTime();
+      if (sortBy === "Members (High to Low)") return b.memberIds.length - a.memberIds.length;
+      if (sortBy === "Members (Low to High)") return a.memberIds.length - b.memberIds.length;
+      return 0;
+    });
+  }, [teams, filterStatus, globalSearch, sortBy]);
 
   const tabs = [
     { id: "all", label: "All Teams", count: teams.length },
@@ -238,7 +258,36 @@ function TeamsContent() {
           }
         />
 
-        <Tabs tabs={tabs} activeTab={filterStatus} onTabChange={setFilterStatus} />
+        <div className="flex flex-wrap lg:flex-nowrap gap-4 justify-between items-center pb-2">
+          <div className="overflow-x-auto w-full lg:w-auto max-w-full">
+            <Tabs tabs={tabs} activeTab={filterStatus} onTabChange={setFilterStatus} />
+          </div>
+          <div className="flex flex-wrap sm:flex-nowrap gap-3 items-center w-full lg:w-auto">
+            <div
+              style={{ display: "flex", alignItems: "center", background: "white", padding: "0 12px", border: "1px solid #e2e8f0", borderRadius: "8px", height: "40px", minWidth: "240px", flex: "1 1 auto", boxShadow: "0 1px 2px rgba(0,0,0,0.05)" }}
+            >
+              <Search size={16} color="#94A3B8" style={{ flexShrink: 0 }} />
+              <input
+                type="search"
+                placeholder="Search team or student..."
+                value={globalSearch}
+                onChange={(e) => setGlobalSearch(e.target.value)}
+                style={{ border: "none", outline: "none", width: "100%", marginLeft: "8px", fontSize: "14px", background: "transparent", color: "#334155" }}
+              />
+            </div>
+            <select
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value)}
+              className="mm-select shrink-0 w-full sm:w-auto"
+              style={{ height: "40px", minWidth: "200px" }}
+            >
+              <option value="Date (Newest)">Date (Newest)</option>
+              <option value="Date (Oldest)">Date (Oldest)</option>
+              <option value="Members (High to Low)">Members (High to Low)</option>
+              <option value="Members (Low to High)">Members (Low to High)</option>
+            </select>
+          </div>
+        </div>
 
         {loading ? <LoadingState message="Loading teams..." /> :
           filteredTeams.length === 0 ? (
@@ -585,15 +634,25 @@ function TeamCard({ team, currentUserId, isStaff, onApprove, onReject, onViewInf
 function TeamInfoModal({ team, isStaff, onClose, onOpenChat, onDeleteTeam }: {
   team: Team; isStaff: boolean; onClose: () => void; onOpenChat: () => void; onDeleteTeam?: () => void;
 }) {
+  useEffect(() => {
+    document.body.style.overflow = "hidden";
+    const handleEsc = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", handleEsc);
+    return () => {
+      document.body.style.overflow = "";
+      window.removeEventListener("keydown", handleEsc);
+    };
+  }, [onClose]);
+
   return (
     <>
       <style>{`
         .mm-custom-team-overlay {
-          position: fixed; inset: 0; z-index: 60;
+          position: fixed; inset: 0; z-index: 9999;
           background: rgba(15,23,42,0.55); backdrop-filter: blur(4px);
-          display: flex; align-items: flex-start; justify-content: center;
-          padding: 2rem 1rem; animation: mm-fade-in 0.2s ease;
-          overflow-y: auto;
+          display: flex; align-items: center; justify-content: center;
+          padding: 1rem; animation: mm-fade-in 0.2s ease;
+          overflow: hidden;
         }
         .mm-custom-team-modal {
           background: var(--color-surface);
@@ -601,7 +660,7 @@ function TeamInfoModal({ team, isStaff, onClose, onOpenChat, onDeleteTeam }: {
           display: flex; flex-direction: column;
           box-shadow: 0 25px 50px -12px rgba(0,0,0,0.25);
           animation: mm-modal-in 0.22s cubic-bezier(0.16,1,0.3,1);
-          overflow: hidden; margin: auto;
+          overflow: hidden; max-height: 90vh;
         }
         @media (max-width: 640px) {
           .mm-custom-team-overlay {
@@ -609,7 +668,7 @@ function TeamInfoModal({ team, isStaff, onClose, onOpenChat, onDeleteTeam }: {
           }
           .mm-custom-team-modal {
             max-width: 100%; border-radius: 24px 24px 0 0; 
-            margin: 0; max-height: 92dvh;
+            max-height: 85vh; /* Mobile specific height, leave room for bottom sheet feel */
             animation: mm-slide-up 0.3s cubic-bezier(0.16,1,0.3,1);
           }
         }

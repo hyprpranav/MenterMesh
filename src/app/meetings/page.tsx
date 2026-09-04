@@ -13,7 +13,7 @@ import { Button } from "@/components/ui/Button";
 import { Tabs } from "@/components/ui/Tabs";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Badge } from "@/components/ui/Badge";
-import { Presentation, Plus, MapPin, CheckCircle2, Clock, XCircle, Users, Link as LinkIcon } from "lucide-react";
+import { Presentation, Plus, MapPin, CheckCircle2, Clock, XCircle, Users, Link as LinkIcon, Search } from "lucide-react";
 import { EmptyState, LoadingState } from "@/components/ui/States";
 import { formatDate } from "@/lib/utils";
 
@@ -31,6 +31,8 @@ function MeetingsContent() {
     const [loading, setLoading] = useState(true);
     const isStaff = user?.role === "staff" || user?.role === "master";
     const [activeTab, setActiveTab] = useState(isStaff ? "all" : "approved");
+    const [sortBy, setSortBy] = useState("Date (Newest)");
+    const [globalSearch, setGlobalSearch] = useState("");
 
     useEffect(() => {
         async function load() {
@@ -50,11 +52,24 @@ function MeetingsContent() {
     const pendingCount = meetings.filter((m) => m.status === "pending").length;
 
     const filteredMeetings = meetings.filter((m) => {
-        if (activeTab === "all") return true;
-        if (activeTab === "attended") return m.attendeeIds?.includes(user?.uid || "");
-        if (activeTab === "pending") return m.status === "pending";
-        if (activeTab === "approved") return m.status === "approved";
-        if (activeTab === "rejected") return m.status === "rejected";
+        let matchTab = false;
+        if (activeTab === "all") matchTab = true;
+        else if (activeTab === "attended") matchTab = m.attendeeIds?.includes(user?.uid || "") ?? false;
+        else if (activeTab === "pending") matchTab = m.status === "pending";
+        else if (activeTab === "approved") matchTab = m.status === "approved";
+        else if (activeTab === "rejected") matchTab = m.status === "rejected";
+        else matchTab = true;
+
+        if (!matchTab) return false;
+
+        if (globalSearch.trim()) {
+            const q = globalSearch.toLowerCase();
+            return (
+                (m.title && m.title.toLowerCase().includes(q)) ||
+                (m.submittedByName && m.submittedByName.toLowerCase().includes(q)) ||
+                (m.location && m.location.toLowerCase().includes(q))
+            );
+        }
         return true;
     });
 
@@ -80,6 +95,14 @@ function MeetingsContent() {
             ? filteredMeetings.filter(m => m.status === "approved")
             : filteredMeetings;
 
+    finalFiltered.sort((a, b) => {
+        if (sortBy === "Date (Newest)") return new Date(b.date).getTime() - new Date(a.date).getTime();
+        if (sortBy === "Date (Oldest)") return new Date(a.date).getTime() - new Date(b.date).getTime();
+        if (sortBy === "Participants (High to Low)") return b.attendeeCount - a.attendeeCount;
+        if (sortBy === "Participants (Low to High)") return a.attendeeCount - b.attendeeCount;
+        return 0;
+    });
+
     return (
         <div className="space-y-6 mm-page-animate">
             <PageHeader
@@ -98,8 +121,37 @@ function MeetingsContent() {
                 }
             />
 
-            <div className="overflow-x-auto pb-1">
-                <Tabs tabs={tabs} activeTab={activeTab} onTabChange={setActiveTab} />
+            <div className="flex flex-wrap lg:flex-nowrap gap-4 justify-between items-center pb-2">
+                <div className="overflow-x-auto w-full lg:w-auto max-w-full">
+                    <Tabs tabs={tabs} activeTab={activeTab} onTabChange={setActiveTab} />
+                </div>
+
+                <div className="flex flex-wrap sm:flex-nowrap gap-3 items-center w-full lg:w-auto">
+                    <div
+                        style={{ display: "flex", alignItems: "center", background: "white", padding: "0 12px", border: "1px solid #e2e8f0", borderRadius: "8px", height: "40px", minWidth: "240px", flex: "1 1 auto", boxShadow: "0 1px 2px rgba(0,0,0,0.05)" }}
+                    >
+                        <Search size={16} color="#94A3B8" style={{ flexShrink: 0 }} />
+                        <input
+                            type="search"
+                            placeholder="Search meetings..."
+                            value={globalSearch}
+                            onChange={(e) => setGlobalSearch(e.target.value)}
+                            style={{ border: "none", outline: "none", width: "100%", marginLeft: "8px", fontSize: "14px", background: "transparent", color: "#334155" }}
+                        />
+                    </div>
+
+                    <select
+                        value={sortBy}
+                        onChange={(e) => setSortBy(e.target.value)}
+                        className="mm-select shrink-0 w-full sm:w-auto"
+                        style={{ height: "40px", minWidth: "200px" }}
+                    >
+                        <option value="Date (Newest)">Date (Newest)</option>
+                        <option value="Date (Oldest)">Date (Oldest)</option>
+                        <option value="Participants (High to Low)">Participants (High to Low)</option>
+                        <option value="Participants (Low to High)">Participants (Low to High)</option>
+                    </select>
+                </div>
             </div>
 
             {loading ? (

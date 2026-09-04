@@ -15,6 +15,7 @@ import type { Notification } from "@/types";
 import { Bell, Menu, X } from "lucide-react";
 import Link from "next/link";
 import { Avatar } from "@/components/ui/Avatar";
+import { AIChatWidget } from "@/components/ui/AIChatWidget";
 
 interface AppShellProps {
   children: React.ReactNode;
@@ -537,31 +538,40 @@ export function AppShell({ children }: AppShellProps) {
 
       {/* ── Other Birthdays Toasts ────────────────────────────────── */}
       {othersBirthdayToasts.length > 0 && (
-        <div style={{ position: "fixed", bottom: "80px", right: "20px", display: "flex", flexDirection: "column", gap: "10px", zIndex: 9999 }}>
+        <div style={{ position: "fixed", bottom: "90px", right: "90px", display: "flex", flexDirection: "column", gap: "10px", zIndex: 8500 }}>
           {othersBirthdayToasts.map(bdayUser => {
             const contactLink = bdayUser.phone
               ? `https://wa.me/${bdayUser.phone.replace(/\D/g, "")}?text=Happy%20Birthday%20${encodeURIComponent(bdayUser.name)}!%20🎂`
               : `mailto:${bdayUser.collegeEmail || bdayUser.email}?subject=Happy%20Birthday!&body=Happy%20Birthday%20${encodeURIComponent(bdayUser.name)}!`;
             return (
-              <div key={bdayUser.uid} style={{ animation: "mm-slide-up 0.4s ease" }} className="bg-white rounded-[20px] shadow-[0_8px_30px_rgb(0,0,0,0.12)] border border-blue-500/20 p-4 w-[320px] sm:w-[340px] flex gap-3 relative">
-                <button onClick={() => dismissOtherBirthday(bdayUser.uid)} style={{ position: "absolute", top: "10px", right: "10px", background: "none", border: "none", cursor: "pointer", color: "#94A3B8" }}>
-                  <X size={16} />
+              <div key={bdayUser.uid} style={{ animation: "mm-slide-up 0.4s ease" }} className="bg-white rounded-[24px] shadow-[0_12px_40px_rgb(0,0,0,0.12)] border border-blue-500/15 p-4 w-[340px] max-w-[calc(100vw-40px)] flex flex-col gap-3 relative overflow-hidden">
+                <button onClick={() => dismissOtherBirthday(bdayUser.uid)} style={{ position: "absolute", top: "12px", right: "12px", background: "rgba(0,0,0,0.04)", borderRadius: "50%", width: "24px", height: "24px", display: "flex", alignItems: "center", justifyContent: "center", border: "none", cursor: "pointer", color: "#64748B", zIndex: 10 }}>
+                  <X size={14} />
                 </button>
-                <div className="w-12 h-12 rounded-full overflow-hidden shrink-0 border-2 border-indigo-100 flex items-center justify-center bg-indigo-50 shadow-sm text-2xl">
-                  {bdayUser.profilePhoto ? <img src={bdayUser.profilePhoto} className="w-full h-full object-cover" alt="" /> : "🎂"}
+                <div className="flex items-center gap-3">
+                  <div className="w-14 h-14 rounded-full overflow-hidden shrink-0 border-2 border-indigo-100 flex items-center justify-center bg-indigo-50 shadow-sm text-2xl relative">
+                    {bdayUser.profilePhoto ? <img src={bdayUser.profilePhoto} className="w-full h-full object-cover" alt="" /> : "🎂"}
+                  </div>
+                  <div className="flex-1 min-w-0 pr-6">
+                    <h4 className="text-[14px] font-bold text-slate-800 leading-tight block">
+                      Today is <span className="text-indigo-600">{bdayUser.name}'s</span> Birthday! 🎉
+                    </h4>
+                    <p className="text-[12px] text-slate-500 mt-1 line-clamp-2">Wish your teammate a happy birthday.</p>
+                  </div>
                 </div>
-                <div className="flex-1 min-w-0 pr-6">
-                  <h4 className="text-[14px] font-bold text-slate-800 leading-tight">Today is {bdayUser.name.split(" ")[0]}'s Birthday! 🎉</h4>
-                  <p className="text-[12px] text-slate-500 mt-1 mb-2.5 line-clamp-1">Wish your teammate a happy birthday.</p>
-                  <a href={contactLink} target="_blank" rel="noreferrer" onClick={() => dismissOtherBirthday(bdayUser.uid)} className="inline-flex items-center justify-center w-full bg-gradient-to-r from-blue-600 to-indigo-600 text-white text-[13px] font-bold px-4 py-2 rounded-xl hover:opacity-90 transition shadow-sm border border-transparent">
-                    Wish {bdayUser.name.split(" ")[0]} Now ✨
-                  </a>
-                </div>
+                <a href={contactLink} target="_blank" rel="noreferrer" onClick={() => dismissOtherBirthday(bdayUser.uid)}
+                  style={{ color: "#ffffff", textDecoration: "none" }}
+                  className="mt-1 flex items-center justify-center w-full bg-gradient-to-r from-blue-600 to-indigo-600 text-white text-[13px] font-bold px-4 py-2.5 rounded-xl hover:opacity-90 transition-all shadow-md active:scale-95 border border-transparent">
+                  Wish {bdayUser.name} Now ✨
+                </a>
               </div>
             )
           })}
         </div>
       )}
+
+      {/* ── AI Chat Widget ────────────────────────────────── */}
+      <AIChatWidget />
     </div>
   );
 }

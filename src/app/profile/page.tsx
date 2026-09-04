@@ -19,6 +19,7 @@ const initialProfileForm = (user: User | null) => ({
   email: user?.email ?? "",
   role: user?.role ?? "student",
   department: user?.department ?? "",
+  gender: user?.gender ?? "",
   year: user?.year ?? "",
   section: user?.section ?? "",
   registerNumber: user?.registerNumber ?? "",
@@ -51,6 +52,7 @@ export default function ProfilePage() {
     email: "",
     role: "student",
     department: "",
+    gender: "",
     year: "",
     section: "",
     registerNumber: "",
@@ -95,12 +97,18 @@ export default function ProfilePage() {
   };
 
   const handleSave = async () => {
+    if (!form.gender) {
+      toastError("Please select a Gender. This is required for sorting/filtering.");
+      return;
+    }
+
     setSaving(true);
     try {
       const payload: Partial<User> = {
         name: form.name.trim(),
         email: form.email.trim(),
         department: form.department.trim() || undefined,
+        gender: (form.gender as "Male" | "Female" | "Other") || undefined,
         year: form.year.trim() || undefined,
         section: form.section.trim() || undefined,
         registerNumber: form.registerNumber.trim() || undefined,
@@ -212,6 +220,7 @@ export default function ProfilePage() {
                 <div className="mm-field"><label>Name</label><p>{user.name}</p></div>
                 <div className="mm-field"><label>Official Email</label><p>{user.email}</p></div>
                 <div className="mm-field"><label>Department</label><p>{user.department || "—"}</p></div>
+                <div className="mm-field"><label>Gender</label><p>{user.gender || "—"}</p></div>
                 <div className="mm-field"><label>Year</label><p>{user.year || "—"}</p></div>
                 <div className="mm-field"><label>Section</label><p>{user.section || "—"}</p></div>
                 <div className="mm-field"><label>Register Number</label><p>{user.registerNumber || "—"}</p></div>
@@ -276,6 +285,15 @@ export default function ProfilePage() {
                 <label className="mm-field">
                   <span>Department</span>
                   <input className="mm-input" value={form.department} onChange={(e) => handleChange("department", e.target.value)} />
+                </label>
+                <label className="mm-field">
+                  <span>Gender <span style={{ color: "var(--color-danger)" }}>*</span></span>
+                  <select className="mm-input mm-select" value={form.gender} onChange={(e) => handleChange("gender", e.target.value)}>
+                    <option value="" disabled>Select Gender (Required)</option>
+                    <option value="Male">Male</option>
+                    <option value="Female">Female</option>
+                    <option value="Other">Other</option>
+                  </select>
                 </label>
                 <label className="mm-field">
                   <span>Year</span>

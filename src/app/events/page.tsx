@@ -13,7 +13,7 @@ import { Button } from "@/components/ui/Button";
 import { Tabs } from "@/components/ui/Tabs";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Badge } from "@/components/ui/Badge";
-import { Calendar, Plus, MapPin, Folder, CheckCircle2, Clock, XCircle } from "lucide-react";
+import { Calendar, Plus, MapPin, Folder, CheckCircle2, Clock, XCircle, Search } from "lucide-react";
 import { EmptyState, LoadingState } from "@/components/ui/States";
 import { formatDate } from "@/lib/utils";
 
@@ -30,6 +30,8 @@ function EventsContent() {
   const [events, setEvents] = useState<Event[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("all");
+  const [globalSearch, setGlobalSearch] = useState("");
+  const [sortBy, setSortBy] = useState("Date (Newest)");
 
   useEffect(() => {
     async function load() {
@@ -54,13 +56,37 @@ function EventsContent() {
   const pendingCount = events.filter((e) => e.submissionStatus === "pending_review").length;
 
   const filteredEvents = events.filter((e) => {
-    if (activeTab === "all") return true;
-    if (activeTab === "my") return e.submittedBy === user?.uid;
-    if (activeTab === "pending") return e.submissionStatus === "pending_review";
-    if (activeTab === "approved") return e.submissionStatus === "approved" || !e.submissionStatus;
-    if (activeTab === "rejected") return e.submissionStatus === "rejected";
-    if (activeTab === "draft") return e.submissionStatus === "draft";
-    return e.type.toLowerCase() === activeTab.toLowerCase();
+    let matchTab = false;
+    if (activeTab === "all") matchTab = true;
+    else if (activeTab === "my") matchTab = e.submittedBy === user?.uid;
+    else if (activeTab === "pending") matchTab = e.submissionStatus === "pending_review";
+    else if (activeTab === "approved") matchTab = e.submissionStatus === "approved" || !e.submissionStatus;
+    else if (activeTab === "rejected") matchTab = e.submissionStatus === "rejected";
+    else if (activeTab === "draft") matchTab = e.submissionStatus === "draft";
+    else matchTab = e.type.toLowerCase() === activeTab.toLowerCase();
+
+    if (!matchTab) return false;
+
+    if (globalSearch.trim()) {
+      const q = globalSearch.toLowerCase();
+      return (
+        (e.name && e.name.toLowerCase().includes(q)) ||
+        (e.type && e.type.toLowerCase().includes(q)) ||
+        (e.location && e.location.toLowerCase().includes(q))
+      );
+    }
+    return true;
+  }).sort((a, b) => {
+    if (sortBy === "Date (Newest)") return new Date(b.date).getTime() - new Date(a.date).getTime();
+    if (sortBy === "Date (Oldest)") return new Date(a.date).getTime() - new Date(b.date).getTime();
+
+    const countA = (a.participantIds?.length || 0) + (a.externalParticipants?.length || 0);
+    const countB = (b.participantIds?.length || 0) + (b.externalParticipants?.length || 0);
+
+    if (sortBy === "Participants (High to Low)") return countB - countA;
+    if (sortBy === "Participants (Low to High)") return countA - countB;
+
+    return 0;
   });
 
   const tabs = [
@@ -97,9 +123,39 @@ function EventsContent() {
         }
       />
 
-      {/* Filter Tabs */}
-      <div className="overflow-x-auto pb-1">
-        <Tabs tabs={tabs} activeTab={activeTab} onTabChange={setActiveTab} />
+      {/* Filter Tabs and Sort */}
+      <div className="flex flex-wrap lg:flex-nowrap gap-4 justify-between items-center pb-2">
+        <div className="overflow-x-auto w-full lg:w-auto max-w-full">
+          <Tabs tabs={tabs} activeTab={activeTab} onTabChange={setActiveTab} />
+        </div>
+
+        <div className="flex flex-wrap sm:flex-nowrap gap-3 items-center w-full lg:w-auto">
+          {/* Search Box */}
+          <div
+            style={{ display: "flex", alignItems: "center", background: "white", padding: "0 12px", border: "1px solid #e2e8f0", borderRadius: "8px", height: "40px", minWidth: "240px", flex: "1 1 auto", boxShadow: "0 1px 2px rgba(0,0,0,0.05)" }}
+          >
+            <Search size={16} color="#94A3B8" style={{ flexShrink: 0 }} />
+            <input
+              type="search"
+              placeholder="Search events..."
+              value={globalSearch}
+              onChange={(e) => setGlobalSearch(e.target.value)}
+              style={{ border: "none", outline: "none", width: "100%", marginLeft: "8px", fontSize: "14px", background: "transparent", color: "#334155" }}
+            />
+          </div>
+
+          <select
+            value={sortBy}
+            onChange={(e) => setSortBy(e.target.value)}
+            className="mm-select shrink-0 w-full sm:w-auto"
+            style={{ height: "40px", minWidth: "200px" }}
+          >
+            <option value="Date (Newest)">Date (Newest)</option>
+            <option value="Date (Oldest)">Date (Oldest)</option>
+            <option value="Participants (High to Low)">Participants (High to Low)</option>
+            <option value="Participants (Low to High)">Participants (Low to High)</option>
+          </select>
+        </div>
       </div>
 
       {/* Grid */}

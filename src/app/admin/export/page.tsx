@@ -5,7 +5,7 @@
 // ============================================================
 import React, { useState } from "react";
 import { AppShell } from "@/components/layout/AppShell";
-import { getActiveStudents, getTeams, getEvents, getAllUsers } from "@/lib/firebase/firestore";
+import { getActiveStudents, getTeams, getEvents, getAllUsers, getMeetingsForViewer } from "@/lib/firebase/firestore";
 import { Button } from "@/components/ui/Button";
 import { Download, Users, UsersRound, Calendar, FileSpreadsheet } from "lucide-react";
 import { useToast } from "@/components/ui/ToastProvider";
@@ -71,18 +71,41 @@ function ExportCenterContent() {
     setExporting("overall");
     try {
       const users = await getAllUsers();
+      const events = await getEvents();
+      const teams = await getTeams();
+      const meetings = await getMeetingsForViewer("", "developer"); // get all meetings
 
-      let headers: string[] = ["UID", "Name", "Role", "Status", "College Email", "Personal Email", "Phone Number", "Register Number", "Roll Number", "Department", "Year", "Section", "Address"];
-      let rows: string[][] = users.map((u) => [
-        u.uid, u.name, u.role, u.status || "active",
-        u.email, u.personalEmail || "", u.phone || "",
-        u.registerNumber || "", u.rollNumber || "",
-        u.department || "", u.year || "", u.section || "",
-        u.address || ""
-      ]);
+      let headers: string[] = [
+        "UID", "Name", "Role", "Gender",
+        "College Email", "Personal Email", "Alternate Email",
+        "Student Phone", "Parent Phone",
+        "Register Number", "Roll Number", "Department", "Year", "Section",
+        "Date of Birth", "Blood Group", "Aadhaar Number", "Address",
+        "LinkedIn", "GitHub", "Portfolio", "Bio", "Skills",
+        "Teams Attended", "Events Attended", "Meetings Attended"
+      ];
 
-      downloadCSV("mentormesh_overall_system_database", [headers, ...rows]);
-      success("Overall system database exported successfully!");
+      let rows: string[][] = users.map((u) => {
+        // Find teams
+        const userTeams = teams.filter(t => t.memberIds.includes(u.uid) || t.leaderId === u.uid).map(t => t.name).join(" | ");
+        // Find events
+        const userEvents = events.filter(e => e.submittedBy === u.uid || (e.participantIds && e.participantIds.includes(u.uid))).map(e => e.name).join(" | ");
+        // Find meetings
+        const userMeetings = meetings.filter(m => m.submittedBy === u.uid || (m.attendeeIds && m.attendeeIds.includes(u.uid))).map(m => m.title).join(" | ");
+
+        return [
+          u.uid, u.name, u.role, String((u as any).gender || ""),
+          u.email, u.personalEmail || "", u.alternateEmail || "",
+          u.phone || "", u.parentPhoneNumber || "",
+          u.registerNumber || "", u.rollNumber || "", u.department || "", u.year || "", u.section || "",
+          u.dateOfBirth || "", u.bloodGroup || "", u.aadhaarNumber || "", (u.address || "").replace(/\n/g, ", "),
+          u.linkedIn || "", u.github || "", u.portfolio || "", u.bio || "", (u.skills || []).join(", "),
+          userTeams || "None", userEvents || "None", userMeetings || "None"
+        ];
+      });
+
+      downloadCSV("mentormesh_comprehensive_database", [headers, ...rows]);
+      success("Comprehensive system database exported successfully!");
     } catch {
       error("Export failed. Please try again.");
     } finally {
@@ -166,6 +189,26 @@ function ExportCenterContent() {
 
       downloadCSV("mentormesh_events", [headers, ...rows]);
       success("Events export generated!");
+    } catch {
+      error("Export failed.");
+    } finally {
+      setExporting(null);
+    }
+  };
+
+  // Meetings Export
+  const handleExportMeetings = async () => {
+    setExporting("meetings");
+    try {
+      const meetings = await getMeetingsForViewer("", "developer");
+      let headers: string[] = ["S.No", "Meeting Title", "Mode", "Status", "Date", "Time", "Host", "Participants", "Participant Count", "Meeting Link"];
+      let rows: string[][] = meetings.map((m, i) => [
+        String(i + 1), m.title, m.mode, m.status, m.date, m.time, m.submittedByName || "Unknown",
+        String(m.attendeeNames?.join("; ") || m.attendeeIds?.join("; ")), String(m.attendeeCount || (m.attendeeIds || []).length), m.link || ""
+      ]);
+
+      downloadCSV("mentormesh_meetings", [headers, ...rows]);
+      success("Meetings export generated!");
     } catch {
       error("Export failed.");
     } finally {
@@ -306,6 +349,31 @@ function ExportCenterContent() {
               onClick={handleExportEvents}
             >
               Full Events Summary (CSV)
+            </Button>
+          </div>
+        </div>
+
+        {/* Meetings Export Card */}
+        <div className="mm-card space-y-4">
+          <div className="flex items-center gap-3 border-b border-slate-100 pb-3">
+            <div className="w-10 h-10 rounded-xl bg-orange-100 text-orange-600 flex items-center justify-center">
+              <Calendar size={20} />
+            </div>
+            <div>
+              <h2 className="font-bold text-slate-900 text-base">Meetings Log</h2>
+              <p className="text-xs text-slate-500">Export meeting details</p>
+            </div>
+          </div>
+          <div className="space-y-2">
+            <Button
+              variant="primary"
+              fullWidth
+              size="sm"
+              icon={<FileSpreadsheet size={14} />}
+              loading={exporting === "meetings"}
+              onClick={handleExportMeetings}
+            >
+              Full Meetings Log (CSV)
             </Button>
           </div>
         </div>

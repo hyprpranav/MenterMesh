@@ -142,5 +142,13 @@ service cloud.firestore {
         request.resource.data.messageType in ["text", "image", "document"];
       allow delete: if isStaff();
     }
+    // AI Chat Messages — per-message 24h TTL enforced on write; users can only read/write their own.
+    match /aiChats/{userId}/messages/{messageId} {
+      allow read: if isAuthenticated() && (request.auth.uid == userId || isStaff());
+      allow create: if isAuthenticated() && request.auth.uid == userId
+        && request.resource.data.senderId == request.auth.uid
+        && request.resource.data.keys().hasAll(['text', 'role', 'senderId', 'createdAt', 'expiresAt']);
+      allow delete: if isAuthenticated() && (request.auth.uid == userId || isStaff());
+    }
   }
 }

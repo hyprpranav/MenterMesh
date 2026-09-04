@@ -16,6 +16,7 @@ export interface User {
   status: UserStatus;
   profilePhoto?: string;
   professionalPhoto?: string;
+  gender?: "Male" | "Female" | "Other";
   department?: string;
   year?: string;       // "I" | "II" | "III" | "IV"
   section?: string;
@@ -46,6 +47,7 @@ export interface PublicProfile {
   name: string;
   profilePhoto?: string;
   professionalPhoto?: string;
+  gender?: "Male" | "Female" | "Other";
   department?: string;
   year?: string;
   section?: string;

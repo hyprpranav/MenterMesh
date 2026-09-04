@@ -49,15 +49,20 @@ const YEARS = [
 
 const SECTIONS = [
   "All",
-  "A",
-  "B",
-  "C",
-  "D",
-  "E",
-  "F",
+  "A", "B", "C", "D", "E", "F",
   "VLSI-1",
   "VLSI-2",
   "Other",
+];
+
+const GENDERS = ["All", "Male", "Female", "Other"];
+const SORT_OPTIONS = [
+  "Name (A-Z)",
+  "Name (Z-A)",
+  "Register Number (Asc)",
+  "Register Number (Desc)",
+  "Section (Asc)",
+  "Section (Desc)",
 ];
 
 export default function StudentDirectoryPage() {
@@ -81,6 +86,8 @@ function DirectoryContent() {
   const [selectedDept, setSelectedDept] = useState("All");
   const [selectedYear, setSelectedYear] = useState("All");
   const [selectedSec, setSelectedSec] = useState("All");
+  const [selectedGender, setSelectedGender] = useState("All");
+  const [sortBy, setSortBy] = useState("Name (A-Z)");
 
   useEffect(() => {
     getAllUsers()
@@ -93,7 +100,7 @@ function DirectoryContent() {
 
   const filteredStudents = useMemo(() => {
     const q = normalizeForSearch(searchQuery);
-    return students.filter((s) => {
+    const result = students.filter((s) => {
       if (selectedDept !== "All" && s.department !== selectedDept) return false;
 
       if (selectedYear !== "All") {
@@ -120,18 +127,36 @@ function DirectoryContent() {
         if (sSec !== selSec) return false;
       }
 
-      if (!q) return true;
-      return [
-        s.name, s.registerNumber, s.rollNumber, s.email,
-        s.personalEmail, s.phone, s.department, s.year, s.section, ...(s.skills ?? []),
-      ].some((v) => v && normalizeForSearch(v).includes(q));
-    });
-  }, [students, searchQuery, selectedDept, selectedYear, selectedSec]);
+      if (selectedGender !== "All") {
+        if (!s.gender || s.gender !== selectedGender) return false;
+      }
 
-  const hasActiveFilters = selectedDept !== "All" || selectedYear !== "All" || selectedSec !== "All" || searchQuery.trim().length > 0;
+      if (q) {
+        const matchesQuery = [
+          s.name, s.registerNumber, s.rollNumber, s.email,
+          s.personalEmail, s.phone, s.department, s.year, s.section, ...(s.skills ?? []),
+        ].some((v) => v && normalizeForSearch(v).includes(q));
+        if (!matchesQuery) return false;
+      }
+
+      return true;
+    });
+
+    return result.sort((a, b) => {
+      if (sortBy === "Name (A-Z)") return (a.name || "").localeCompare(b.name || "");
+      if (sortBy === "Name (Z-A)") return (b.name || "").localeCompare(a.name || "");
+      if (sortBy === "Register Number (Asc)") return (a.registerNumber || "").localeCompare(b.registerNumber || "");
+      if (sortBy === "Register Number (Desc)") return (b.registerNumber || "").localeCompare(a.registerNumber || "");
+      if (sortBy === "Section (Asc)") return (a.section || "").localeCompare(b.section || "");
+      if (sortBy === "Section (Desc)") return (b.section || "").localeCompare(a.section || "");
+      return 0;
+    });
+  }, [students, searchQuery, selectedDept, selectedYear, selectedSec, selectedGender, sortBy]);
+
+  const hasActiveFilters = selectedDept !== "All" || selectedYear !== "All" || selectedSec !== "All" || selectedGender !== "All" || searchQuery.trim().length > 0 || sortBy !== "Name (A-Z)";
 
   const clearFilters = () => {
-    setSearchQuery(""); setSelectedDept("All"); setSelectedYear("All"); setSelectedSec("All");
+    setSearchQuery(""); setSelectedDept("All"); setSelectedYear("All"); setSelectedSec("All"); setSelectedGender("All"); setSortBy("Name (A-Z)");
   };
 
   return (
@@ -198,6 +223,8 @@ function DirectoryContent() {
           { label: "Dept", value: selectedDept, onChange: setSelectedDept, options: DEPARTMENTS },
           { label: "Year", value: selectedYear, onChange: setSelectedYear, options: YEARS },
           { label: "Section", value: selectedSec, onChange: setSelectedSec, options: SECTIONS },
+          { label: "Gender", value: selectedGender, onChange: setSelectedGender, options: GENDERS },
+          { label: "Sort", value: sortBy, onChange: setSortBy, options: SORT_OPTIONS },
         ].map(({ label, value, onChange, options }) => (
           <div key={label} style={{ display: "flex", alignItems: "center", gap: "0.375rem" }}>
             <span style={{ fontSize: "0.8125rem", fontWeight: 600, color: "var(--color-muted)", flexShrink: 0 }}>{label}:</span>
@@ -253,8 +280,14 @@ function DirectoryContent() {
           {selectedSec !== "All" && (
             <span className="mm-chip">Sec: {selectedSec}<button onClick={() => setSelectedSec("All")}><X size={11} /></button></span>
           )}
+          {selectedGender !== "All" && (
+            <span className="mm-chip">{selectedGender}<button onClick={() => setSelectedGender("All")}><X size={11} /></button></span>
+          )}
           {searchQuery && (
             <span className="mm-chip">&ldquo;{searchQuery}&rdquo;<button onClick={() => setSearchQuery("")}><X size={11} /></button></span>
+          )}
+          {sortBy !== "Name (A-Z)" && (
+            <span className="mm-chip">Sort: {sortBy}<button onClick={() => setSortBy("Name (A-Z)")}><X size={11} /></button></span>
           )}
         </div>
       )}
@@ -439,6 +472,7 @@ function StudentModal({
             <CopyField label="Register Number" value={student.registerNumber} />
             {student.rollNumber && <CopyField label="Roll Number" value={student.rollNumber} />}
             {student.department && <CopyField label="Department" value={`${student.department} · ${student.year || "N/A"} Year · Sec ${student.section || "N/A"}`} />}
+            {student.gender && <CopyField label="Gender" value={student.gender} />}
             {student.email && <CopyField label="College Email" value={student.email} />}
           </div>
         </div>
