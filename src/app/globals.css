@@ -132,6 +132,34 @@ body {
   background-color: var(--color-bg);
 }
 
+body::before {
+  content: "";
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  z-index: -1;
+  background-image: url('/bg.jpeg');
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  opacity: 0.16;
+  pointer-events: none;
+}
+
+@media (max-width: 768px) {
+  body::before {
+    background-size: 100% auto;
+    background-position: bottom center;
+    background-attachment: fixed;
+    /* Create a gradient fade to smoothly merge with standard UI top so the whole group of people is visible without being cropped */
+    -webkit-mask-image: linear-gradient(to bottom, transparent 10%, black 35%);
+    mask-image: linear-gradient(to bottom, transparent 10%, black 35%);
+    opacity: 0.32;
+  }
+}
+
 img {
   max-width: 100%;
   height: auto;
