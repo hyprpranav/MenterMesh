@@ -180,7 +180,7 @@ export function Sidebar({
   const roleLabel = role === "master" ? "Master" : role === "staff" ? "Staff / Faculty" : "Student";
 
   return (
-    <aside className={isMobileDrawer ? undefined : "mm-sidebar"} style={isMobileDrawer ? { display: "flex", flexDirection: "column", height: "100%", background: "var(--color-surface)" } : undefined}>
+    <aside className={isMobileDrawer ? undefined : "mm-sidebar"} style={isMobileDrawer ? { display: "flex", flexDirection: "column", height: "100%", background: "rgba(255, 255, 255, 0.75)", backdropFilter: "blur(16px)" } : undefined}>
 
       {/* ── Logo (desktop only — mobile has it in drawer header) ── */}
       {!isMobileDrawer && (

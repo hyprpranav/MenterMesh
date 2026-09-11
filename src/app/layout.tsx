@@ -36,6 +36,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
       </head>
       <body>
+        <div className="mm-bg-layer" aria-hidden="true" />
+        <div className="mm-bg-overlay" aria-hidden="true" />
         <AuthProvider>
           <ToastProvider>
             {children}
