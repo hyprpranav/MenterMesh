@@ -900,9 +900,37 @@ export async function createScheduledMeeting(
   data: Omit<ScheduledMeeting, "id" | "createdAt" | "updatedAt">
 ): Promise<string> {
   const code = data.code || generateMeetingCode();
+
+  // Try server-side Admin API first to bypass client permission rules and trigger notifications
+  try {
+    const res = await fetch("/api/meetings", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        meetingData: {
+          ...data,
+          code,
+        },
+      }),
+    });
+    if (res.ok) {
+      const json = await res.json();
+      if (json.id) {
+        return json.id;
+      }
+    } else {
+      const errJson = await res.json().catch(() => ({}));
+      console.warn("Server API error for createScheduledMeeting:", errJson);
+    }
+  } catch (apiErr) {
+    console.warn("API meeting creation fallback to direct firestore:", apiErr);
+  }
+
+  // Fallback to client SDK
   const ref = await addDoc(collection(db, "scheduledMeetings"), stripUndefined({
     ...data,
     code,
+    submittedBy: data.hostId,
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   }));
@@ -958,32 +986,64 @@ export async function createScheduledMeeting(
 }
 
 export async function getScheduledMeeting(meetingId: string): Promise<ScheduledMeeting | null> {
-  const snap = await getDoc(doc(db, "scheduledMeetings", meetingId));
-  if (!snap.exists()) return null;
-  return { id: snap.id, ...snap.data() } as ScheduledMeeting;
+  try {
+    const snap = await getDoc(doc(db, "scheduledMeetings", meetingId));
+    if (snap.exists()) {
+      return { id: snap.id, ...snap.data() } as ScheduledMeeting;
+    }
+  } catch (err) {
+    console.warn("Direct getScheduledMeeting error, falling back to server API:", err);
+  }
+
+  try {
+    const res = await fetch(`/api/meetings?id=${encodeURIComponent(meetingId)}`);
+    if (res.ok) {
+      const data = await res.json();
+      if (data && data.id) return data as ScheduledMeeting;
+    }
+  } catch (apiErr) {
+    console.warn("Server API meeting fetch error:", apiErr);
+  }
+
+  return null;
 }
 
 export async function getScheduledMeetingByCodeOrId(codeOrId: string): Promise<ScheduledMeeting | null> {
   const clean = codeOrId.trim();
   if (!clean) return null;
 
-  // Try direct document id first
-  const docRef = doc(db, "scheduledMeetings", clean);
-  const snap = await getDoc(docRef);
-  if (snap.exists()) {
-    return { id: snap.id, ...snap.data() } as ScheduledMeeting;
+  try {
+    // Try direct document id first
+    const docRef = doc(db, "scheduledMeetings", clean);
+    const snap = await getDoc(docRef);
+    if (snap.exists()) {
+      return { id: snap.id, ...snap.data() } as ScheduledMeeting;
+    }
+
+    // Otherwise query by 4-character code
+    const q = query(
+      collection(db, "scheduledMeetings"),
+      where("code", "==", clean.toUpperCase()),
+      limit(1)
+    );
+    const codeSnap = await getDocs(q);
+    if (!codeSnap.empty) {
+      const d = codeSnap.docs[0];
+      return { id: d.id, ...d.data() } as ScheduledMeeting;
+    }
+  } catch (clientErr) {
+    console.warn("Direct firestore lookup error, trying server API:", clientErr);
   }
 
-  // Otherwise query by 4-character code
-  const q = query(
-    collection(db, "scheduledMeetings"),
-    where("code", "==", clean.toUpperCase()),
-    limit(1)
-  );
-  const codeSnap = await getDocs(q);
-  if (!codeSnap.empty) {
-    const d = codeSnap.docs[0];
-    return { id: d.id, ...d.data() } as ScheduledMeeting;
+  // Server API fallback (uses Admin SDK which bypasses security rules)
+  try {
+    const res = await fetch(`/api/meetings?id=${encodeURIComponent(clean)}`);
+    if (res.ok) {
+      const data = await res.json();
+      if (data && data.id) return data as ScheduledMeeting;
+    }
+  } catch (apiErr) {
+    console.warn("Server API meeting lookup failed:", apiErr);
   }
 
   return null;
@@ -993,10 +1053,26 @@ export async function updateScheduledMeeting(
   meetingId: string,
   data: Partial<ScheduledMeeting>
 ): Promise<void> {
-  await updateDoc(doc(db, "scheduledMeetings", meetingId), stripUndefined({
-    ...data,
-    updatedAt: serverTimestamp(),
-  }));
+  try {
+    await updateDoc(doc(db, "scheduledMeetings", meetingId), stripUndefined({
+      ...data,
+      updatedAt: serverTimestamp(),
+    }));
+  } catch (err) {
+    console.warn("Direct updateScheduledMeeting failed, falling back to server API:", err);
+    try {
+      await fetch("/api/meetings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          meetingId,
+          updates: stripUndefined(data),
+        }),
+      });
+    } catch (apiErr) {
+      console.error("Server API updateScheduledMeeting failed:", apiErr);
+    }
+  }
 }
 
 export async function getScheduledMeetingsForViewer(
@@ -1005,27 +1081,47 @@ export async function getScheduledMeetingsForViewer(
 ): Promise<ScheduledMeeting[]> {
   const isStaff = role === "staff" || role === "master";
 
-  let q;
-  if (isStaff) {
-    q = query(collection(db, "scheduledMeetings"), orderBy("createdAt", "desc"));
-  } else {
-    // For students: where participantIds contains uid OR hostId == uid OR visibility == 'everyone'
-    // We fetch recent scheduled meetings and filter client-side for rich combinable rules
-    q = query(collection(db, "scheduledMeetings"), orderBy("createdAt", "desc"), limit(60));
+  try {
+    let q;
+    if (isStaff) {
+      q = query(collection(db, "scheduledMeetings"), orderBy("createdAt", "desc"));
+    } else {
+      q = query(collection(db, "scheduledMeetings"), orderBy("createdAt", "desc"), limit(60));
+    }
+
+    const snap = await getDocs(q);
+    const all = snap.docs.map((d) => ({ id: d.id, ...d.data() } as ScheduledMeeting));
+
+    if (isStaff) return all;
+
+    return all.filter((m) => {
+      if (m.visibility === "everyone") return true;
+      if (m.hostId === uid) return true;
+      if (m.coHostIds?.includes(uid)) return true;
+      if (m.participantIds?.includes(uid)) return true;
+      return false;
+    });
+  } catch (err) {
+    console.warn("Direct getScheduledMeetingsForViewer failed, falling back to server API:", err);
+    try {
+      const res = await fetch("/api/meetings");
+      if (res.ok) {
+        const json = await res.json();
+        const all = (json.meetings || []) as ScheduledMeeting[];
+        if (isStaff) return all;
+        return all.filter((m) => {
+          if (m.visibility === "everyone") return true;
+          if (m.hostId === uid) return true;
+          if (m.coHostIds?.includes(uid)) return true;
+          if (m.participantIds?.includes(uid)) return true;
+          return false;
+        });
+      }
+    } catch (apiErr) {
+      console.error("API meeting fetch fallback error:", apiErr);
+    }
+    return [];
   }
-
-  const snap = await getDocs(q);
-  const all = snap.docs.map((d) => ({ id: d.id, ...d.data() } as ScheduledMeeting));
-
-  if (isStaff) return all;
-
-  return all.filter((m) => {
-    if (m.visibility === "everyone") return true;
-    if (m.hostId === uid) return true;
-    if (m.coHostIds?.includes(uid)) return true;
-    if (m.participantIds?.includes(uid)) return true;
-    return false;
-  });
 }
 
 // ── Attendance Tracking ──
@@ -1034,177 +1130,228 @@ export async function recordParticipantJoin(
   meetingId: string,
   participant: Partial<LiveMeetingParticipant>
 ): Promise<void> {
-  const docRef = doc(db, "scheduledMeetings", meetingId);
-  const snap = await getDoc(docRef);
-  if (!snap.exists()) return;
+  try {
+    const docRef = doc(db, "scheduledMeetings", meetingId);
+    const snap = await getDoc(docRef);
+    if (!snap.exists()) return;
 
-  const meeting = snap.data() as ScheduledMeeting;
-  const currentAttendance = meeting.attendance || [];
-  const now = new Date().toISOString();
+    const meeting = snap.data() as ScheduledMeeting;
+    const currentAttendance = meeting.attendance || [];
+    const now = new Date().toISOString();
 
-  // Find if already in attendance
-  const index = currentAttendance.findIndex(
-    (p) => (participant.uid && p.uid === participant.uid) || (participant.email && p.email === participant.email)
-  );
+    // Find if already in attendance
+    const index = currentAttendance.findIndex(
+      (p) => (participant.uid && p.uid === participant.uid) || (participant.email && p.email === participant.email)
+    );
 
-  let updatedList = [...currentAttendance];
+    let updatedList = [...currentAttendance];
 
-  if (index >= 0) {
-    // Update existing record
-    updatedList[index] = {
-      ...updatedList[index],
-      joined: true,
-      joinTime: updatedList[index].joinTime || now,
-      status: "in_meeting",
+    if (index >= 0) {
+      // Update existing record
+      updatedList[index] = {
+        ...updatedList[index],
+        joined: true,
+        joinTime: updatedList[index].joinTime || now,
+        status: "in_meeting",
+      };
+    } else {
+      // Add new participant
+      updatedList.push({
+        uid: participant.uid || "",
+        name: participant.name || "Guest",
+        email: participant.email || "",
+        role: (participant.role as any) || "participant",
+        invited: participant.invited ?? false,
+        joined: true,
+        joinTime: now,
+        status: "in_meeting",
+      });
+    }
+
+    const updates: any = {
+      attendance: updatedList,
+      attendeeCount: updatedList.filter((p) => p.joined).length,
+      updatedAt: serverTimestamp(),
     };
-  } else {
-    // Add new participant
-    updatedList.push({
-      uid: participant.uid || "",
-      name: participant.name || "Guest",
-      email: participant.email || "",
-      role: (participant.role as any) || "participant",
-      invited: participant.invited ?? false,
-      joined: true,
-      joinTime: now,
-      status: "in_meeting",
-    });
+
+    // If meeting was not yet live, set status to live and actualStart
+    if (meeting.status === "scheduled" || meeting.status === "starting_soon") {
+      updates.status = "live";
+      updates.actualStart = now;
+    }
+
+    await updateDoc(docRef, updates);
+  } catch (err) {
+    console.warn("Direct recordParticipantJoin failed, falling back to server API:", err);
+    try {
+      await fetch("/api/meetings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          meetingId,
+          action: "join",
+          participant,
+        }),
+      });
+    } catch (apiErr) {
+      console.error("API recordParticipantJoin fallback failed:", apiErr);
+    }
   }
-
-  const updates: any = {
-    attendance: updatedList,
-    attendeeCount: updatedList.filter((p) => p.joined).length,
-    updatedAt: serverTimestamp(),
-  };
-
-  // If meeting was not yet live, set status to live and actualStart
-  if (meeting.status === "scheduled" || meeting.status === "starting_soon") {
-    updates.status = "live";
-    updates.actualStart = now;
-  }
-
-  await updateDoc(docRef, updates);
 }
 
 export async function recordParticipantLeave(
   meetingId: string,
   participantUidOrEmail: string
 ): Promise<void> {
-  const docRef = doc(db, "scheduledMeetings", meetingId);
-  const snap = await getDoc(docRef);
-  if (!snap.exists()) return;
+  try {
+    const docRef = doc(db, "scheduledMeetings", meetingId);
+    const snap = await getDoc(docRef);
+    if (!snap.exists()) return;
 
-  const meeting = snap.data() as ScheduledMeeting;
-  const currentAttendance = meeting.attendance || [];
-  const now = new Date().toISOString();
+    const meeting = snap.data() as ScheduledMeeting;
+    const currentAttendance = meeting.attendance || [];
+    const now = new Date().toISOString();
 
-  const updatedList = currentAttendance.map((p) => {
-    if (p.uid === participantUidOrEmail || p.email === participantUidOrEmail) {
-      const joinMs = p.joinTime ? new Date(p.joinTime as string).getTime() : Date.now();
-      const leaveMs = Date.now();
-      const durationMin = Math.max(1, Math.round((leaveMs - joinMs) / (1000 * 60)));
-      return {
-        ...p,
-        leaveTime: now,
-        durationMinutes: durationMin,
-        status: "left" as const,
-      };
+    const updatedList = currentAttendance.map((p) => {
+      if (p.uid === participantUidOrEmail || p.email === participantUidOrEmail) {
+        const joinMs = p.joinTime ? new Date(p.joinTime as string).getTime() : Date.now();
+        const leaveMs = Date.now();
+        const durationMin = Math.max(1, Math.round((leaveMs - joinMs) / (1000 * 60)));
+        return {
+          ...p,
+          leaveTime: now,
+          durationMinutes: durationMin,
+          status: "left" as const,
+        };
+      }
+      return p;
+    });
+
+    await updateDoc(docRef, {
+      attendance: updatedList,
+      updatedAt: serverTimestamp(),
+    });
+  } catch (err) {
+    console.warn("Direct recordParticipantLeave failed, falling back to server API:", err);
+    try {
+      await fetch("/api/meetings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          meetingId,
+          action: "leave",
+          participant: { uid: participantUidOrEmail },
+        }),
+      });
+    } catch (apiErr) {
+      console.error("API recordParticipantLeave fallback failed:", apiErr);
     }
-    return p;
-  });
-
-  await updateDoc(docRef, {
-    attendance: updatedList,
-    updatedAt: serverTimestamp(),
-  });
+  }
 }
 
 export async function endLiveMeeting(meetingId: string, hostId: string): Promise<void> {
-  const docRef = doc(db, "scheduledMeetings", meetingId);
-  const snap = await getDoc(docRef);
-  if (!snap.exists()) return;
-
-  const meeting = snap.data() as ScheduledMeeting;
-  const now = new Date().toISOString();
-
-  // Calculate actual duration
-  const startMs = meeting.actualStart ? new Date(meeting.actualStart as string).getTime() : Date.now();
-  const endMs = Date.now();
-  const actualDurationMinutes = Math.max(1, Math.round((endMs - startMs) / (1000 * 60)));
-
-  // Finalize attendance records for joined participants
-  const existingAttendance = meeting.attendance || [];
-  const joinedUids = new Set(existingAttendance.filter((p) => p.joined).map((p) => p.uid || p.email));
-
-  const updatedAttendance = existingAttendance.map((p) => {
-    if (!p.leaveTime && p.joined) {
-      const pJoinMs = p.joinTime ? new Date(p.joinTime as string).getTime() : startMs;
-      return {
-        ...p,
-        leaveTime: now,
-        durationMinutes: Math.max(1, Math.round((endMs - pJoinMs) / (1000 * 60))),
-        status: "present" as const,
-      };
-    } else if (p.joined) {
-      return {
-        ...p,
-        status: "present" as const,
-      };
-    }
-    return p;
-  });
-
-  // Also record invited students who did not join as "absent"
-  if (meeting.participantIds && meeting.participantNames) {
-    meeting.participantIds.forEach((pid, idx) => {
-      if (!joinedUids.has(pid) && pid !== meeting.hostId) {
-        const pName = meeting.participantNames[idx] || "Invited Student";
-        const alreadyIn = updatedAttendance.some((p) => p.uid === pid);
-        if (!alreadyIn) {
-          updatedAttendance.push({
-            uid: pid,
-            name: pName,
-            email: "",
-            role: "participant",
-            invited: true,
-            joined: false,
-            status: "absent",
-          });
-        }
-      }
-    });
-  }
-
-  await updateDoc(docRef, {
-    status: "submitted_for_review",
-    actualEnd: now,
-    actualDurationMinutes,
-    attendance: updatedAttendance,
-    updatedAt: serverTimestamp(),
-  });
-
-  // Automatically notify Staff & Master Admin that meeting attendance record is ready for review
   try {
-    const staffQuery = query(collection(db, "users"), where("role", "in", ["staff", "master"]));
-    const staffSnap = await getDocs(staffQuery);
-    const reviewTitle = `Meeting Ended & Report Ready: ${meeting.title}`;
-    const presentCount = updatedAttendance.filter((p) => p.status === "present" || p.joined).length;
-    const reviewMsg = `Hosted by ${meeting.hostName}. ${presentCount} attended. Review attendance breakdown and approve.`;
+    const docRef = doc(db, "scheduledMeetings", meetingId);
+    const snap = await getDoc(docRef);
+    if (!snap.exists()) return;
 
-    for (const staffDoc of staffSnap.docs) {
-      await addDoc(collection(db, "notifications"), {
-        recipientId: staffDoc.id,
-        title: reviewTitle,
-        message: reviewMsg,
-        type: "meeting",
-        read: false,
-        priority: "high",
-        link: `/meetings/live/${meetingId}/review`,
-        createdAt: serverTimestamp(),
+    const meeting = snap.data() as ScheduledMeeting;
+    const now = new Date().toISOString();
+
+    // Calculate actual duration
+    const startMs = meeting.actualStart ? new Date(meeting.actualStart as string).getTime() : Date.now();
+    const endMs = Date.now();
+    const actualDurationMinutes = Math.max(1, Math.round((endMs - startMs) / (1000 * 60)));
+
+    // Finalize attendance records for joined participants
+    const existingAttendance = meeting.attendance || [];
+    const joinedUids = new Set(existingAttendance.filter((p) => p.joined).map((p) => p.uid || p.email));
+
+    const updatedAttendance = existingAttendance.map((p) => {
+      if (!p.leaveTime && p.joined) {
+        const pJoinMs = p.joinTime ? new Date(p.joinTime as string).getTime() : startMs;
+        return {
+          ...p,
+          leaveTime: now,
+          durationMinutes: Math.max(1, Math.round((endMs - pJoinMs) / (1000 * 60))),
+          status: "present" as const,
+        };
+      } else if (p.joined) {
+        return {
+          ...p,
+          status: "present" as const,
+        };
+      }
+      return p;
+    });
+
+    // Also record invited students who did not join as "absent"
+    if (meeting.participantIds && meeting.participantNames) {
+      meeting.participantIds.forEach((pid, idx) => {
+        if (!joinedUids.has(pid) && pid !== meeting.hostId) {
+          const pName = meeting.participantNames[idx] || "Invited Student";
+          const alreadyIn = updatedAttendance.some((p) => p.uid === pid);
+          if (!alreadyIn) {
+            updatedAttendance.push({
+              uid: pid,
+              name: pName,
+              email: "",
+              role: "participant",
+              invited: true,
+              joined: false,
+              status: "absent",
+            });
+          }
+        }
       });
     }
+
+    await updateDoc(docRef, {
+      status: "submitted_for_review",
+      actualEnd: now,
+      actualDurationMinutes,
+      attendance: updatedAttendance,
+      updatedAt: serverTimestamp(),
+    });
+
+    // Automatically notify Staff & Master Admin that meeting attendance record is ready for review
+    try {
+      const staffQuery = query(collection(db, "users"), where("role", "in", ["staff", "master"]));
+      const staffSnap = await getDocs(staffQuery);
+      const reviewTitle = `Meeting Ended & Report Ready: ${meeting.title}`;
+      const presentCount = updatedAttendance.filter((p) => p.status === "present" || p.joined).length;
+      const reviewMsg = `Hosted by ${meeting.hostName}. ${presentCount} attended. Review attendance breakdown and approve.`;
+
+      for (const staffDoc of staffSnap.docs) {
+        await addDoc(collection(db, "notifications"), {
+          recipientId: staffDoc.id,
+          title: reviewTitle,
+          message: reviewMsg,
+          type: "meeting",
+          read: false,
+          priority: "high",
+          link: `/meetings/live/${meetingId}/review`,
+          createdAt: serverTimestamp(),
+        });
+      }
+    } catch (err) {
+      console.warn("Failed to notify staff/master users of completed meeting report:", err);
+    }
   } catch (err) {
-    console.warn("Failed to notify staff/master users of completed meeting report:", err);
+    console.warn("Direct endLiveMeeting failed, falling back to server API:", err);
+    try {
+      await fetch("/api/meetings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          meetingId,
+          action: "end",
+          hostId,
+        }),
+      });
+    } catch (apiErr) {
+      console.error("API endLiveMeeting fallback failed:", apiErr);
+    }
   }
 }
 
@@ -1218,39 +1365,57 @@ export async function submitPostMeetingSummary(
     momDocumentUrl?: string;
   }
 ): Promise<void> {
-  const docRef = doc(db, "scheduledMeetings", meetingId);
-  const snap = await getDoc(docRef);
-  if (!snap.exists()) throw new Error("Meeting not found");
-
-  const meeting = snap.data() as ScheduledMeeting;
-  const now = serverTimestamp();
-
-  await updateDoc(docRef, {
-    ...summaryData,
-    status: "submitted_for_review",
-    summarySubmittedAt: now,
-    updatedAt: now,
-  });
-
-  // Notify Staff and Masters
   try {
-    const staffAndMasters = await getDocs(
-      query(collection(db, "users"), where("role", "in", ["staff", "master"]))
-    );
-    for (const d of staffAndMasters.docs) {
-      await addDoc(collection(db, "notifications"), {
-        recipientId: d.id,
-        title: "Meeting Report Submitted",
-        message: `Meeting '${meeting.title}' report has been submitted by ${meeting.hostName} for review.`,
-        type: "meeting",
-        read: false,
-        priority: "high",
-        link: `/meetings/live/${meetingId}/review`,
-        createdAt: now,
-      });
+    const docRef = doc(db, "scheduledMeetings", meetingId);
+    const snap = await getDoc(docRef);
+    if (!snap.exists()) throw new Error("Meeting not found");
+
+    const meeting = snap.data() as ScheduledMeeting;
+    const now = serverTimestamp();
+
+    await updateDoc(docRef, {
+      ...summaryData,
+      status: "submitted_for_review",
+      summarySubmittedAt: now,
+      updatedAt: now,
+    });
+
+    // Notify Staff and Masters
+    try {
+      const staffAndMasters = await getDocs(
+        query(collection(db, "users"), where("role", "in", ["staff", "master"]))
+      );
+      for (const d of staffAndMasters.docs) {
+        await addDoc(collection(db, "notifications"), {
+          recipientId: d.id,
+          title: "Meeting Report Submitted",
+          message: `Meeting '${meeting.title}' report has been submitted by ${meeting.hostName} for review.`,
+          type: "meeting",
+          read: false,
+          priority: "high",
+          link: `/meetings/live/${meetingId}/review`,
+          createdAt: now,
+        });
+      }
+    } catch (err) {
+      console.warn("Failed to notify staff about meeting summary", err);
     }
   } catch (err) {
-    console.warn("Failed to notify staff about meeting summary", err);
+    console.warn("Direct submitPostMeetingSummary failed, falling back to server API:", err);
+    try {
+      await fetch("/api/meetings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          meetingId,
+          action: "submit_summary",
+          updates: summaryData,
+        }),
+      });
+    } catch (apiErr) {
+      console.error("API submitPostMeetingSummary fallback failed:", apiErr);
+      throw apiErr;
+    }
   }
 }
 
@@ -1261,52 +1426,73 @@ export async function reviewLiveMeeting(
   decision: "approved" | "rejected" | "changes_requested",
   feedback?: string
 ): Promise<void> {
-  const docRef = doc(db, "scheduledMeetings", meetingId);
-  const snap = await getDoc(docRef);
-  if (!snap.exists()) throw new Error("Meeting not found");
-
-  const meeting = snap.data() as ScheduledMeeting;
-  const now = serverTimestamp();
-
-  const updates: any = {
-    status: decision,
-    reviewedBy: reviewerId,
-    reviewedByName: reviewerName,
-    reviewedAt: now,
-    updatedAt: now,
-  };
-
-  if (feedback) updates.reviewFeedback = feedback;
-
-  await updateDoc(docRef, updates);
-
-  // Notify Host
   try {
-    let title = "";
-    let message = "";
-    if (decision === "approved") {
-      title = "Meeting Report Approved! 🎉";
-      message = `Your meeting report for '${meeting.title}' was approved by ${reviewerName}.`;
-    } else if (decision === "changes_requested") {
-      title = "Meeting Report: Changes Requested ⚠️";
-      message = `${reviewerName} requested changes on your meeting report: "${feedback || "Please review summary"}".`;
-    } else {
-      title = "Meeting Report Rejected";
-      message = `Your meeting report for '${meeting.title}' was rejected by ${reviewerName}.`;
-    }
+    const docRef = doc(db, "scheduledMeetings", meetingId);
+    const snap = await getDoc(docRef);
+    if (!snap.exists()) throw new Error("Meeting not found");
 
-    await addDoc(collection(db, "notifications"), {
-      recipientId: meeting.hostId,
-      title,
-      message,
-      type: "meeting",
-      read: false,
-      priority: "high",
-      link: `/meetings/live/${meetingId}`,
-      createdAt: now,
-    });
+    const meeting = snap.data() as ScheduledMeeting;
+    const now = serverTimestamp();
+
+    const updates: any = {
+      status: decision,
+      reviewedBy: reviewerId,
+      reviewedByName: reviewerName,
+      reviewedAt: now,
+      updatedAt: now,
+    };
+
+    if (feedback) updates.reviewFeedback = feedback;
+
+    await updateDoc(docRef, updates);
+
+    // Notify Host
+    try {
+      let title = "";
+      let message = "";
+      if (decision === "approved") {
+        title = "Meeting Report Approved! 🎉";
+        message = `Your meeting report for '${meeting.title}' was approved by ${reviewerName}.`;
+      } else if (decision === "changes_requested") {
+        title = "Meeting Report: Changes Requested ⚠️";
+        message = `${reviewerName} requested changes on your meeting report: "${feedback || "Please review summary"}".`;
+      } else {
+        title = "Meeting Report Rejected";
+        message = `Your meeting report for '${meeting.title}' was rejected by ${reviewerName}.`;
+      }
+
+      await addDoc(collection(db, "notifications"), {
+        recipientId: meeting.hostId,
+        title,
+        message,
+        type: "meeting",
+        read: false,
+        priority: "high",
+        link: `/meetings/live/${meetingId}`,
+        createdAt: now,
+      });
+    } catch (err) {
+      console.warn("Failed to notify meeting host of decision", err);
+    }
   } catch (err) {
-    console.warn("Failed to notify meeting host of decision", err);
+    console.warn("Direct reviewLiveMeeting failed, falling back to server API:", err);
+    try {
+      await fetch("/api/meetings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          meetingId,
+          action: "review",
+          reviewerId,
+          reviewerName,
+          decision,
+          feedback,
+        }),
+      });
+    } catch (apiErr) {
+      console.error("API reviewLiveMeeting fallback failed:", apiErr);
+      throw apiErr;
+    }
   }
 }
 

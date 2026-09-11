@@ -214,21 +214,27 @@ export default function MeetRoomPage() {
         setActualMeetingId(data.id);
 
         // Real-time listener on the meeting document
-        unsubMeeting = onSnapshot(doc(db, "scheduledMeetings", data.id), (snap) => {
-          if (snap.exists()) {
-            const updated = { id: snap.id, ...snap.data() } as ScheduledMeeting;
-            setMeeting(updated);
+        unsubMeeting = onSnapshot(
+          doc(db, "scheduledMeetings", data.id),
+          (snap) => {
+            if (snap.exists()) {
+              const updated = { id: snap.id, ...snap.data() } as ScheduledMeeting;
+              setMeeting(updated);
 
-            // If host ends meeting for all participants
-            if (
-              (updated.status === "ended" || updated.status === "submitted_for_review") &&
-              updated.hostId !== user?.uid
-            ) {
-              success("The host has ended this meeting.");
-              router.push("/meetings");
+              // If host ends meeting for all participants
+              if (
+                (updated.status === "ended" || updated.status === "submitted_for_review") &&
+                updated.hostId !== user?.uid
+              ) {
+                success("The host has ended this meeting.");
+                router.push("/meetings");
+              }
             }
+          },
+          (err) => {
+            console.warn("Meeting doc snapshot warning:", err?.message);
           }
-        });
+        );
 
         // AUTO-JOIN FOR HOST:
         // When host starts an instant meeting or enters their own live meeting, host ALONE joins immediately!
@@ -301,16 +307,22 @@ export default function MeetRoomPage() {
     if (!actualMeetingId || !hasHostControls) return;
 
     const waitCol = collection(db, "scheduledMeetings", actualMeetingId, "waitingRoom");
-    const unsub = onSnapshot(waitCol, (snap) => {
-      const list: WaitingRoomRequest[] = [];
-      snap.forEach((d) => {
-        const item = d.data() as WaitingRoomRequest;
-        if (item.status === "waiting") {
-          list.push({ ...item, id: d.id });
-        }
-      });
-      setWaitingList(list);
-    });
+    const unsub = onSnapshot(
+      waitCol,
+      (snap) => {
+        const list: WaitingRoomRequest[] = [];
+        snap.forEach((d) => {
+          const item = d.data() as WaitingRoomRequest;
+          if (item.status === "waiting") {
+            list.push({ ...item, id: d.id });
+          }
+        });
+        setWaitingList(list);
+      },
+      (err) => {
+        console.warn("Waiting room snapshot warning:", err?.message);
+      }
+    );
 
     return () => unsub();
   }, [actualMeetingId, hasHostControls]);
@@ -435,6 +447,9 @@ export default function MeetRoomPage() {
               unsub();
             }
           }
+        },
+        (err) => {
+          console.warn("Guest waiting listener notice:", err?.message);
         }
       );
     } catch (err: any) {
@@ -490,16 +505,22 @@ export default function MeetRoomPage() {
     const chatCol = collection(db, "scheduledMeetings", actualMeetingId, "chat");
     const q = query(chatCol, orderBy("createdAt", "asc"));
 
-    const unsub = onSnapshot(q, (snap) => {
-      const msgs: InMeetingChatMessage[] = snap.docs.map(
-        (d) =>
-          ({
-            id: d.id,
-            ...d.data(),
-          } as InMeetingChatMessage)
-      );
-      setChatMessages(msgs);
-    });
+    const unsub = onSnapshot(
+      q,
+      (snap) => {
+        const msgs: InMeetingChatMessage[] = snap.docs.map(
+          (d) =>
+            ({
+              id: d.id,
+              ...d.data(),
+            } as InMeetingChatMessage)
+        );
+        setChatMessages(msgs);
+      },
+      (err) => {
+        console.warn("Chat listener notice:", err?.message);
+      }
+    );
 
     return () => unsub();
   }, [joined, actualMeetingId]);
