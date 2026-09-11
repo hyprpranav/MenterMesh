@@ -314,11 +314,12 @@ export interface LiveMeetingParticipant {
   joinTime?: TimestampValue | string;
   leaveTime?: TimestampValue | string;
   durationMinutes?: number;
-  status?: "waiting" | "admitted" | "in_meeting" | "left" | "removed";
+  status?: "waiting" | "admitted" | "in_meeting" | "left" | "removed" | "present" | "absent";
 }
 
 export interface ScheduledMeeting {
   id: string;
+  code?: string;        // 4-character uppercase alphanumeric code (e.g. "K9X2")
   title: string;
   description?: string;
   purpose?: string;

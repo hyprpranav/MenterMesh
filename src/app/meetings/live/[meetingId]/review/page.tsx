@@ -8,7 +8,7 @@ import React, { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { AppShell } from "@/components/layout/AppShell";
 import { useAuth } from "@/contexts/AuthContext";
-import { getScheduledMeeting, reviewLiveMeeting, updateScheduledMeeting } from "@/lib/firebase/firestore";
+import { getScheduledMeetingByCodeOrId, reviewLiveMeeting, updateScheduledMeeting } from "@/lib/firebase/firestore";
 import type { ScheduledMeeting } from "@/types";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Button } from "@/components/ui/Button";
@@ -63,7 +63,7 @@ function MeetingReviewContent() {
     async function load() {
       try {
         setLoading(true);
-        const data = await getScheduledMeeting(meetingId);
+        const data = await getScheduledMeetingByCodeOrId(meetingId);
         if (!data) {
           error("Meeting not found");
           router.push("/meetings");
@@ -77,7 +77,7 @@ function MeetingReviewContent() {
       }
     }
     load();
-  }, [meetingId]);
+  }, [meetingId, router, error]);
 
   const handleDecision = async (decision: "approved" | "rejected" | "changes_requested") => {
     if (!user || !meeting) return;
@@ -133,8 +133,10 @@ function MeetingReviewContent() {
   const isRejected = meeting.status === "rejected";
   const isChangesRequested = meeting.status === "changes_requested";
 
-  const totalAttendees = meeting.attendance?.filter((p) => p.joined).length || 0;
-  const totalInvited = meeting.attendance?.length || 0;
+  const totalAttendees = meeting.attendance?.filter((p) => p.status === "present" || p.joined).length || 0;
+  const totalInvited = meeting.attendance?.length || (meeting.participantIds?.length || 0) + 1;
+  const totalAbsent = Math.max(0, totalInvited - totalAttendees);
+  const attendanceRate = totalInvited > 0 ? Math.round((totalAttendees / totalInvited) * 100) : 100;
 
   return (
     <div className="max-w-4xl mx-auto space-y-6 mm-page-animate pb-20">
@@ -269,28 +271,60 @@ function MeetingReviewContent() {
           </div>
         </div>
 
-        {/* Automatic Timestamps Grid */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-xs">
+        {/* Automatic Timestamps & Audit Comparison Grid */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 text-xs">
           <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
-            <span className="text-slate-400 font-semibold block uppercase text-[10px]">Host</span>
-            <strong className="text-slate-800 text-sm mt-0.5 block truncate">{meeting.hostName}</strong>
+            <span className="text-slate-400 font-semibold block uppercase text-[10px]">Host & Code</span>
+            <strong className="text-slate-800 text-xs mt-0.5 block truncate">{meeting.hostName}</strong>
+            <span className="text-blue-600 font-mono font-bold text-[11px] block mt-0.5">
+              Code: {meeting.code || meeting.id.slice(0, 4).toUpperCase()}
+            </span>
           </div>
 
           <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
-            <span className="text-slate-400 font-semibold block uppercase text-[10px]">Scheduled Date</span>
-            <strong className="text-slate-800 text-sm mt-0.5 block">{meeting.date}</strong>
+            <span className="text-slate-400 font-semibold block uppercase text-[10px]">Scheduled Start</span>
+            <strong className="text-slate-800 text-xs mt-0.5 block">{meeting.date}</strong>
+            <span className="text-slate-500 text-[11px] block mt-0.5">
+              {meeting.startTime} ({meeting.expectedDuration}m)
+            </span>
           </div>
 
           <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
-            <span className="text-slate-400 font-semibold block uppercase text-[10px]">Scheduled Time</span>
-            <strong className="text-slate-800 text-sm mt-0.5 block">{meeting.startTime} ({meeting.expectedDuration}m)</strong>
+            <span className="text-slate-400 font-semibold block uppercase text-[10px]">Actual Started</span>
+            <strong className="text-emerald-700 font-mono text-xs mt-0.5 block">
+              {meeting.actualStart
+                ? new Date(meeting.actualStart as string).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+                : "—"}
+            </strong>
+            <span className="text-slate-400 text-[10px] block mt-0.5">Live Session Start</span>
           </div>
 
           <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
-            <span className="text-slate-400 font-semibold block uppercase text-[10px]">Actual Duration</span>
+            <span className="text-slate-400 font-semibold block uppercase text-[10px]">Actual Ended</span>
+            <strong className="text-slate-800 font-mono text-xs mt-0.5 block">
+              {meeting.actualEnd
+                ? new Date(meeting.actualEnd as string).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+                : "—"}
+            </strong>
+            <span className="text-slate-400 text-[10px] block mt-0.5">Session Terminated</span>
+          </div>
+
+          <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
+            <span className="text-slate-400 font-semibold block uppercase text-[10px]">Total Duration</span>
             <strong className="text-blue-700 text-sm mt-0.5 block">
               {meeting.actualDurationMinutes ? `${meeting.actualDurationMinutes} mins` : "In Progress"}
             </strong>
+            <span className="text-slate-400 text-[10px] block mt-0.5">Audited Time</span>
+          </div>
+
+          <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
+            <span className="text-slate-400 font-semibold block uppercase text-[10px]">Attendance</span>
+            <strong className="text-emerald-700 text-xs mt-0.5 block">
+              {totalAttendees} / {totalInvited} Present
+            </strong>
+            <span className="text-slate-500 text-[11px] block mt-0.5">
+              {attendanceRate}% Rate ({totalAbsent} Absent)
+            </span>
           </div>
         </div>
 
@@ -403,12 +437,12 @@ function MeetingReviewContent() {
                     )}
                   </td>
                   <td className="py-2.5 px-3">
-                    {p.joined ? (
-                      <span className="inline-flex items-center gap-1 text-emerald-700 font-bold bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200 text-[11px]">
-                        <Check size={12} /> Joined
+                    {p.status === "present" || p.joined ? (
+                      <span className="inline-flex items-center gap-1 text-emerald-700 font-bold bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200 text-[11px]">
+                        <Check size={12} /> Present
                       </span>
                     ) : (
-                      <span className="inline-flex items-center gap-1 text-slate-400 font-medium bg-slate-100 px-2 py-0.5 rounded text-[11px]">
+                      <span className="inline-flex items-center gap-1 text-red-700 font-bold bg-red-50 px-2.5 py-0.5 rounded-full border border-red-200 text-[11px]">
                         <X size={12} /> Absent
                       </span>
                     )}

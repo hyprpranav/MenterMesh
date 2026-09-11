@@ -12,10 +12,12 @@ import Link from "next/link";
 import { AppShell } from "@/components/layout/AppShell";
 import { useAuth } from "@/contexts/AuthContext";
 import {
-  getActiveStudents,
-  getTeams,
+  getScheduledMeetingsForViewer,
   createScheduledMeeting,
   updateScheduledMeeting,
+  getActiveStudents,
+  getTeams,
+  generateMeetingCode,
 } from "@/lib/firebase/firestore";
 import type { User, Team, ScheduledMeeting, LiveMeetingParticipant } from "@/types";
 import { Button } from "@/components/ui/Button";
@@ -37,6 +39,7 @@ import {
   HelpCircle,
   Link2,
   Info,
+  Radio,
 } from "lucide-react";
 
 export default function ScheduleMeetingPage() {
@@ -354,18 +357,17 @@ function ScheduleOnlineMeetingWorkspace() {
         attendeeCount: 0,
       };
 
+      const code = generateMeetingCode();
+      const internalRoomUrl = `${window.location.origin}/meet/${code}`;
+
       const meetingId = await createScheduledMeeting({
         ...meetingData,
-        meetingLink: `${window.location.origin}/meet/PENDING`,
-      });
-
-      const internalRoomUrl = `${window.location.origin}/meet/${meetingId}`;
-      await updateScheduledMeeting(meetingId, {
+        code,
         meetingLink: internalRoomUrl,
       });
 
-      success("Online meeting scheduled! Room is ready.");
-      router.push(`/meet/${meetingId}`);
+      success(`Online meeting scheduled! Code: ${code}`);
+      router.push(`/meet/${code}`);
     } catch (err: any) {
       console.error("Error creating meeting:", err);
       error(err.message || "Failed to schedule meeting.");
@@ -626,7 +628,7 @@ function ScheduleOnlineMeetingWorkspace() {
 
             <div className="flex flex-col gap-6 pt-1" style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
               {/* 4 action buttons */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5" style={{ gap: "0.875rem" }}>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5" style={{ gap: "0.875rem" }}>
                 <button
                   type="button"
                   onClick={handleToggleChooseAll}
@@ -653,22 +655,21 @@ function ScheduleOnlineMeetingWorkspace() {
                   <UserIcon size={16} className="text-blue-600 shrink-0" />
                   <span className="truncate">Select Students</span>
                 </button>
+              </div>
 
-                <button
-                  type="button"
-                  onClick={() => setGuestModalOpen(true)}
-                  className="h-11 px-3.5 rounded-xl border border-slate-300 hover:border-amber-500 bg-white hover:bg-amber-50/50 text-slate-800 hover:text-amber-900 font-bold text-xs sm:text-sm flex items-center justify-center gap-2 transition-all cursor-pointer shadow-2xs active:scale-[0.98]"
-                >
-                  <Plus size={16} className="text-amber-600 shrink-0" />
-                  <span className="truncate">+ Add External Guests</span>
-                </button>
+              {/* Direct Code Join Notice */}
+              <div className="flex items-center gap-3 p-3.5 bg-blue-50/70 rounded-xl border border-blue-100 text-blue-900 text-xs font-medium">
+                <Radio size={16} className="text-blue-600 shrink-0" />
+                <span>
+                  <strong>Instant Join Code:</strong> A 4-character code (e.g. <code>K9X2</code>) will be generated automatically. Anyone with the code or share link can join directly or request host admission.
+                </span>
               </div>
 
               {/* Selected Participants container */}
               <div className="flex flex-col gap-3" style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
                 <div className="flex items-center justify-between">
                   <span className="text-xs sm:text-sm font-bold text-slate-800">
-                    Selected Participants ({totalAttendeesCount})
+                    Selected Participants ({selectedStudentIds.length})
                   </span>
                   <button
                     type="button"
@@ -679,14 +680,14 @@ function ScheduleOnlineMeetingWorkspace() {
                   </button>
                 </div>
 
-                {totalAttendeesCount === 0 ? (
+                {selectedStudentIds.length === 0 ? (
                   <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50/60 p-8 flex flex-col items-center justify-center text-center gap-2" style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
                     <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center text-slate-400">
                       <Users size={22} />
                     </div>
-                    <p className="text-sm font-bold text-slate-700">No participants added yet.</p>
+                    <p className="text-sm font-bold text-slate-700">No students selected yet.</p>
                     <p className="text-xs text-slate-500">
-                      Choose a team, select students from your department, or add external guests.
+                      Choose a team, select students from your department, or invite via 4-character code.
                     </p>
                   </div>
                 ) : (
@@ -718,34 +719,6 @@ function ScheduleOnlineMeetingWorkspace() {
                               </span>
                             );
                           })}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Guests list */}
-                    {externalGuests.length > 0 && (
-                      <div className="flex flex-col gap-2" style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-                        <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
-                          External Guests ({externalGuests.length})
-                        </span>
-                        <div className="flex flex-wrap gap-2">
-                          {externalGuests.map((g) => (
-                            <span
-                              key={g.email}
-                              className="inline-flex items-center gap-2 text-xs font-medium bg-white text-amber-900 border border-amber-200 px-3.5 py-1.5 rounded-lg shadow-2xs"
-                            >
-                              <span className="font-bold">{g.name}</span>
-                              <span className="text-slate-400 text-[11px]">({g.email})</span>
-                              <button
-                                type="button"
-                                onClick={() => removeGuest(g.email)}
-                                className="text-slate-400 hover:text-red-500 ml-1 cursor-pointer"
-                                title="Remove guest"
-                              >
-                                <X size={14} />
-                              </button>
-                            </span>
-                          ))}
                         </div>
                       </div>
                     )}

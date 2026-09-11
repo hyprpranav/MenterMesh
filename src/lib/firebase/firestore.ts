@@ -887,11 +887,22 @@ export async function reviewMeetingSubmission(
 
 // ─── Scheduled & Live Meetings (Google Meet-Style) ────────────
 
+export function generateMeetingCode(): string {
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  let code = "";
+  for (let i = 0; i < 4; i++) {
+    code += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return code;
+}
+
 export async function createScheduledMeeting(
   data: Omit<ScheduledMeeting, "id" | "createdAt" | "updatedAt">
 ): Promise<string> {
+  const code = data.code || generateMeetingCode();
   const ref = await addDoc(collection(db, "scheduledMeetings"), stripUndefined({
     ...data,
+    code,
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   }));
@@ -899,9 +910,8 @@ export async function createScheduledMeeting(
   // Automatically trigger notifications to all invited students
   if (data.participantIds && data.participantIds.length > 0) {
     const title = `New Meeting Scheduled: ${data.title}`;
-    const message = `Hosted by ${data.hostName} on ${data.date} at ${data.startTime} (${data.expectedDuration} mins). You have been invited.`;
+    const message = `Hosted by ${data.hostName} on ${data.date} at ${data.startTime} (${data.expectedDuration} mins). Code: ${code}. You have been invited.`;
     for (const participantId of data.participantIds) {
-      // Don't notify the host themselves
       if (participantId === data.hostId) continue;
       try {
         await addDoc(collection(db, "notifications"), {
@@ -911,13 +921,37 @@ export async function createScheduledMeeting(
           type: "meeting",
           read: false,
           priority: "high",
-          link: `/meetings/live/${ref.id}`,
+          link: `/meet/${code}`,
           createdAt: serverTimestamp(),
         });
       } catch (err) {
         console.warn("Failed to notify participant", participantId, err);
       }
     }
+  }
+
+  // Automatically notify Staff and Admin (Master) users so they can join whenever they want
+  try {
+    const staffQuery = query(collection(db, "users"), where("role", "in", ["staff", "master"]));
+    const staffSnap = await getDocs(staffQuery);
+    const staffTitle = `Live / Scheduled Meeting: ${data.title}`;
+    const staffMsg = `Hosted by ${data.hostName} (Code: ${code}). Staff & Admin can join directly at any time.`;
+
+    for (const staffDoc of staffSnap.docs) {
+      if (staffDoc.id === data.hostId) continue;
+      await addDoc(collection(db, "notifications"), {
+        recipientId: staffDoc.id,
+        title: staffTitle,
+        message: staffMsg,
+        type: "meeting",
+        read: false,
+        priority: "high",
+        link: `/meet/${code}`,
+        createdAt: serverTimestamp(),
+      });
+    }
+  } catch (err) {
+    console.warn("Failed to notify staff/master users of new meeting:", err);
   }
 
   return ref.id;
@@ -927,6 +961,32 @@ export async function getScheduledMeeting(meetingId: string): Promise<ScheduledM
   const snap = await getDoc(doc(db, "scheduledMeetings", meetingId));
   if (!snap.exists()) return null;
   return { id: snap.id, ...snap.data() } as ScheduledMeeting;
+}
+
+export async function getScheduledMeetingByCodeOrId(codeOrId: string): Promise<ScheduledMeeting | null> {
+  const clean = codeOrId.trim();
+  if (!clean) return null;
+
+  // Try direct document id first
+  const docRef = doc(db, "scheduledMeetings", clean);
+  const snap = await getDoc(docRef);
+  if (snap.exists()) {
+    return { id: snap.id, ...snap.data() } as ScheduledMeeting;
+  }
+
+  // Otherwise query by 4-character code
+  const q = query(
+    collection(db, "scheduledMeetings"),
+    where("code", "==", clean.toUpperCase()),
+    limit(1)
+  );
+  const codeSnap = await getDocs(q);
+  if (!codeSnap.empty) {
+    const d = codeSnap.docs[0];
+    return { id: d.id, ...d.data() } as ScheduledMeeting;
+  }
+
+  return null;
 }
 
 export async function updateScheduledMeeting(
@@ -1072,27 +1132,80 @@ export async function endLiveMeeting(meetingId: string, hostId: string): Promise
   const endMs = Date.now();
   const actualDurationMinutes = Math.max(1, Math.round((endMs - startMs) / (1000 * 60)));
 
-  // Finalize attendance records for any still in_meeting
-  const updatedAttendance = (meeting.attendance || []).map((p) => {
+  // Finalize attendance records for joined participants
+  const existingAttendance = meeting.attendance || [];
+  const joinedUids = new Set(existingAttendance.filter((p) => p.joined).map((p) => p.uid || p.email));
+
+  const updatedAttendance = existingAttendance.map((p) => {
     if (!p.leaveTime && p.joined) {
       const pJoinMs = p.joinTime ? new Date(p.joinTime as string).getTime() : startMs;
       return {
         ...p,
         leaveTime: now,
         durationMinutes: Math.max(1, Math.round((endMs - pJoinMs) / (1000 * 60))),
-        status: "left" as const,
+        status: "present" as const,
+      };
+    } else if (p.joined) {
+      return {
+        ...p,
+        status: "present" as const,
       };
     }
     return p;
   });
 
+  // Also record invited students who did not join as "absent"
+  if (meeting.participantIds && meeting.participantNames) {
+    meeting.participantIds.forEach((pid, idx) => {
+      if (!joinedUids.has(pid) && pid !== meeting.hostId) {
+        const pName = meeting.participantNames[idx] || "Invited Student";
+        const alreadyIn = updatedAttendance.some((p) => p.uid === pid);
+        if (!alreadyIn) {
+          updatedAttendance.push({
+            uid: pid,
+            name: pName,
+            email: "",
+            role: "participant",
+            invited: true,
+            joined: false,
+            status: "absent",
+          });
+        }
+      }
+    });
+  }
+
   await updateDoc(docRef, {
-    status: "summary_required",
+    status: "submitted_for_review",
     actualEnd: now,
     actualDurationMinutes,
     attendance: updatedAttendance,
     updatedAt: serverTimestamp(),
   });
+
+  // Automatically notify Staff & Master Admin that meeting attendance record is ready for review
+  try {
+    const staffQuery = query(collection(db, "users"), where("role", "in", ["staff", "master"]));
+    const staffSnap = await getDocs(staffQuery);
+    const reviewTitle = `Meeting Ended & Report Ready: ${meeting.title}`;
+    const presentCount = updatedAttendance.filter((p) => p.status === "present" || p.joined).length;
+    const reviewMsg = `Hosted by ${meeting.hostName}. ${presentCount} attended. Review attendance breakdown and approve.`;
+
+    for (const staffDoc of staffSnap.docs) {
+      await addDoc(collection(db, "notifications"), {
+        recipientId: staffDoc.id,
+        title: reviewTitle,
+        message: reviewMsg,
+        type: "meeting",
+        read: false,
+        priority: "high",
+        link: `/meetings/live/${meetingId}/review`,
+        createdAt: serverTimestamp(),
+      });
+    }
+  } catch (err) {
+    console.warn("Failed to notify staff/master users of completed meeting report:", err);
+  }
 }
 
 export async function submitPostMeetingSummary(

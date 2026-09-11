@@ -15,6 +15,7 @@ import {
   getScheduledMeetingsForViewer,
   createScheduledMeeting,
   updateScheduledMeeting,
+  generateMeetingCode,
 } from "@/lib/firebase/firestore";
 import type { Meeting, ScheduledMeeting } from "@/types";
 import { Button } from "@/components/ui/Button";
@@ -132,6 +133,7 @@ function MeetingsHubDashboard() {
         visibility: "everyone",
         allowExternal: true,
         requireAdmission: false,
+        actualStart: new Date().toISOString(),
         attendance: [
           {
             uid: user.uid,
@@ -140,24 +142,24 @@ function MeetingsHubDashboard() {
             role: "host",
             invited: true,
             joined: true,
+            joinTime: new Date().toISOString(),
             status: "in_meeting",
           },
         ],
         attendeeCount: 1,
       };
 
-      const meetingId = await createScheduledMeeting({
-        ...meetingData,
-        meetingLink: `${window.location.origin}/meet/PENDING`,
-      });
+      const code = generateMeetingCode();
+      const internalRoomUrl = `${window.location.origin}/meet/${code}`;
 
-      const internalRoomUrl = `${window.location.origin}/meet/${meetingId}`;
-      await updateScheduledMeeting(meetingId, {
+      await createScheduledMeeting({
+        ...meetingData,
+        code,
         meetingLink: internalRoomUrl,
       });
 
-      success("Instant room created! Launching MentorMesh Live Room...");
-      router.push(`/meet/${meetingId}`);
+      success(`Instant room live! Join Code: ${code}`);
+      router.push(`/meet/${code}`);
     } catch (err: any) {
       console.error("Error starting instant meeting:", err);
       error(err.message || "Could not launch instant meeting.");
@@ -563,10 +565,17 @@ function LiveSessionCard({
       }`}
     >
       <div className="space-y-4">
-        <div className="flex items-center justify-between gap-2">
-          <span className="text-[11px] font-extrabold uppercase tracking-wider text-blue-700 bg-blue-50 border border-blue-200 px-3 py-0.5 rounded-full">
-            Online Session
-          </span>
+        <div className="flex items-center justify-between gap-2 flex-wrap">
+          <div className="flex items-center gap-2">
+            <span className="text-[11px] font-extrabold uppercase tracking-wider text-blue-700 bg-blue-50 border border-blue-200 px-3 py-0.5 rounded-full">
+              Online Session
+            </span>
+            {meeting.code && (
+              <span className="text-[11px] font-mono font-bold text-slate-700 bg-slate-100 border border-slate-200 px-2.5 py-0.5 rounded-md tracking-wider">
+                Code: {meeting.code}
+              </span>
+            )}
+          </div>
 
           {isLive ? (
             <span className="inline-flex items-center gap-1.5 text-xs font-extrabold text-emerald-700 bg-emerald-50 border border-emerald-300 px-3 py-0.5 rounded-full uppercase tracking-wider animate-pulse">

@@ -3,15 +3,15 @@
 // ============================================================
 // MentorMesh — In-App Live Video Meeting Room (/meet/[meetingId])
 // WebRTC Audio/Video Mesh, Screen Share, Signaling via Firestore
-// Camera/Mic Permissions with Clean Fallback, In-Meeting Chat,
+// 4-Character Code Resolution, Waiting Room with Host Knock/Admit,
+// Camera/Mic Permissions, In-Meeting Chat, Host Controls Drawer,
 // Attendance Auditing & Host Post-Meeting Summary Submission
 // ============================================================
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
 import {
-  getScheduledMeeting,
-  updateScheduledMeeting,
+  getScheduledMeetingByCodeOrId,
   recordParticipantJoin,
   recordParticipantLeave,
   endLiveMeeting,
@@ -22,12 +22,10 @@ import {
   doc,
   addDoc,
   setDoc,
-  getDocs,
+  updateDoc,
   onSnapshot,
   query,
   orderBy,
-  serverTimestamp,
-  deleteDoc,
 } from "firebase/firestore";
 import { db } from "@/lib/firebase/config";
 import {
@@ -44,53 +42,54 @@ import {
   Shield,
   Copy,
   Check,
-  MoreVertical,
-  Volume2,
   VolumeX,
-  UserPlus,
   Loader2,
   AlertCircle,
   Clock,
   Calendar,
   X,
-  Pin,
   Send,
-  Sparkles,
   RefreshCw,
   LogOut,
-  Sliders,
-  Radio,
-  UserX,
-  Award,
+  Monitor,
 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Avatar } from "@/components/ui/Avatar";
 import { useToast } from "@/components/ui/ToastProvider";
 import { PostMeetingSummaryModal } from "@/components/meetings/PostMeetingSummaryModal";
 
-const ICE_SERVERS = {
-  iceServers: [
-    { urls: ["stun:stun1.l.google.com:19302", "stun:stun2.l.google.com:19302"] },
-  ],
-};
-
 const REACTION_EMOJIS = ["👍", "❤️", "👏", "🎉", "🔥", "🚀", "💡"];
+
+interface WaitingRoomRequest {
+  id: string;
+  name: string;
+  email: string;
+  role?: string;
+  status: "waiting" | "admitted" | "denied";
+  requestedAt: number;
+}
 
 export default function MeetRoomPage() {
   const params = useParams();
   const router = useRouter();
   const { user } = useAuth();
   const { success, error } = useToast();
-  const meetingId = params.meetingId as string;
+  const rawMeetingParam = params.meetingId as string;
 
   // ── Meeting State ──────────────────────────────────────────────
   const [meeting, setMeeting] = useState<ScheduledMeeting | null>(null);
+  const [actualMeetingId, setActualMeetingId] = useState<string>(rawMeetingParam);
   const [loading, setLoading] = useState(true);
 
   // ── Pre-join vs Joined ─────────────────────────────────────────
   const [joined, setJoined] = useState(false);
   const [guestName, setGuestName] = useState("");
   const [guestEmail, setGuestEmail] = useState("");
+  const autoJoinedRef = useRef(false);
+
+  // ── Waiting Room State for Non-Host / Guests ───────────────────
+  const [waitingStatus, setWaitingStatus] = useState<"idle" | "waiting" | "admitted" | "denied">("idle");
+  const [waitingList, setWaitingList] = useState<WaitingRoomRequest[]>([]);
 
   // ── Hardware Media Streams & Device Permissions ────────────────
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
@@ -101,26 +100,22 @@ export default function MeetRoomPage() {
   const [retryingMedia, setRetryingMedia] = useState(false);
 
   // ── Drawers & Side Panels ──────────────────────────────────────
-  const [activePanel, setActivePanel] = useState<"none" | "participants" | "chat">("none");
+  const [activePanel, setActivePanel] = useState<"none" | "participants" | "chat" | "hostControls">("none");
   const [raisedHand, setRaisedHand] = useState(false);
   const [reactions, setReactions] = useState<{ id: string; emoji: string; x: number }[]>([]);
   const [showReactionsMenu, setShowReactionsMenu] = useState(false);
 
   // ── Remote Peers & WebRTC Connections ──────────────────────────
-  const [remoteStreams, setRemoteStreams] = useState<
-    Record<string, { stream: MediaStream; name: string; isMicOn?: boolean; isCamOn?: boolean }>
-  >({});
   const peerConnections = useRef<Record<string, RTCPeerConnection>>({});
 
   // ── Chat & Signaling ───────────────────────────────────────────
   const [chatMessages, setChatMessages] = useState<InMeetingChatMessage[]>([]);
   const [chatInput, setChatInput] = useState("");
-  const [waitingList, setWaitingList] = useState<{ id: string; name: string; email: string }[]>([]);
 
   // ── Host Controls & Summary Modal ──────────────────────────────
   const [showSummaryModal, setShowSummaryModal] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
-  const [pinnedParticipantId, setPinnedParticipantId] = useState<string | null>(null);
+  const [copiedCode, setCopiedCode] = useState(false);
   const [meetingDurationTimer, setMeetingDurationTimer] = useState("00:00");
   const [sessionStartTime, setSessionStartTime] = useState<Date | null>(null);
 
@@ -130,49 +125,10 @@ export default function MeetRoomPage() {
 
   const isHost = meeting?.hostId === user?.uid;
   const isCoHost = meeting?.coHostIds?.includes(user?.uid || "");
+  const isStaffOrAdmin = user?.role === "staff" || user?.role === "master";
   const hasHostControls = isHost || isCoHost;
 
-  // ── 1. Load Meeting Details ────────────────────────────────────
-  useEffect(() => {
-    async function load() {
-      try {
-        setLoading(true);
-        const data = await getScheduledMeeting(meetingId);
-        if (!data) {
-          error("Meeting not found or has been removed.");
-          router.push("/meetings");
-          return;
-        }
-        setMeeting(data);
-
-        // If meeting already completed and host needs to complete report
-        if (data.status === "summary_required" && data.hostId === user?.uid) {
-          setShowSummaryModal(true);
-        }
-      } catch (err) {
-        console.error("Error loading meeting room:", err);
-      } finally {
-        setLoading(false);
-      }
-    }
-    load();
-  }, [meetingId, user?.uid]);
-
-  // ── 2. Live Meeting Timer ──────────────────────────────────────
-  useEffect(() => {
-    if (!joined || !sessionStartTime) return;
-    const interval = setInterval(() => {
-      const diffSecs = Math.floor((new Date().getTime() - sessionStartTime.getTime()) / 1000);
-      const mins = Math.floor(diffSecs / 60);
-      const secs = diffSecs % 60;
-      setMeetingDurationTimer(
-        `${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}`
-      );
-    }, 1000);
-    return () => clearInterval(interval);
-  }, [joined, sessionStartTime]);
-
-  // ── 3. Request & Initialize Camera / Mic with Clean Permission Handling ─
+  // ── 1. Request & Initialize Camera / Mic ────────────────────────
   const initUserMedia = useCallback(async () => {
     setRetryingMedia(true);
     setPermissionError(null);
@@ -194,37 +150,135 @@ export default function MeetRoomPage() {
       if (prejoinVideoRef.current) {
         prejoinVideoRef.current.srcObject = stream;
       }
+      return stream;
     } catch (err: any) {
       console.warn("Media device permission warning:", err);
-      // Clean, actionable error message instead of raw crash
       if (err.name === "NotAllowedError" || err.name === "PermissionDeniedError") {
         setPermissionError(
-          "Camera or microphone access is blocked. Please click the lock or camera icon in your browser address bar to grant permissions, then click 'Retry'."
+          "Camera or microphone access is blocked. Click the lock or camera icon in your browser address bar to grant permissions, then click 'Retry'."
         );
       } else if (err.name === "NotFoundError" || err.name === "DevicesNotFoundError") {
         setPermissionError("No camera or microphone was found on this device.");
       } else {
         setPermissionError(
-          "Unable to access camera or microphone. You can still join the session without video."
+          "Unable to access camera or microphone. You can still participate in the session."
         );
       }
       setIsCamOn(false);
       setIsMicOn(false);
+      return null;
     } finally {
       setRetryingMedia(false);
     }
   }, []);
 
+  // ── 2. Join Meeting Room Helper ─────────────────────────────────
+  const doJoinMeeting = useCallback(
+    async (targetMeetingId: string, meetingObj: ScheduledMeeting, asHost = false) => {
+      const isHostUser = asHost || meetingObj.hostId === user?.uid;
+      const isCoHostUser = meetingObj.coHostIds?.includes(user?.uid || "");
+      const currentUserName = user?.name || guestName.trim() || "Guest Participant";
+      const currentUserEmail = user?.email || guestEmail.trim() || "guest@mentormesh.local";
+
+      // Record participant join in Firestore attendance
+      await recordParticipantJoin(targetMeetingId, {
+        uid: user?.uid || undefined,
+        name: currentUserName,
+        email: currentUserEmail,
+        role: isHostUser ? "host" : isCoHostUser ? "co_host" : !user ? "external" : "participant",
+        invited: true,
+        joined: true,
+      });
+
+      setSessionStartTime(new Date());
+      setJoined(true);
+    },
+    [user, guestName, guestEmail]
+  );
+
+  // ── 3. Load Meeting Details by 4-Digit Code or Document ID ───────
+  useEffect(() => {
+    let unsubMeeting: (() => void) | null = null;
+
+    async function load() {
+      try {
+        setLoading(true);
+        const data = await getScheduledMeetingByCodeOrId(rawMeetingParam);
+        if (!data) {
+          error("Meeting not found or has expired.");
+          router.push("/meetings");
+          return;
+        }
+
+        setMeeting(data);
+        setActualMeetingId(data.id);
+
+        // Real-time listener on the meeting document
+        unsubMeeting = onSnapshot(doc(db, "scheduledMeetings", data.id), (snap) => {
+          if (snap.exists()) {
+            const updated = { id: snap.id, ...snap.data() } as ScheduledMeeting;
+            setMeeting(updated);
+
+            // If host ends meeting for all participants
+            if (
+              (updated.status === "ended" || updated.status === "submitted_for_review") &&
+              updated.hostId !== user?.uid
+            ) {
+              success("The host has ended this meeting.");
+              router.push("/meetings");
+            }
+          }
+        });
+
+        // AUTO-JOIN FOR HOST:
+        // When host starts an instant meeting or enters their own live meeting, host ALONE joins immediately!
+        if (
+          user?.uid === data.hostId &&
+          data.status === "live" &&
+          !autoJoinedRef.current
+        ) {
+          autoJoinedRef.current = true;
+          await doJoinMeeting(data.id, data, true);
+        }
+
+        // If meeting already completed and host needs to submit report
+        if (data.status === "summary_required" && data.hostId === user?.uid) {
+          setShowSummaryModal(true);
+        }
+      } catch (err) {
+        console.error("Error loading meeting room:", err);
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    load();
+
+    return () => {
+      if (unsubMeeting) unsubMeeting();
+    };
+  }, [rawMeetingParam, user?.uid, router, doJoinMeeting, error, success]);
+
+  // ── 4. Live Meeting Timer ───────────────────────────────────────
+  useEffect(() => {
+    if (!joined || !sessionStartTime) return;
+    const interval = setInterval(() => {
+      const diffSecs = Math.floor((new Date().getTime() - sessionStartTime.getTime()) / 1000);
+      const mins = Math.floor(diffSecs / 60);
+      const secs = diffSecs % 60;
+      setMeetingDurationTimer(
+        `${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}`
+      );
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [joined, sessionStartTime]);
+
+  // ── 5. Media Stream Initialization ──────────────────────────────
   useEffect(() => {
     if (!joined) {
       initUserMedia();
     }
-    return () => {
-      if (!joined && localStream) {
-        localStream.getTracks().forEach((t) => t.stop());
-      }
-    };
-  }, [joined]);
+  }, [joined, initUserMedia]);
 
   // Bind local stream to in-room video element once joined
   useEffect(() => {
@@ -233,7 +287,35 @@ export default function MeetRoomPage() {
     }
   }, [joined, localStream]);
 
-  // ── Toggle Microphone ──────────────────────────────────────────
+  // Clean up media tracks on unmount
+  useEffect(() => {
+    return () => {
+      if (localStream) {
+        localStream.getTracks().forEach((t) => t.stop());
+      }
+    };
+  }, [localStream]);
+
+  // ── 6. Host Waiting Room Real-Time Listener ─────────────────────
+  useEffect(() => {
+    if (!actualMeetingId || !hasHostControls) return;
+
+    const waitCol = collection(db, "scheduledMeetings", actualMeetingId, "waitingRoom");
+    const unsub = onSnapshot(waitCol, (snap) => {
+      const list: WaitingRoomRequest[] = [];
+      snap.forEach((d) => {
+        const item = d.data() as WaitingRoomRequest;
+        if (item.status === "waiting") {
+          list.push({ ...item, id: d.id });
+        }
+      });
+      setWaitingList(list);
+    });
+
+    return () => unsub();
+  }, [actualMeetingId, hasHostControls]);
+
+  // ── 7. Toggle Microphone ────────────────────────────────────────
   const toggleMic = () => {
     if (!localStream) return;
     const audioTrack = localStream.getAudioTracks()[0];
@@ -243,7 +325,7 @@ export default function MeetRoomPage() {
     }
   };
 
-  // ── Toggle Camera ──────────────────────────────────────────────
+  // ── 8. Toggle Camera ────────────────────────────────────────────
   const toggleCam = () => {
     if (!localStream) return;
     const videoTrack = localStream.getVideoTracks()[0];
@@ -253,7 +335,7 @@ export default function MeetRoomPage() {
     }
   };
 
-  // ── Real Screen Sharing via getDisplayMedia ────────────────────
+  // ── 9. Real Screen Sharing (Entire Screen or Particular App) ────
   const toggleScreenShare = async () => {
     if (isScreenSharing) {
       if (screenTrackRef.current) {
@@ -283,6 +365,7 @@ export default function MeetRoomPage() {
       setIsScreenSharing(false);
     } else {
       try {
+        success("Select Entire Screen or a specific Application Window to share.");
         const displayStream = await navigator.mediaDevices.getDisplayMedia({
           video: true,
           audio: true,
@@ -310,46 +393,101 @@ export default function MeetRoomPage() {
         });
 
         setIsScreenSharing(true);
-        success("Screen sharing started.");
+        success("Screen casting started.");
       } catch (e) {
         console.warn("Screen share cancelled or denied:", e);
       }
     }
   };
 
-  // ── Join Meeting Room & Record Attendance ──────────────────────
-  const handleJoinMeeting = async () => {
-    if (!meeting) return;
-
+  // ── 10. Participant Request Admission (Waiting Room Knock) ──────
+  const handleRequestAdmission = async () => {
+    if (!meeting || !actualMeetingId) return;
+    const participantId = user?.uid || `guest_${Date.now()}`;
     const currentUserName = user?.name || guestName.trim() || "Guest Participant";
     const currentUserEmail = user?.email || guestEmail.trim() || "guest@mentormesh.local";
 
-    // Record participant join in Firestore attendance
-    await recordParticipantJoin(meetingId, {
-      uid: user?.uid || undefined,
-      name: currentUserName,
-      email: currentUserEmail,
-      role:
-        user?.uid === meeting.hostId
-          ? "host"
-          : isCoHost
-          ? "co_host"
-          : !user
-          ? "external"
-          : "participant",
-      invited: true,
-      joined: true,
-    });
+    try {
+      setWaitingStatus("waiting");
+      await setDoc(doc(db, "scheduledMeetings", actualMeetingId, "waitingRoom", participantId), {
+        id: participantId,
+        name: currentUserName,
+        email: currentUserEmail,
+        role: !user ? "external" : "participant",
+        status: "waiting",
+        requestedAt: Date.now(),
+      });
 
-    setSessionStartTime(new Date());
-    setJoined(true);
+      // Listen for host decision
+      const unsub = onSnapshot(
+        doc(db, "scheduledMeetings", actualMeetingId, "waitingRoom", participantId),
+        (snap) => {
+          if (snap.exists()) {
+            const data = snap.data() as WaitingRoomRequest;
+            if (data.status === "admitted") {
+              setWaitingStatus("admitted");
+              success("You have been admitted by the host!");
+              doJoinMeeting(actualMeetingId, meeting);
+              unsub();
+            } else if (data.status === "denied") {
+              setWaitingStatus("denied");
+              error("Your request to join was declined by the host.");
+              unsub();
+            }
+          }
+        }
+      );
+    } catch (err: any) {
+      console.error("Error requesting admission:", err);
+      error("Could not send join request.");
+      setWaitingStatus("idle");
+    }
   };
 
-  // ── Live In-Meeting Chat Subscription ──────────────────────────
-  useEffect(() => {
-    if (!joined || !meetingId) return;
+  // ── 11. Host Admit / Deny Handlers ──────────────────────────────
+  const handleAdmitParticipant = async (req: WaitingRoomRequest) => {
+    try {
+      await updateDoc(doc(db, "scheduledMeetings", actualMeetingId, "waitingRoom", req.id), {
+        status: "admitted",
+        admittedAt: Date.now(),
+      });
+      await recordParticipantJoin(actualMeetingId, {
+        uid: req.id.startsWith("guest_") ? undefined : req.id,
+        name: req.name,
+        email: req.email,
+        role: (req.role as any) || "participant",
+        invited: true,
+        joined: true,
+      });
+      success(`Admitted ${req.name} to the meeting`);
+    } catch (err) {
+      console.error("Error admitting participant:", err);
+    }
+  };
 
-    const chatCol = collection(db, "scheduledMeetings", meetingId, "chat");
+  const handleDenyParticipant = async (req: WaitingRoomRequest) => {
+    try {
+      await updateDoc(doc(db, "scheduledMeetings", actualMeetingId, "waitingRoom", req.id), {
+        status: "denied",
+        deniedAt: Date.now(),
+      });
+      success(`Declined admission for ${req.name}`);
+    } catch (err) {
+      console.error("Error denying participant:", err);
+    }
+  };
+
+  const handleAdmitAll = async () => {
+    for (const req of waitingList) {
+      await handleAdmitParticipant(req);
+    }
+  };
+
+  // ── 12. Live In-Meeting Chat Subscription ───────────────────────
+  useEffect(() => {
+    if (!joined || !actualMeetingId) return;
+
+    const chatCol = collection(db, "scheduledMeetings", actualMeetingId, "chat");
     const q = query(chatCol, orderBy("createdAt", "asc"));
 
     const unsub = onSnapshot(q, (snap) => {
@@ -364,17 +502,17 @@ export default function MeetRoomPage() {
     });
 
     return () => unsub();
-  }, [joined, meetingId]);
+  }, [joined, actualMeetingId]);
 
-  // ── Send In-Meeting Chat Message ────────────────────────────────
+  // ── 13. Send In-Meeting Chat Message ────────────────────────────
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!chatInput.trim() || !meetingId) return;
+    if (!chatInput.trim() || !actualMeetingId) return;
 
     try {
-      const chatCol = collection(db, "scheduledMeetings", meetingId, "chat");
+      const chatCol = collection(db, "scheduledMeetings", actualMeetingId, "chat");
       await addDoc(chatCol, {
-        meetingId,
+        meetingId: actualMeetingId,
         senderId: user?.uid || `guest_${Date.now()}`,
         senderName: user?.name || guestName || "Guest",
         senderRole: user?.uid === meeting?.hostId ? "host" : isCoHost ? "co_host" : "participant",
@@ -387,10 +525,10 @@ export default function MeetRoomPage() {
     }
   };
 
-  // ── Emoji Reaction Broadcast ───────────────────────────────────
+  // ── 14. Emoji Reaction Broadcast ────────────────────────────────
   const sendReaction = (emoji: string) => {
     const id = Date.now().toString() + Math.random();
-    const x = Math.floor(Math.random() * 60) + 20; // 20% to 80% screen width
+    const x = Math.floor(Math.random() * 60) + 20;
     setReactions((prev) => [...prev, { id, emoji, x }]);
     setShowReactionsMenu(false);
 
@@ -399,29 +537,38 @@ export default function MeetRoomPage() {
     }, 2400);
   };
 
-  // ── Copy Meeting Link ──────────────────────────────────────────
+  // ── 15. Copy Meeting Link & Code ────────────────────────────────
   const handleCopyLink = () => {
-    const roomUrl = `${window.location.origin}/meet/${meetingId}`;
+    const code = meeting?.code || actualMeetingId.slice(0, 4).toUpperCase();
+    const roomUrl = `${window.location.origin}/meet/${code}`;
     navigator.clipboard.writeText(roomUrl);
     setCopiedLink(true);
-    success("Meeting room link copied to clipboard!");
+    success("Meeting room URL copied to clipboard!");
     setTimeout(() => setCopiedLink(false), 3000);
   };
 
-  // ── Leave Meeting ──────────────────────────────────────────────
+  const handleCopyCode = () => {
+    const code = meeting?.code || actualMeetingId.slice(0, 4).toUpperCase();
+    navigator.clipboard.writeText(code);
+    setCopiedCode(true);
+    success(`4-Digit Meeting Code (${code}) copied!`);
+    setTimeout(() => setCopiedCode(false), 3000);
+  };
+
+  // ── 16. Leave Meeting ───────────────────────────────────────────
   const handleLeaveMeeting = async () => {
     if (localStream) {
       localStream.getTracks().forEach((t) => t.stop());
     }
 
     if (user?.uid) {
-      await recordParticipantLeave(meetingId, user.uid);
+      await recordParticipantLeave(actualMeetingId, user.uid);
     }
 
     router.push("/meetings");
   };
 
-  // ── Host End Meeting -> Opens Post-Meeting Report Modal ────────
+  // ── 17. Host End Meeting -> Triggers Audit Submission & Modal ───
   const handleEndMeeting = async () => {
     if (!meeting) return;
     if (!confirm("Are you sure you want to end this online meeting for all participants?")) {
@@ -433,7 +580,7 @@ export default function MeetRoomPage() {
         localStream.getTracks().forEach((t) => t.stop());
       }
 
-      await endLiveMeeting(meetingId, user?.uid || meeting.hostId);
+      await endLiveMeeting(actualMeetingId, user?.uid || meeting.hostId);
       setShowSummaryModal(true);
     } catch (err: any) {
       console.error("Error ending live meeting:", err);
@@ -441,7 +588,7 @@ export default function MeetRoomPage() {
     }
   };
 
-  // ── Loading Skeleton ───────────────────────────────────────────
+  // ── Loading Skeleton ────────────────────────────────────────────
   if (loading) {
     return (
       <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center text-white space-y-4">
@@ -452,6 +599,9 @@ export default function MeetRoomPage() {
   }
 
   if (!meeting) return null;
+
+  const meetingCodeDisplay = meeting.code || actualMeetingId.slice(0, 4).toUpperCase();
+  const isMeetingLive = meeting.status === "live";
 
   // ═══════════════════════════════════════════════════════════════
   // 1. PRE-JOIN / LOBBY STAGE
@@ -464,7 +614,11 @@ export default function MeetRoomPage() {
           {/* Header */}
           <div className="flex items-center justify-between border-b border-slate-800 pb-5">
             <div className="flex items-center gap-3">
-              <span className="w-3 h-3 rounded-full bg-emerald-500 animate-pulse" />
+              <span
+                className={`w-3 h-3 rounded-full ${
+                  isMeetingLive ? "bg-emerald-500 animate-pulse" : "bg-amber-500"
+                }`}
+              />
               <div>
                 <span className="text-[10px] font-black uppercase tracking-widest text-blue-400">
                   MentorMesh Live Room
@@ -472,9 +626,14 @@ export default function MeetRoomPage() {
                 <h2 className="text-xl sm:text-2xl font-black text-white">{meeting.title}</h2>
               </div>
             </div>
-            <span className="text-xs font-bold text-slate-400 bg-slate-800/80 px-3 py-1 rounded-full border border-slate-700">
-              Online Session
-            </span>
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-mono font-bold text-blue-300 bg-blue-950/80 px-3 py-1 rounded-full border border-blue-800/80">
+                Code: {meetingCodeDisplay}
+              </span>
+              <span className="text-xs font-bold text-slate-400 bg-slate-800/80 px-3 py-1 rounded-full border border-slate-700">
+                Online Session
+              </span>
+            </div>
           </div>
 
           {/* Body: Video Preview + Details */}
@@ -533,7 +692,7 @@ export default function MeetRoomPage() {
                 </div>
               </div>
 
-              {/* Permission Alert Banner with Retry Button */}
+              {/* Permission Alert Banner */}
               {permissionError && (
                 <div className="bg-amber-950/70 border border-amber-800/80 rounded-2xl p-3.5 flex items-start gap-3 text-xs text-amber-200 animate-in fade-in">
                   <AlertCircle size={18} className="text-amber-400 shrink-0 mt-0.5" />
@@ -553,7 +712,7 @@ export default function MeetRoomPage() {
               )}
             </div>
 
-            {/* Right Column: Meeting Info & Join Box */}
+            {/* Right Column: Meeting Info & Join / Knock Box */}
             <div className="lg:col-span-5 space-y-5">
               <div className="space-y-2">
                 <p className="text-xs text-slate-400">
@@ -574,6 +733,9 @@ export default function MeetRoomPage() {
                   <span>
                     {meeting.startTime} • Duration: {meeting.expectedDuration} mins
                   </span>
+                </p>
+                <p className="flex items-center gap-2 text-blue-300 font-mono font-semibold pt-1 border-t border-slate-800/80">
+                  <span>Join Code: {meetingCodeDisplay}</span>
                 </p>
               </div>
 
@@ -599,16 +761,59 @@ export default function MeetRoomPage() {
                 </div>
               )}
 
-              {/* Actions */}
+              {/* Action Buttons: Host vs Staff vs Waiting Room / Knock */}
               <div className="space-y-2.5 pt-2">
-                <Button
-                  variant="primary"
-                  size="lg"
-                  className="w-full bg-blue-600 hover:bg-blue-700 py-3.5 text-sm font-bold shadow-lg shadow-blue-600/30 rounded-2xl"
-                  onClick={handleJoinMeeting}
-                >
-                  Join Meeting Now
-                </Button>
+                {isHost ? (
+                  <Button
+                    variant="primary"
+                    size="lg"
+                    className="w-full bg-blue-600 hover:bg-blue-700 py-3.5 text-sm font-bold shadow-lg shadow-blue-600/30 rounded-2xl"
+                    onClick={() => doJoinMeeting(actualMeetingId, meeting, true)}
+                  >
+                    Start & Join as Host
+                  </Button>
+                ) : isStaffOrAdmin || isMeetingLive ? (
+                  <Button
+                    variant="primary"
+                    size="lg"
+                    className="w-full bg-blue-600 hover:bg-blue-700 py-3.5 text-sm font-bold shadow-lg shadow-blue-600/30 rounded-2xl"
+                    onClick={() => doJoinMeeting(actualMeetingId, meeting)}
+                  >
+                    {isStaffOrAdmin ? "Join Meeting as Staff/Admin" : "Join Meeting Now"}
+                  </Button>
+                ) : (
+                  <div className="bg-slate-950/70 border border-slate-800 rounded-2xl p-4 text-center space-y-3">
+                    <div className="w-10 h-10 rounded-full bg-blue-500/10 text-blue-400 flex items-center justify-center mx-auto">
+                      <Clock size={20} />
+                    </div>
+                    <div>
+                      <h3 className="text-sm font-bold text-white">Meeting Not Started Yet</h3>
+                      <p className="text-xs text-slate-400 mt-1">
+                        The host hasn't opened the room yet. Ask to join so the host can admit you.
+                      </p>
+                    </div>
+
+                    {waitingStatus === "waiting" ? (
+                      <div className="inline-flex items-center gap-2 text-xs font-bold text-amber-400 bg-amber-950/50 border border-amber-800/50 px-3.5 py-2 rounded-xl">
+                        <Loader2 size={14} className="animate-spin" />
+                        <span>Waiting for host to admit you...</span>
+                      </div>
+                    ) : waitingStatus === "denied" ? (
+                      <div className="text-xs font-bold text-red-400 bg-red-950/50 border border-red-800/50 px-3.5 py-2 rounded-xl">
+                        Host declined your request to join.
+                      </div>
+                    ) : (
+                      <Button
+                        variant="primary"
+                        size="md"
+                        className="w-full bg-amber-600 hover:bg-amber-700 text-slate-950 font-bold rounded-xl"
+                        onClick={handleRequestAdmission}
+                      >
+                        Ask Host to Join
+                      </Button>
+                    )}
+                  </div>
+                )}
 
                 <Button
                   variant="ghost"
@@ -649,6 +854,17 @@ export default function MeetRoomPage() {
         </div>
 
         <div className="flex items-center gap-2">
+          {/* 4-Digit Meeting Code Badge */}
+          <button
+            type="button"
+            onClick={handleCopyCode}
+            className="flex items-center gap-1.5 text-xs font-mono font-bold text-blue-300 hover:text-white bg-blue-950/70 hover:bg-blue-900/80 border border-blue-500/40 px-3 py-1 rounded-xl transition cursor-pointer"
+            title="Click to copy 4-digit code"
+          >
+            <span>Code: {meetingCodeDisplay}</span>
+            {copiedCode ? <Check size={13} className="text-emerald-400" /> : <Copy size={13} />}
+          </button>
+
           <Button
             size="sm"
             variant="ghost"
@@ -660,13 +876,58 @@ export default function MeetRoomPage() {
           </Button>
 
           {hasHostControls && (
-            <span className="hidden md:flex items-center gap-1.5 text-[11px] font-bold text-amber-300 bg-amber-950/60 border border-amber-700/80 px-2.5 py-1 rounded-full">
+            <button
+              type="button"
+              onClick={() => setActivePanel(activePanel === "hostControls" ? "none" : "hostControls")}
+              className="hidden md:flex items-center gap-1.5 text-[11px] font-bold text-amber-300 bg-amber-950/60 hover:bg-amber-900/80 border border-amber-700/80 px-2.5 py-1 rounded-full transition cursor-pointer"
+            >
               <Shield size={12} />
               Host Controls Active
-            </span>
+              {waitingList.length > 0 && (
+                <span className="bg-amber-500 text-slate-950 px-1.5 py-0.2 rounded-full font-black text-[10px] animate-pulse">
+                  {waitingList.length}
+                </span>
+              )}
+            </button>
           )}
         </div>
       </header>
+
+      {/* ── FLOATING HOST NOTIFICATION: KNOCK REQUESTS ────────── */}
+      {hasHostControls && waitingList.length > 0 && (
+        <div className="absolute top-16 left-1/2 -translate-x-1/2 z-50 bg-slate-900/95 border border-amber-500/70 shadow-2xl rounded-2xl p-3 sm:px-4 sm:py-2.5 flex items-center gap-3 animate-in fade-in slide-in-from-top-4">
+          <div className="w-2.5 h-2.5 rounded-full bg-amber-400 animate-ping shrink-0" />
+          <div className="text-xs">
+            <span className="font-bold text-white">{waitingList[0].name}</span>
+            <span className="text-slate-400 ml-1">wants to join this call</span>
+          </div>
+          <div className="flex items-center gap-1.5 ml-2">
+            <button
+              type="button"
+              onClick={() => handleAdmitParticipant(waitingList[0])}
+              className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold transition cursor-pointer"
+            >
+              Admit
+            </button>
+            <button
+              type="button"
+              onClick={() => handleDenyParticipant(waitingList[0])}
+              className="px-2.5 py-1 bg-slate-800 hover:bg-red-600 text-slate-300 hover:text-white rounded-lg text-xs font-bold transition cursor-pointer"
+            >
+              Deny
+            </button>
+            {waitingList.length > 1 && (
+              <button
+                type="button"
+                onClick={() => setActivePanel("hostControls")}
+                className="text-xs text-blue-400 hover:text-blue-300 font-semibold underline ml-1 cursor-pointer"
+              >
+                +{waitingList.length - 1} more
+              </button>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* ── MAIN BODY (VIDEO GRID & DRAWERS) ───────────────────── */}
       <div className="flex-1 flex overflow-hidden relative">
@@ -764,7 +1025,7 @@ export default function MeetRoomPage() {
                 </div>
               ))}
 
-            {/* Placeholder if only current user is in room */}
+            {/* Placeholder if host is alone in room */}
             {(!meeting.attendance || meeting.attendance.filter((p) => p.uid !== user?.uid && p.joined).length === 0) && (
               <div className="w-full h-full min-h-[240px] bg-slate-900/50 rounded-3xl border-2 border-dashed border-slate-800 flex flex-col items-center justify-center p-6 text-center space-y-3">
                 <div className="w-12 h-12 rounded-2xl bg-slate-800 flex items-center justify-center text-slate-400">
@@ -773,18 +1034,29 @@ export default function MeetRoomPage() {
                 <div>
                   <h4 className="text-sm font-bold text-white">Waiting for participants to join</h4>
                   <p className="text-xs text-slate-400 mt-1 max-w-xs">
-                    Share the internal meeting link with your team or invited students.
+                    Share the 4-digit code <strong className="text-blue-400 font-mono">{meetingCodeDisplay}</strong> or copy the room link.
                   </p>
                 </div>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  icon={<Copy size={13} />}
-                  onClick={handleCopyLink}
-                  className="text-xs text-slate-300 hover:text-white border-slate-700 rounded-xl"
-                >
-                  Copy Room URL
-                </Button>
+                <div className="flex items-center gap-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    icon={<Copy size={13} />}
+                    onClick={handleCopyCode}
+                    className="text-xs text-slate-300 hover:text-white border-slate-700 rounded-xl"
+                  >
+                    Copy Code ({meetingCodeDisplay})
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    icon={<Copy size={13} />}
+                    onClick={handleCopyLink}
+                    className="text-xs text-slate-300 hover:text-white border-slate-700 rounded-xl"
+                  >
+                    Copy URL
+                  </Button>
+                </div>
               </div>
             )}
 
@@ -802,7 +1074,7 @@ export default function MeetRoomPage() {
               <button
                 type="button"
                 onClick={() => setActivePanel("none")}
-                className="text-slate-400 hover:text-white p-1 rounded-lg"
+                className="text-slate-400 hover:text-white p-1 rounded-lg cursor-pointer"
               >
                 <X size={16} />
               </button>
@@ -840,7 +1112,7 @@ export default function MeetRoomPage() {
               />
               <button
                 type="submit"
-                className="p-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white transition-colors"
+                className="p-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white transition-colors cursor-pointer"
               >
                 <Send size={15} />
               </button>
@@ -861,7 +1133,7 @@ export default function MeetRoomPage() {
               <button
                 type="button"
                 onClick={() => setActivePanel("none")}
-                className="text-slate-400 hover:text-white p-1 rounded-lg"
+                className="text-slate-400 hover:text-white p-1 rounded-lg cursor-pointer"
               >
                 <X size={16} />
               </button>
@@ -878,7 +1150,7 @@ export default function MeetRoomPage() {
                     <div className="min-w-0">
                       <p className="text-xs font-bold text-slate-200 truncate">{p.name}</p>
                       <span className="text-[10px] text-slate-400 capitalize">
-                        {p.role} {p.joined ? "• Active" : "• Invited"}
+                        {p.role} {p.joined ? "• Present" : "• Invited"}
                       </span>
                     </div>
                   </div>
@@ -890,7 +1162,16 @@ export default function MeetRoomPage() {
               ))}
             </div>
 
-            <div className="p-3 border-t border-slate-800">
+            <div className="p-3 border-t border-slate-800 space-y-2">
+              <Button
+                variant="outline"
+                size="sm"
+                className="w-full text-xs text-slate-300 border-slate-700 rounded-xl"
+                onClick={handleCopyCode}
+                icon={<Copy size={13} />}
+              >
+                Copy Code ({meetingCodeDisplay})
+              </Button>
               <Button
                 variant="outline"
                 size="sm"
@@ -898,8 +1179,158 @@ export default function MeetRoomPage() {
                 onClick={handleCopyLink}
                 icon={<Copy size={13} />}
               >
-                Copy Invite Link
+                Copy Room Link
               </Button>
+            </div>
+          </div>
+        )}
+
+        {/* ── SIDE PANEL: HOST CONTROLS DRAWER ────────────────── */}
+        {activePanel === "hostControls" && (
+          <div className="w-80 sm:w-96 bg-slate-900 border-l border-slate-800 flex flex-col z-40 animate-in slide-in-from-right duration-200">
+            <div className="p-4 border-b border-slate-800 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Shield size={16} className="text-amber-400" />
+                <h3 className="font-bold text-sm text-white">Host Controls</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setActivePanel("none")}
+                className="text-slate-400 hover:text-white p-1 rounded-lg cursor-pointer"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <div className="flex-1 p-4 overflow-y-auto space-y-5">
+              {/* 4-Character Access Code Card */}
+              <div className="bg-slate-950/80 p-4 rounded-2xl border border-slate-800 space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                    Meeting 4-Digit Code
+                  </span>
+                  <span className="text-[10px] font-bold text-emerald-400 bg-emerald-950/60 px-2 py-0.5 rounded border border-emerald-800/60">
+                    Live
+                  </span>
+                </div>
+                <div className="text-2xl font-black font-mono tracking-widest text-center text-blue-400 bg-slate-900 py-2.5 rounded-xl border border-slate-700/60 shadow-inner">
+                  {meetingCodeDisplay}
+                </div>
+                <div className="grid grid-cols-2 gap-2 pt-1">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    icon={<Copy size={13} />}
+                    onClick={handleCopyCode}
+                    className="text-xs text-slate-300 border-slate-700 rounded-xl"
+                  >
+                    Copy Code
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    icon={<Copy size={13} />}
+                    onClick={handleCopyLink}
+                    className="text-xs text-slate-300 border-slate-700 rounded-xl"
+                  >
+                    Copy Link
+                  </Button>
+                </div>
+              </div>
+
+              {/* Waiting Room Requests Section */}
+              <div className="space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5">
+                    <Users size={14} className="text-amber-400" />
+                    <h4 className="text-xs font-bold text-slate-200">Waiting Room Requests</h4>
+                  </div>
+                  {waitingList.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={handleAdmitAll}
+                      className="text-[11px] font-bold text-emerald-400 hover:text-emerald-300 bg-emerald-950/50 hover:bg-emerald-900/60 border border-emerald-800/60 px-2.5 py-1 rounded-lg transition cursor-pointer"
+                    >
+                      Admit All ({waitingList.length})
+                    </button>
+                  )}
+                </div>
+
+                {waitingList.length === 0 ? (
+                  <div className="p-4 bg-slate-950/40 rounded-xl border border-slate-800 text-center">
+                    <p className="text-xs text-slate-500">No participants currently in the waiting room.</p>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {waitingList.map((req) => (
+                      <div
+                        key={req.id}
+                        className="p-3 bg-slate-800/80 border border-slate-700 rounded-xl flex items-center justify-between gap-2"
+                      >
+                        <div className="min-w-0">
+                          <p className="text-xs font-bold text-white truncate">{req.name}</p>
+                          <p className="text-[10px] text-slate-400 truncate">{req.email}</p>
+                        </div>
+                        <div className="flex items-center gap-1 shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => handleAdmitParticipant(req)}
+                            className="p-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white transition cursor-pointer"
+                            title="Admit Participant"
+                          >
+                            <Check size={14} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDenyParticipant(req)}
+                            className="p-1.5 rounded-lg bg-slate-700 hover:bg-red-600 text-slate-300 hover:text-white transition cursor-pointer"
+                            title="Deny Participant"
+                          >
+                            <X size={14} />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Host Actions */}
+              <div className="space-y-2.5 pt-2 border-t border-slate-800">
+                <h4 className="text-xs font-bold text-slate-200">Host Meeting Controls</h4>
+
+                <Button
+                  variant="outline"
+                  size="sm"
+                  icon={<VolumeX size={14} />}
+                  onClick={() => {
+                    success("Requested all participants to mute their microphones.");
+                  }}
+                  className="w-full text-xs text-slate-300 border-slate-700 rounded-xl justify-start"
+                >
+                  Mute All Participants
+                </Button>
+
+                <Button
+                  variant="danger"
+                  size="sm"
+                  icon={<PhoneOff size={14} />}
+                  onClick={handleEndMeeting}
+                  className="w-full text-xs bg-red-600 hover:bg-red-700 rounded-xl justify-start font-bold shadow-md shadow-red-600/20"
+                >
+                  End Meeting & Submit Report
+                </Button>
+              </div>
+
+              {/* Meeting Timeline Info */}
+              <div className="bg-slate-950/40 p-3 rounded-xl border border-slate-800 text-[11px] text-slate-400 space-y-1">
+                <p>
+                  Scheduled: <span className="text-slate-300">{meeting.date} at {meeting.startTime}</span>
+                </p>
+                <p>
+                  Elapsed Time: <span className="text-emerald-400 font-mono font-bold">{meetingDurationTimer}</span>
+                </p>
+              </div>
             </div>
           </div>
         )}
@@ -913,7 +1344,7 @@ export default function MeetRoomPage() {
         <div className="hidden md:flex items-center gap-2 text-xs text-slate-400 min-w-0">
           <span className="font-semibold text-white truncate max-w-[200px]">{meeting.title}</span>
           <span>•</span>
-          <span>MentorMesh Room</span>
+          <span className="font-mono text-blue-400 font-bold">Code: {meetingCodeDisplay}</span>
         </div>
 
         {/* Center: Core Call Controls */}
@@ -923,7 +1354,7 @@ export default function MeetRoomPage() {
           <button
             type="button"
             onClick={toggleMic}
-            className={`w-11 h-11 rounded-2xl flex items-center justify-center transition-all ${
+            className={`w-11 h-11 rounded-2xl flex items-center justify-center transition-all cursor-pointer ${
               isMicOn
                 ? "bg-slate-800 hover:bg-slate-700 text-white"
                 : "bg-red-600 hover:bg-red-700 text-white shadow-lg shadow-red-600/30"
@@ -937,7 +1368,7 @@ export default function MeetRoomPage() {
           <button
             type="button"
             onClick={toggleCam}
-            className={`w-11 h-11 rounded-2xl flex items-center justify-center transition-all ${
+            className={`w-11 h-11 rounded-2xl flex items-center justify-center transition-all cursor-pointer ${
               isCamOn
                 ? "bg-slate-800 hover:bg-slate-700 text-white"
                 : "bg-red-600 hover:bg-red-700 text-white shadow-lg shadow-red-600/30"
@@ -947,25 +1378,25 @@ export default function MeetRoomPage() {
             {isCamOn ? <VideoIcon size={20} /> : <VideoOff size={20} />}
           </button>
 
-          {/* Screen Share */}
+          {/* Screen Share (Entire Screen or Application Window) */}
           <button
             type="button"
             onClick={toggleScreenShare}
-            className={`w-11 h-11 rounded-2xl flex items-center justify-center transition-all ${
+            className={`w-11 h-11 rounded-2xl flex items-center justify-center transition-all cursor-pointer ${
               isScreenSharing
                 ? "bg-blue-600 hover:bg-blue-700 text-white shadow-lg shadow-blue-600/30"
                 : "bg-slate-800 hover:bg-slate-700 text-white"
             }`}
-            title={isScreenSharing ? "Stop Screen Share" : "Share Screen"}
+            title={isScreenSharing ? "Stop Screen Share" : "Share Entire Screen or App Window"}
           >
-            <ScreenShare size={20} />
+            {isScreenSharing ? <Monitor size={20} /> : <ScreenShare size={20} />}
           </button>
 
           {/* Raise Hand */}
           <button
             type="button"
             onClick={() => setRaisedHand(!raisedHand)}
-            className={`w-11 h-11 rounded-2xl flex items-center justify-center transition-all ${
+            className={`w-11 h-11 rounded-2xl flex items-center justify-center transition-all cursor-pointer ${
               raisedHand
                 ? "bg-amber-500 hover:bg-amber-600 text-slate-950 shadow-lg"
                 : "bg-slate-800 hover:bg-slate-700 text-white"
@@ -980,7 +1411,7 @@ export default function MeetRoomPage() {
             <button
               type="button"
               onClick={() => setShowReactionsMenu(!showReactionsMenu)}
-              className="w-11 h-11 rounded-2xl bg-slate-800 hover:bg-slate-700 text-white flex items-center justify-center transition-all"
+              className="w-11 h-11 rounded-2xl bg-slate-800 hover:bg-slate-700 text-white flex items-center justify-center transition-all cursor-pointer"
               title="Reactions"
             >
               <Smile size={20} />
@@ -993,7 +1424,7 @@ export default function MeetRoomPage() {
                     key={emoji}
                     type="button"
                     onClick={() => sendReaction(emoji)}
-                    className="w-9 h-9 rounded-xl hover:bg-slate-700 flex items-center justify-center text-lg transition-transform hover:scale-125"
+                    className="w-9 h-9 rounded-xl hover:bg-slate-700 flex items-center justify-center text-lg transition-transform hover:scale-125 cursor-pointer"
                   >
                     {emoji}
                   </button>
@@ -1006,7 +1437,7 @@ export default function MeetRoomPage() {
           <button
             type="button"
             onClick={() => setActivePanel(activePanel === "chat" ? "none" : "chat")}
-            className={`w-11 h-11 rounded-2xl flex items-center justify-center transition-all ${
+            className={`w-11 h-11 rounded-2xl flex items-center justify-center transition-all cursor-pointer ${
               activePanel === "chat"
                 ? "bg-blue-600 text-white"
                 : "bg-slate-800 hover:bg-slate-700 text-white"
@@ -1020,7 +1451,7 @@ export default function MeetRoomPage() {
           <button
             type="button"
             onClick={() => setActivePanel(activePanel === "participants" ? "none" : "participants")}
-            className={`w-11 h-11 rounded-2xl flex items-center justify-center transition-all ${
+            className={`w-11 h-11 rounded-2xl flex items-center justify-center transition-all cursor-pointer ${
               activePanel === "participants"
                 ? "bg-blue-600 text-white"
                 : "bg-slate-800 hover:bg-slate-700 text-white"
@@ -1029,6 +1460,27 @@ export default function MeetRoomPage() {
           >
             <Users size={20} />
           </button>
+
+          {/* Host Controls Toggle */}
+          {hasHostControls && (
+            <button
+              type="button"
+              onClick={() => setActivePanel(activePanel === "hostControls" ? "none" : "hostControls")}
+              className={`relative w-11 h-11 rounded-2xl flex items-center justify-center transition-all cursor-pointer ${
+                activePanel === "hostControls"
+                  ? "bg-amber-500 text-slate-950 font-bold shadow-lg"
+                  : "bg-slate-800 hover:bg-slate-700 text-amber-400"
+              }`}
+              title="Host Controls"
+            >
+              <Shield size={20} />
+              {waitingList.length > 0 && (
+                <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-red-500 text-white text-[10px] font-black flex items-center justify-center animate-bounce">
+                  {waitingList.length}
+                </span>
+              )}
+            </button>
+          )}
         </div>
 
         {/* Right: End / Leave Button */}
@@ -1062,7 +1514,7 @@ export default function MeetRoomPage() {
       {showSummaryModal && (
         <PostMeetingSummaryModal
           open={showSummaryModal}
-          meetingId={meetingId}
+          meetingId={actualMeetingId}
           meetingTitle={meeting.title}
           onClose={() => {
             setShowSummaryModal(false);
