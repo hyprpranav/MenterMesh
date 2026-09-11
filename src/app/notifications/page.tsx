@@ -22,7 +22,7 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { LoadingState, EmptyState } from "@/components/ui/States";
 import {
   Bell, Cake, CheckCheck, CheckCircle, XCircle, MessageSquare,
-  Send, Gift, X, Search, Paperclip
+  Send, Gift, X, Search, Paperclip, Video
 } from "lucide-react";
 import { timeAgo } from "@/lib/utils";
 import { cn } from "@/lib/utils";
@@ -204,6 +204,7 @@ function NotificationsContent() {
     rejection: { icon: <XCircle size={18} />, classes: "bg-red-100 text-red-600" },
     birthday: { icon: <Cake size={18} />, classes: "bg-pink-100 text-pink-600" },
     system: { icon: <MessageSquare size={18} />, classes: "bg-violet-100 text-violet-600" },
+    meeting: { icon: <Video size={18} />, classes: "bg-blue-100 text-blue-600" },
     default: { icon: <Bell size={18} />, classes: "bg-blue-100 text-blue-600" },
   };
 
@@ -304,10 +305,14 @@ function NotificationsContent() {
                     )}
                     {n.link && !isBdayOther && (
                       <div className="mt-3" onClick={e => e.stopPropagation()}>
-                        <a href={n.link} target="_blank" rel="noopener noreferrer"
-                          className="inline-flex items-center justify-center rounded-lg text-[12px] font-bold transition-colors border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 h-8 px-4 py-2 shadow-sm"
+                        <a href={n.link}
+                          className={`inline-flex items-center justify-center rounded-lg text-[12px] font-bold transition-colors h-8 px-4 py-2 shadow-sm ${
+                            n.type === "meeting" || n.link.includes("/meetings/live")
+                              ? "bg-blue-600 text-white hover:bg-blue-700"
+                              : "border border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+                          }`}
                           onClick={() => !n.read && handleMarkRead(n.id)}>
-                          Action
+                          {n.type === "meeting" || n.link.includes("/meetings/live") ? "Join Meeting" : "Action"}
                         </a>
                       </div>
                     )}

@@ -95,8 +95,21 @@
 *::before,
 *::after {
   box-sizing: border-box;
+}
+
+body,
+h1,
+h2,
+h3,
+h4,
+h5,
+h6,
+p,
+figure,
+blockquote,
+dl,
+dd {
   margin: 0;
-  padding: 0;
 }
 
 html {
@@ -116,34 +129,7 @@ body {
   min-height: 100dvh;
   overflow-x: hidden;
   position: relative;
-}
-
-body::before {
-  content: "";
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100vw;
-  height: 100vh;
-  z-index: -1;
-  background-image: url('/bg.jpeg');
-  background-size: cover;
-  background-position: center;
-  background-repeat: no-repeat;
-  opacity: 0.15;
-  pointer-events: none;
-}
-
-@media (max-width: 768px) {
-  body::before {
-    background-size: contain;
-    background-position: bottom;
-    background-attachment: fixed;
-    /* Create a gradient fade to smoothly merge with standard white UI top */
-    -webkit-mask-image: linear-gradient(to bottom, transparent 15%, black 45%);
-    mask-image: linear-gradient(to bottom, transparent 15%, black 45%);
-    opacity: 0.35;
-  }
+  background-color: var(--color-bg);
 }
 
 img {
@@ -497,7 +483,7 @@ a:hover {
 
   to {
     opacity: 1;
-    transform: translateY(0);
+    transform: none;
   }
 }
 

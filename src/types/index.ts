@@ -289,6 +289,94 @@ export interface Meeting {
 }
 
 
+// ─── Scheduled & Live Meeting ───────────────────────────────
+export type LiveMeetingStatus =
+  | "scheduled"
+  | "starting_soon"
+  | "live"
+  | "ended"
+  | "summary_required"
+  | "submitted_for_review"
+  | "approved"
+  | "rejected"
+  | "changes_requested"
+  | "cancelled";
+
+export type LiveMeetingParticipantRole = "host" | "co_host" | "participant" | "external";
+
+export interface LiveMeetingParticipant {
+  uid?: string;
+  name: string;
+  email: string;
+  role: LiveMeetingParticipantRole;
+  invited: boolean;
+  joined: boolean;
+  joinTime?: TimestampValue | string;
+  leaveTime?: TimestampValue | string;
+  durationMinutes?: number;
+  status?: "waiting" | "admitted" | "in_meeting" | "left" | "removed";
+}
+
+export interface ScheduledMeeting {
+  id: string;
+  title: string;
+  description?: string;
+  purpose?: string;
+  mode: MeetingMode;
+  date: string;         // YYYY-MM-DD
+  startTime: string;    // HH:mm
+  expectedDuration: number; // in minutes
+  endTime?: string;
+  hostId: string;
+  hostName: string;
+  hostPhoto?: string;
+  coHostIds: string[];
+  coHostNames: string[];
+  participantIds: string[];
+  participantNames: string[];
+  teamIds?: string[];
+  teamNames?: string[];
+  externalEmails?: string[];
+  agenda?: string;
+  location?: string;
+  meetingLink: string;
+  status: LiveMeetingStatus;
+  visibility: "invited" | "team" | "everyone";
+  allowExternal: boolean;
+  requireAdmission: boolean;
+  // Actual Live Tracking
+  actualStart?: TimestampValue | string;
+  actualEnd?: TimestampValue | string;
+  actualDurationMinutes?: number;
+  attendance: LiveMeetingParticipant[];
+  attendeeCount?: number;
+  // Host Post-Meeting Summary
+  summary?: string;
+  keyPoints?: string;
+  decisions?: string;
+  actionItems?: string;
+  momDocumentUrl?: string;
+  summarySubmittedAt?: TimestampValue | string;
+  // Review Details
+  reviewedBy?: string;
+  reviewedByName?: string;
+  reviewedAt?: TimestampValue | string;
+  reviewFeedback?: string;
+  createdAt: TimestampValue | string;
+  updatedAt: TimestampValue | string;
+}
+
+// In-meeting Signaling & Chat
+export interface InMeetingChatMessage {
+  id: string;
+  senderId: string;
+  senderName: string;
+  senderPhoto?: string;
+  senderRole?: string;
+  text: string;
+  createdAt: number;
+}
+
 // ─── Notification ────────────────────────────────────────────
 export type NotificationType =
   | "announcement"
@@ -301,7 +389,8 @@ export type NotificationType =
   | "event"
   | "achievement"
   | "system"
-  | "birthday";
+  | "birthday"
+  | "meeting";
 
 export interface Notification {
   id: string;

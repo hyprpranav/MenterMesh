@@ -24,7 +24,7 @@ import {
   increment,
 } from "firebase/firestore";
 import { db } from "./config";
-import type { User, Team, Event, Post, Announcement, Notification, AccessRequest, ActivityLog, UserRole, TeamChatAttachment, TeamChatMessageType, FileShare, Meeting } from "@/types";
+import type { User, Team, Event, Post, Announcement, Notification, AccessRequest, ActivityLog, UserRole, TeamChatAttachment, TeamChatMessageType, FileShare, Meeting, ScheduledMeeting, LiveMeetingParticipant } from "@/types";
 
 // Helper to safely extract milliseconds from Firestore Timestamp object, Date string, or number
 function getTimestampMs(val: any): number {
@@ -884,3 +884,316 @@ export async function reviewMeetingSubmission(
     }
   }
 }
+
+// ─── Scheduled & Live Meetings (Google Meet-Style) ────────────
+
+export async function createScheduledMeeting(
+  data: Omit<ScheduledMeeting, "id" | "createdAt" | "updatedAt">
+): Promise<string> {
+  const ref = await addDoc(collection(db, "scheduledMeetings"), stripUndefined({
+    ...data,
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  }));
+
+  // Automatically trigger notifications to all invited students
+  if (data.participantIds && data.participantIds.length > 0) {
+    const title = `New Meeting Scheduled: ${data.title}`;
+    const message = `Hosted by ${data.hostName} on ${data.date} at ${data.startTime} (${data.expectedDuration} mins). You have been invited.`;
+    for (const participantId of data.participantIds) {
+      // Don't notify the host themselves
+      if (participantId === data.hostId) continue;
+      try {
+        await addDoc(collection(db, "notifications"), {
+          recipientId: participantId,
+          title,
+          message,
+          type: "meeting",
+          read: false,
+          priority: "high",
+          link: `/meetings/live/${ref.id}`,
+          createdAt: serverTimestamp(),
+        });
+      } catch (err) {
+        console.warn("Failed to notify participant", participantId, err);
+      }
+    }
+  }
+
+  return ref.id;
+}
+
+export async function getScheduledMeeting(meetingId: string): Promise<ScheduledMeeting | null> {
+  const snap = await getDoc(doc(db, "scheduledMeetings", meetingId));
+  if (!snap.exists()) return null;
+  return { id: snap.id, ...snap.data() } as ScheduledMeeting;
+}
+
+export async function updateScheduledMeeting(
+  meetingId: string,
+  data: Partial<ScheduledMeeting>
+): Promise<void> {
+  await updateDoc(doc(db, "scheduledMeetings", meetingId), stripUndefined({
+    ...data,
+    updatedAt: serverTimestamp(),
+  }));
+}
+
+export async function getScheduledMeetingsForViewer(
+  uid: string,
+  role: string
+): Promise<ScheduledMeeting[]> {
+  const isStaff = role === "staff" || role === "master";
+
+  let q;
+  if (isStaff) {
+    q = query(collection(db, "scheduledMeetings"), orderBy("createdAt", "desc"));
+  } else {
+    // For students: where participantIds contains uid OR hostId == uid OR visibility == 'everyone'
+    // We fetch recent scheduled meetings and filter client-side for rich combinable rules
+    q = query(collection(db, "scheduledMeetings"), orderBy("createdAt", "desc"), limit(60));
+  }
+
+  const snap = await getDocs(q);
+  const all = snap.docs.map((d) => ({ id: d.id, ...d.data() } as ScheduledMeeting));
+
+  if (isStaff) return all;
+
+  return all.filter((m) => {
+    if (m.visibility === "everyone") return true;
+    if (m.hostId === uid) return true;
+    if (m.coHostIds?.includes(uid)) return true;
+    if (m.participantIds?.includes(uid)) return true;
+    return false;
+  });
+}
+
+// ── Attendance Tracking ──
+
+export async function recordParticipantJoin(
+  meetingId: string,
+  participant: Partial<LiveMeetingParticipant>
+): Promise<void> {
+  const docRef = doc(db, "scheduledMeetings", meetingId);
+  const snap = await getDoc(docRef);
+  if (!snap.exists()) return;
+
+  const meeting = snap.data() as ScheduledMeeting;
+  const currentAttendance = meeting.attendance || [];
+  const now = new Date().toISOString();
+
+  // Find if already in attendance
+  const index = currentAttendance.findIndex(
+    (p) => (participant.uid && p.uid === participant.uid) || (participant.email && p.email === participant.email)
+  );
+
+  let updatedList = [...currentAttendance];
+
+  if (index >= 0) {
+    // Update existing record
+    updatedList[index] = {
+      ...updatedList[index],
+      joined: true,
+      joinTime: updatedList[index].joinTime || now,
+      status: "in_meeting",
+    };
+  } else {
+    // Add new participant
+    updatedList.push({
+      uid: participant.uid || "",
+      name: participant.name || "Guest",
+      email: participant.email || "",
+      role: (participant.role as any) || "participant",
+      invited: participant.invited ?? false,
+      joined: true,
+      joinTime: now,
+      status: "in_meeting",
+    });
+  }
+
+  const updates: any = {
+    attendance: updatedList,
+    attendeeCount: updatedList.filter((p) => p.joined).length,
+    updatedAt: serverTimestamp(),
+  };
+
+  // If meeting was not yet live, set status to live and actualStart
+  if (meeting.status === "scheduled" || meeting.status === "starting_soon") {
+    updates.status = "live";
+    updates.actualStart = now;
+  }
+
+  await updateDoc(docRef, updates);
+}
+
+export async function recordParticipantLeave(
+  meetingId: string,
+  participantUidOrEmail: string
+): Promise<void> {
+  const docRef = doc(db, "scheduledMeetings", meetingId);
+  const snap = await getDoc(docRef);
+  if (!snap.exists()) return;
+
+  const meeting = snap.data() as ScheduledMeeting;
+  const currentAttendance = meeting.attendance || [];
+  const now = new Date().toISOString();
+
+  const updatedList = currentAttendance.map((p) => {
+    if (p.uid === participantUidOrEmail || p.email === participantUidOrEmail) {
+      const joinMs = p.joinTime ? new Date(p.joinTime as string).getTime() : Date.now();
+      const leaveMs = Date.now();
+      const durationMin = Math.max(1, Math.round((leaveMs - joinMs) / (1000 * 60)));
+      return {
+        ...p,
+        leaveTime: now,
+        durationMinutes: durationMin,
+        status: "left" as const,
+      };
+    }
+    return p;
+  });
+
+  await updateDoc(docRef, {
+    attendance: updatedList,
+    updatedAt: serverTimestamp(),
+  });
+}
+
+export async function endLiveMeeting(meetingId: string, hostId: string): Promise<void> {
+  const docRef = doc(db, "scheduledMeetings", meetingId);
+  const snap = await getDoc(docRef);
+  if (!snap.exists()) return;
+
+  const meeting = snap.data() as ScheduledMeeting;
+  const now = new Date().toISOString();
+
+  // Calculate actual duration
+  const startMs = meeting.actualStart ? new Date(meeting.actualStart as string).getTime() : Date.now();
+  const endMs = Date.now();
+  const actualDurationMinutes = Math.max(1, Math.round((endMs - startMs) / (1000 * 60)));
+
+  // Finalize attendance records for any still in_meeting
+  const updatedAttendance = (meeting.attendance || []).map((p) => {
+    if (!p.leaveTime && p.joined) {
+      const pJoinMs = p.joinTime ? new Date(p.joinTime as string).getTime() : startMs;
+      return {
+        ...p,
+        leaveTime: now,
+        durationMinutes: Math.max(1, Math.round((endMs - pJoinMs) / (1000 * 60))),
+        status: "left" as const,
+      };
+    }
+    return p;
+  });
+
+  await updateDoc(docRef, {
+    status: "summary_required",
+    actualEnd: now,
+    actualDurationMinutes,
+    attendance: updatedAttendance,
+    updatedAt: serverTimestamp(),
+  });
+}
+
+export async function submitPostMeetingSummary(
+  meetingId: string,
+  summaryData: {
+    summary: string;
+    keyPoints?: string;
+    decisions?: string;
+    actionItems?: string;
+    momDocumentUrl?: string;
+  }
+): Promise<void> {
+  const docRef = doc(db, "scheduledMeetings", meetingId);
+  const snap = await getDoc(docRef);
+  if (!snap.exists()) throw new Error("Meeting not found");
+
+  const meeting = snap.data() as ScheduledMeeting;
+  const now = serverTimestamp();
+
+  await updateDoc(docRef, {
+    ...summaryData,
+    status: "submitted_for_review",
+    summarySubmittedAt: now,
+    updatedAt: now,
+  });
+
+  // Notify Staff and Masters
+  try {
+    const staffAndMasters = await getDocs(
+      query(collection(db, "users"), where("role", "in", ["staff", "master"]))
+    );
+    for (const d of staffAndMasters.docs) {
+      await addDoc(collection(db, "notifications"), {
+        recipientId: d.id,
+        title: "Meeting Report Submitted",
+        message: `Meeting '${meeting.title}' report has been submitted by ${meeting.hostName} for review.`,
+        type: "meeting",
+        read: false,
+        priority: "high",
+        link: `/meetings/live/${meetingId}/review`,
+        createdAt: now,
+      });
+    }
+  } catch (err) {
+    console.warn("Failed to notify staff about meeting summary", err);
+  }
+}
+
+export async function reviewLiveMeeting(
+  meetingId: string,
+  reviewerId: string,
+  reviewerName: string,
+  decision: "approved" | "rejected" | "changes_requested",
+  feedback?: string
+): Promise<void> {
+  const docRef = doc(db, "scheduledMeetings", meetingId);
+  const snap = await getDoc(docRef);
+  if (!snap.exists()) throw new Error("Meeting not found");
+
+  const meeting = snap.data() as ScheduledMeeting;
+  const now = serverTimestamp();
+
+  const updates: any = {
+    status: decision,
+    reviewedBy: reviewerId,
+    reviewedByName: reviewerName,
+    reviewedAt: now,
+    updatedAt: now,
+  };
+
+  if (feedback) updates.reviewFeedback = feedback;
+
+  await updateDoc(docRef, updates);
+
+  // Notify Host
+  try {
+    let title = "";
+    let message = "";
+    if (decision === "approved") {
+      title = "Meeting Report Approved! 🎉";
+      message = `Your meeting report for '${meeting.title}' was approved by ${reviewerName}.`;
+    } else if (decision === "changes_requested") {
+      title = "Meeting Report: Changes Requested ⚠️";
+      message = `${reviewerName} requested changes on your meeting report: "${feedback || "Please review summary"}".`;
+    } else {
+      title = "Meeting Report Rejected";
+      message = `Your meeting report for '${meeting.title}' was rejected by ${reviewerName}.`;
+    }
+
+    await addDoc(collection(db, "notifications"), {
+      recipientId: meeting.hostId,
+      title,
+      message,
+      type: "meeting",
+      read: false,
+      priority: "high",
+      link: `/meetings/live/${meetingId}`,
+      createdAt: now,
+    });
+  } catch (err) {
+    console.warn("Failed to notify meeting host of decision", err);
+  }
+}
+

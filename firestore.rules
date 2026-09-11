@@ -65,12 +65,36 @@ service cloud.firestore {
       allow delete: if isStaff();
     }
 
-    // Meetings Collection
+    // Meetings Collection (Existing manual submissions)
     match /meetings/{meetingId} {
       allow read: if isAuthenticated();
       allow create: if isAuthenticated() && request.resource.data.submittedBy == request.auth.uid;
       allow update: if isStaff() || (isAuthenticated() && resource.data.submittedBy == request.auth.uid);
       allow delete: if isStaff();
+    }
+
+    // Scheduled & Live Meetings Collection
+    match /scheduledMeetings/{meetingId} {
+      allow read: if isAuthenticated() || resource.data.allowExternal == true;
+      allow create: if isAuthenticated();
+      allow update: if isStaff() || (isAuthenticated() && (resource.data.hostId == request.auth.uid || resource.data.coHostIds.hasAny([request.auth.uid]) || resource.data.participantIds.hasAny([request.auth.uid])));
+      allow delete: if isStaff() || (isAuthenticated() && resource.data.hostId == request.auth.uid);
+
+      // WebRTC Signaling subcollection
+      match /signaling/{peerId} {
+        allow read, write: if true;
+      }
+
+      // In-Meeting Chat subcollection
+      match /chat/{msgId} {
+        allow read: if true;
+        allow create: if true;
+      }
+
+      // Waiting Room subcollection
+      match /waitingRoom/{guestId} {
+        allow read, write: if true;
+      }
     }
 
     // Posts / Achievements Collection

@@ -1,282 +1,741 @@
 "use client";
 
 // ============================================================
-// MentorMesh — Meetings Page (Student + Staff)
+// MentorMesh — Meetings Hub & Dashboard
+// Open, Spacious Workspace · Zero Heavy Background Card Bloat
+// Clean Flow: Action Controls → Filter & Search → Session List
 // ============================================================
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { AppShell } from "@/components/layout/AppShell";
 import { useAuth } from "@/contexts/AuthContext";
-import { getMeetingsForViewer } from "@/lib/firebase/firestore";
-import type { Meeting } from "@/types";
+import {
+  getMeetingsForViewer,
+  getScheduledMeetingsForViewer,
+  createScheduledMeeting,
+  updateScheduledMeeting,
+} from "@/lib/firebase/firestore";
+import type { Meeting, ScheduledMeeting } from "@/types";
 import { Button } from "@/components/ui/Button";
 import { Tabs } from "@/components/ui/Tabs";
-import { PageHeader } from "@/components/ui/PageHeader";
 import { Badge } from "@/components/ui/Badge";
-import { Presentation, Plus, MapPin, CheckCircle2, Clock, XCircle, Users, Link as LinkIcon, Search } from "lucide-react";
+import { Avatar } from "@/components/ui/Avatar";
+import { useToast } from "@/components/ui/ToastProvider";
+import {
+  Video,
+  Calendar,
+  Link2,
+  Plus,
+  Users,
+  Search,
+  Clock,
+  CheckCircle2,
+  Sparkles,
+  ArrowRight,
+  Presentation,
+  Shield,
+  MapPin,
+  Play,
+} from "lucide-react";
 import { EmptyState, LoadingState } from "@/components/ui/States";
 import { formatDate } from "@/lib/utils";
 
 export default function MeetingsPage() {
-    return (
-        <AppShell>
-            <MeetingsContent />
-        </AppShell>
-    );
+  return (
+    <AppShell>
+      <MeetingsHubDashboard />
+    </AppShell>
+  );
 }
 
-function MeetingsContent() {
-    const { user } = useAuth();
-    const [meetings, setMeetings] = useState<Meeting[]>([]);
-    const [loading, setLoading] = useState(true);
-    const isStaff = user?.role === "staff" || user?.role === "master";
-    const [activeTab, setActiveTab] = useState(isStaff ? "all" : "approved");
-    const [sortBy, setSortBy] = useState("Date (Newest)");
-    const [globalSearch, setGlobalSearch] = useState("");
+function MeetingsHubDashboard() {
+  const router = useRouter();
+  const { user } = useAuth();
+  const { success, error } = useToast();
+  const isStaff = user?.role === "staff" || user?.role === "master";
 
-    useEffect(() => {
-        async function load() {
-            try {
-                if (!user) return;
-                const list = await getMeetingsForViewer(user.uid, user.role);
-                setMeetings(list);
-            } catch (err) {
-                console.error(err);
-            } finally {
-                setLoading(false);
-            }
-        }
-        load();
-    }, [user]);
+  // Mode: "live" (Online meetings) vs "manual" (existing manual submissions for staff review)
+  const [workflowMode, setWorkflowMode] = useState<"live" | "manual">("live");
 
-    const pendingCount = meetings.filter((m) => m.status === "pending").length;
+  // Data states
+  const [manualMeetings, setManualMeetings] = useState<Meeting[]>([]);
+  const [scheduledMeetings, setScheduledMeetings] = useState<ScheduledMeeting[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [creatingInstant, setCreatingInstant] = useState(false);
 
-    const filteredMeetings = meetings.filter((m) => {
-        let matchTab = false;
-        if (activeTab === "all") matchTab = true;
-        else if (activeTab === "attended") matchTab = m.attendeeIds?.includes(user?.uid || "") ?? false;
-        else if (activeTab === "pending") matchTab = m.status === "pending";
-        else if (activeTab === "approved") matchTab = m.status === "approved";
-        else if (activeTab === "rejected") matchTab = m.status === "rejected";
-        else matchTab = true;
+  // Quick Join State
+  const [quickJoinCode, setQuickJoinCode] = useState("");
 
-        if (!matchTab) return false;
+  // Filter & Search states
+  const [liveTab, setLiveTab] = useState<string>("all");
+  const [manualTab, setManualTab] = useState<string>(isStaff ? "all" : "approved");
+  const [sortBy, setSortBy] = useState("Date (Newest)");
+  const [globalSearch, setGlobalSearch] = useState("");
 
-        if (globalSearch.trim()) {
-            const q = globalSearch.toLowerCase();
-            return (
-                (m.title && m.title.toLowerCase().includes(q)) ||
-                (m.submittedByName && m.submittedByName.toLowerCase().includes(q)) ||
-                (m.location && m.location.toLowerCase().includes(q))
-            );
-        }
-        return true;
-    });
+  useEffect(() => {
+    async function load() {
+      if (!user) return;
+      try {
+        setLoading(true);
+        const [manualList, scheduledList] = await Promise.all([
+          getMeetingsForViewer(user.uid, user.role),
+          getScheduledMeetingsForViewer(user.uid, user.role),
+        ]);
+        setManualMeetings(manualList);
+        setScheduledMeetings(scheduledList);
+      } catch (err) {
+        console.error("Error loading meetings:", err);
+      } finally {
+        setLoading(false);
+      }
+    }
+    load();
+  }, [user]);
 
-    const tabs = [
-        ...(isStaff
-            ? [
-                { id: "all", label: "All Meetings", count: meetings.length },
-                { id: "pending", label: "Pending", count: pendingCount, className: pendingCount > 0 ? "text-amber-700" : undefined },
-                { id: "approved", label: "Approved" },
-                { id: "rejected", label: "Rejected" },
-            ]
-            : [
-                { id: "approved", label: "All Approved Meetings" },
-                { id: "attended", label: "Meetings I Attended" },
-                { id: "pending", label: "My Pending Submissions" }, // To track what they submitted
-            ]),
-    ];
+  // ── Start Instant Meeting Immediately ─────────────────────────
+  const handleStartInstantMeeting = async () => {
+    if (!user) {
+      error("Please sign in to start a live meeting.");
+      return;
+    }
 
-    // For students, if they view 'pending' or 'rejected', only show their own submissions
-    const finalFiltered = (!isStaff && (activeTab === "pending" || activeTab === "rejected"))
-        ? filteredMeetings.filter(m => m.submittedBy === user?.uid)
-        : (!isStaff && activeTab === "approved")
-            ? filteredMeetings.filter(m => m.status === "approved")
-            : filteredMeetings;
+    try {
+      setCreatingInstant(true);
+      const now = new Date();
+      const todayStr = now.toISOString().slice(0, 10);
+      const hours = String(now.getHours()).padStart(2, "0");
+      const mins = String(now.getMinutes()).padStart(2, "0");
+      const timeStr = `${hours}:${mins}`;
 
-    finalFiltered.sort((a, b) => {
-        if (sortBy === "Date (Newest)") return new Date(b.date).getTime() - new Date(a.date).getTime();
-        if (sortBy === "Date (Oldest)") return new Date(a.date).getTime() - new Date(b.date).getTime();
-        if (sortBy === "Participants (High to Low)") return b.attendeeCount - a.attendeeCount;
-        if (sortBy === "Participants (Low to High)") return a.attendeeCount - b.attendeeCount;
-        return 0;
-    });
+      const meetingData: Omit<ScheduledMeeting, "id" | "createdAt" | "updatedAt"> = {
+        title: `${user.name}'s Instant Meeting`,
+        purpose: "Instant live video collaboration session",
+        description: "Ad-hoc live meeting created in MentorMesh.",
+        mode: "Online",
+        date: todayStr,
+        startTime: timeStr,
+        expectedDuration: 60,
+        hostId: user.uid,
+        hostName: user.name,
+        hostPhoto: user.profilePhoto || undefined,
+        coHostIds: [],
+        coHostNames: [],
+        participantIds: [user.uid],
+        participantNames: [user.name],
+        teamIds: [],
+        teamNames: [],
+        externalEmails: [],
+        agenda: "1. Quick Sync & Discussion",
+        meetingLink: "",
+        status: "live",
+        visibility: "everyone",
+        allowExternal: true,
+        requireAdmission: false,
+        attendance: [
+          {
+            uid: user.uid,
+            name: user.name,
+            email: user.email,
+            role: "host",
+            invited: true,
+            joined: true,
+            status: "in_meeting",
+          },
+        ],
+        attendeeCount: 1,
+      };
 
-    return (
-        <div className="space-y-6 mm-page-animate">
-            <PageHeader
-                icon={<Presentation size={20} />}
-                iconClass="bg-blue-100 text-blue-600"
-                title="Meetings"
-                subtitle="Track your meetings, discussions, and manage attendance."
-                actions={
-                    (!isStaff || isStaff) && ( // Both can submit meetings if needed, prompt says Student can. We'll allow all.
-                        <Link href="/meetings/new">
-                            <Button variant="primary" size="md" icon={<Plus size={16} />}>
-                                Submit Meeting Details
-                            </Button>
-                        </Link>
-                    )
-                }
+      const meetingId = await createScheduledMeeting({
+        ...meetingData,
+        meetingLink: `${window.location.origin}/meet/PENDING`,
+      });
+
+      const internalRoomUrl = `${window.location.origin}/meet/${meetingId}`;
+      await updateScheduledMeeting(meetingId, {
+        meetingLink: internalRoomUrl,
+      });
+
+      success("Instant room created! Launching MentorMesh Live Room...");
+      router.push(`/meet/${meetingId}`);
+    } catch (err: any) {
+      console.error("Error starting instant meeting:", err);
+      error(err.message || "Could not launch instant meeting.");
+    } finally {
+      setCreatingInstant(false);
+    }
+  };
+
+  // ── Quick Join with Link or Code ──────────────────────────────
+  const handleQuickJoin = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    const raw = quickJoinCode.trim();
+    if (!raw) {
+      error("Please enter a meeting code or link.");
+      return;
+    }
+
+    let extractedId = raw;
+    if (raw.includes("/meet/")) {
+      const parts = raw.split("/meet/");
+      extractedId = parts[1].split("?")[0].split("/")[0].trim();
+    } else if (raw.includes("/live/")) {
+      const parts = raw.split("/live/");
+      extractedId = parts[1].split("?")[0].split("/")[0].trim();
+    }
+
+    if (!extractedId) {
+      error("Invalid meeting link or code.");
+      return;
+    }
+
+    router.push(`/meet/${extractedId}`);
+  };
+
+  // Counts
+  const liveNowCount = scheduledMeetings.filter((m) => m.status === "live").length;
+  const reviewCount = scheduledMeetings.filter((m) => m.status === "submitted_for_review").length;
+  const pendingManualCount = manualMeetings.filter((m) => m.status === "pending").length;
+
+  // Tabs for scheduled
+  const liveTabs = isStaff
+    ? [
+        { id: "all", label: "All Sessions", count: scheduledMeetings.length },
+        { id: "live", label: "Live Now", count: liveNowCount, className: liveNowCount > 0 ? "text-emerald-600 font-bold" : undefined },
+        { id: "upcoming", label: "Upcoming" },
+        { id: "review", label: "Pending Review", count: reviewCount, className: reviewCount > 0 ? "text-amber-700 font-bold" : undefined },
+        { id: "approved", label: "Approved" },
+        { id: "past", label: "Past" },
+      ]
+    : [
+        { id: "all", label: "All Sessions" },
+        { id: "live", label: "Live Now", count: liveNowCount, className: liveNowCount > 0 ? "text-emerald-600 font-bold" : undefined },
+        { id: "upcoming", label: "Upcoming" },
+        { id: "my", label: "Hosted by Me" },
+        { id: "attended", label: "Attended" },
+        { id: "past", label: "Past" },
+      ];
+
+  // Tabs for manual records
+  const manualTabs = isStaff
+    ? [
+        { id: "all", label: "All Manual Records", count: manualMeetings.length },
+        { id: "pending", label: "Pending Review", count: pendingManualCount, className: pendingManualCount > 0 ? "text-amber-700 font-bold" : undefined },
+        { id: "approved", label: "Approved" },
+        { id: "rejected", label: "Rejected" },
+      ]
+    : [
+        { id: "approved", label: "Approved Records" },
+        { id: "attended", label: "Records I Attended" },
+        { id: "pending", label: "My Pending Submissions" },
+      ];
+
+  // Filtering scheduled meetings
+  const filteredScheduled = scheduledMeetings.filter((m) => {
+    const isHost = m.hostId === user?.uid;
+    const isAttendee = m.attendance?.some((p) => p.uid === user?.uid && p.joined);
+    const isLive = m.status === "live";
+    const isUpcoming = m.status === "scheduled" || m.status === "starting_soon";
+    const isPast = m.status === "ended" || m.status === "approved" || m.status === "rejected" || m.status === "cancelled";
+
+    let match = true;
+    if (liveTab === "live") match = isLive;
+    else if (liveTab === "upcoming") match = isUpcoming;
+    else if (liveTab === "review") match = m.status === "submitted_for_review";
+    else if (liveTab === "approved") match = m.status === "approved";
+    else if (liveTab === "past") match = isPast;
+    else if (liveTab === "attended") match = isAttendee;
+    else if (liveTab === "my") match = isHost;
+
+    if (!match) return false;
+
+    if (globalSearch.trim()) {
+      const q = globalSearch.toLowerCase();
+      return (
+        m.title.toLowerCase().includes(q) ||
+        m.hostName.toLowerCase().includes(q) ||
+        (m.purpose && m.purpose.toLowerCase().includes(q))
+      );
+    }
+    return true;
+  });
+
+  filteredScheduled.sort((a, b) => {
+    if (sortBy === "Date (Newest)") return new Date(`${b.date}T${b.startTime}`).getTime() - new Date(`${a.date}T${a.startTime}`).getTime();
+    if (sortBy === "Date (Oldest)") return new Date(`${a.date}T${a.startTime}`).getTime() - new Date(`${b.date}T${b.startTime}`).getTime();
+    return 0;
+  });
+
+  // Filtering manual records
+  const filteredManual = manualMeetings.filter((m) => {
+    let matchTab = false;
+    if (manualTab === "all") matchTab = true;
+    else if (manualTab === "attended") matchTab = m.attendeeIds?.includes(user?.uid || "") ?? false;
+    else if (manualTab === "pending") matchTab = m.status === "pending";
+    else if (manualTab === "approved") matchTab = m.status === "approved";
+    else if (manualTab === "rejected") matchTab = m.status === "rejected";
+    else matchTab = true;
+
+    if (!matchTab) return false;
+
+    if (globalSearch.trim()) {
+      const q = globalSearch.toLowerCase();
+      return (
+        (m.title && m.title.toLowerCase().includes(q)) ||
+        (m.submittedByName && m.submittedByName.toLowerCase().includes(q)) ||
+        (m.location && m.location.toLowerCase().includes(q))
+      );
+    }
+    return true;
+  });
+
+  const finalManual =
+    !isStaff && (manualTab === "pending" || manualTab === "rejected")
+      ? filteredManual.filter((m) => m.submittedBy === user?.uid)
+      : !isStaff && manualTab === "approved"
+      ? filteredManual.filter((m) => m.status === "approved")
+      : filteredManual;
+
+  return (
+    <div className="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 lg:py-12 space-y-10 lg:space-y-12">
+      
+      {/* ═════════════════════════════════════════════════════════ */}
+      {/* 1. DASHBOARD HEADER                                       */}
+      {/* ═════════════════════════════════════════════════════════ */}
+      <div className="pb-8 border-b border-slate-200">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-6">
+          <div className="space-y-2">
+            <div className="flex items-center gap-2">
+              <span className="inline-flex items-center gap-1.5 text-xs font-bold text-blue-700 bg-blue-50 border border-blue-200 px-3 py-0.5 rounded-full uppercase tracking-wider">
+                <Video size={13} className="text-blue-600" />
+                MentorMesh Live
+              </span>
+              {liveNowCount > 0 && (
+                <span className="inline-flex items-center gap-1.5 text-xs font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-0.5 rounded-full uppercase tracking-wider animate-pulse">
+                  <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                  {liveNowCount} Live Now
+                </span>
+              )}
+            </div>
+            <h1 className="text-3xl sm:text-4xl font-extrabold text-slate-900 tracking-tight">
+              Meetings & Live Sessions
+            </h1>
+            <p className="text-base text-slate-500 max-w-2xl">
+              Start instant video meetings, schedule future team sessions, or manage meeting records.
+            </p>
+          </div>
+
+          <Link href="/meetings/new">
+            <button
+              type="button"
+              className="inline-flex items-center gap-2 min-h-[48px] px-5 py-2.5 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 text-sm font-semibold transition shadow-xs self-start sm:self-auto cursor-pointer whitespace-nowrap"
+            >
+              <Presentation size={17} className="text-slate-500 shrink-0" />
+              <span>Submit Meeting Record</span>
+            </button>
+          </Link>
+        </div>
+      </div>
+
+      {/* ═════════════════════════════════════════════════════════ */}
+      {/* 2. THREE MAJOR ACTIONS (OPEN CANVAS, ZERO HEAVY CARDS)    */}
+      {/* ═════════════════════════════════════════════════════════ */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-8 sm:gap-10 pb-10 border-b border-slate-200">
+        
+        {/* ACTION 1: START INSTANT MEETING */}
+        <div className="space-y-4 flex flex-col justify-between">
+          <div className="space-y-2">
+            <div className="w-12 h-12 rounded-xl bg-blue-50 border border-blue-200 flex items-center justify-center">
+              <Video size={24} className="text-blue-600" />
+            </div>
+            <h2 className="text-xl font-bold text-slate-900 tracking-tight">Start Instant Meeting</h2>
+            <p className="text-sm text-slate-500 leading-relaxed">
+              Launch a live room immediately and invite others on the fly. No advance setup required.
+            </p>
+          </div>
+
+          <button
+            type="button"
+            disabled={creatingInstant}
+            onClick={handleStartInstantMeeting}
+            className="w-full min-h-[48px] px-5 py-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-extrabold text-sm tracking-wide transition shadow-sm flex items-center justify-center gap-2 cursor-pointer active:scale-[0.99] mt-2 whitespace-nowrap disabled:opacity-50"
+          >
+            <Video size={18} className="shrink-0" />
+            <span>{creatingInstant ? "STARTING ROOM..." : "+ START INSTANT MEETING"}</span>
+          </button>
+        </div>
+
+        {/* ACTION 2: SCHEDULE MEETING */}
+        <div className="space-y-4 flex flex-col justify-between">
+          <div className="space-y-2">
+            <div className="w-12 h-12 rounded-xl bg-slate-100 border border-slate-200 flex items-center justify-center">
+              <Calendar size={24} className="text-slate-700" />
+            </div>
+            <h2 className="text-xl font-bold text-slate-900 tracking-tight">Schedule a Meeting</h2>
+            <p className="text-sm text-slate-500 leading-relaxed">
+              Plan upcoming meetings with date, start time, agenda items, participant selection, and room rules.
+            </p>
+          </div>
+
+          <Link href="/meetings/schedule" className="w-full mt-2 block">
+            <button
+              type="button"
+              className="w-full min-h-[48px] px-5 py-3 rounded-xl bg-white hover:bg-slate-50 border border-slate-300 text-slate-700 font-extrabold text-sm tracking-wide transition flex items-center justify-center gap-2 cursor-pointer shadow-xs whitespace-nowrap"
+            >
+              <Calendar size={18} className="shrink-0" />
+              <span>+ SCHEDULE MEETING</span>
+            </button>
+          </Link>
+        </div>
+
+        {/* ACTION 3: JOIN WITH MEETING LINK */}
+        <div className="space-y-4 flex flex-col justify-between">
+          <div className="space-y-2">
+            <div className="w-12 h-12 rounded-xl bg-emerald-50 border border-emerald-200 flex items-center justify-center">
+              <Link2 size={24} className="text-emerald-600" />
+            </div>
+            <h2 className="text-xl font-bold text-slate-900 tracking-tight">Join with Link</h2>
+            <p className="text-sm text-slate-500 leading-relaxed">
+              Enter a MentorMesh meeting ID or paste an invitation link to jump directly into the room.
+            </p>
+          </div>
+
+          <form onSubmit={handleQuickJoin} className="mt-2 w-full">
+            <div className="relative flex items-center w-full">
+              <input
+                type="text"
+                placeholder="Paste code or link..."
+                value={quickJoinCode}
+                onChange={(e) => setQuickJoinCode(e.target.value)}
+                className="w-full min-h-[48px] pl-4 pr-24 rounded-xl border border-slate-300 bg-white text-sm font-medium outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100 placeholder:text-slate-400 text-slate-900"
+              />
+              <button
+                type="submit"
+                className="absolute right-1.5 top-1.5 bottom-1.5 px-3.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs tracking-wider transition flex items-center gap-1.5 cursor-pointer shadow-xs"
+              >
+                <span>JOIN</span>
+                <ArrowRight size={14} className="shrink-0" />
+              </button>
+            </div>
+          </form>
+        </div>
+
+      </div>
+
+      {/* ═════════════════════════════════════════════════════════ */}
+      {/* 3. WORKFLOW SWITCHER & FILTER CONTROLS                   */}
+      {/* ═════════════════════════════════════════════════════════ */}
+      <div className="space-y-6 pt-2">
+        
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-5">
+          
+          {/* Workflow Toggle */}
+          <div className="bg-slate-100 p-1.5 rounded-2xl flex items-center gap-2 w-full lg:w-auto">
+            <button
+              onClick={() => setWorkflowMode("live")}
+              className={`flex-1 lg:flex-none py-2.5 px-5 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition cursor-pointer ${
+                workflowMode === "live"
+                  ? "bg-white text-blue-700 shadow-xs"
+                  : "text-slate-600 hover:text-slate-900"
+              }`}
+            >
+              <Video size={16} />
+              <span>Online Live Sessions ({scheduledMeetings.length})</span>
+            </button>
+
+            <button
+              onClick={() => setWorkflowMode("manual")}
+              className={`flex-1 lg:flex-none py-2.5 px-5 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition cursor-pointer ${
+                workflowMode === "manual"
+                  ? "bg-white text-blue-700 shadow-xs"
+                  : "text-slate-600 hover:text-slate-900"
+              }`}
+            >
+              <Presentation size={16} />
+              <span>Manual Meeting Records ({manualMeetings.length})</span>
+            </button>
+          </div>
+
+          {/* Search Bar */}
+          <div className="relative w-full lg:w-80 flex items-center">
+            <Search size={17} className="absolute left-3.5 text-slate-400 pointer-events-none" />
+            <input
+              type="text"
+              placeholder={workflowMode === "live" ? "Search live sessions..." : "Search meeting records..."}
+              value={globalSearch}
+              onChange={(e) => setGlobalSearch(e.target.value)}
+              className="w-full h-11 pl-10 pr-4 rounded-xl border border-slate-300 bg-white text-sm font-medium outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100 text-slate-900 placeholder:text-slate-400"
             />
+          </div>
 
-            <div className="flex flex-wrap lg:flex-nowrap gap-4 justify-between items-center pb-2">
-                <div className="overflow-x-auto w-full lg:w-auto max-w-full">
-                    <Tabs tabs={tabs} activeTab={activeTab} onTabChange={setActiveTab} />
-                </div>
-
-                <div className="flex flex-wrap sm:flex-nowrap gap-3 items-center w-full lg:w-auto">
-                    <div
-                        style={{ display: "flex", alignItems: "center", background: "white", padding: "0 12px", border: "1px solid #e2e8f0", borderRadius: "8px", height: "40px", minWidth: "240px", flex: "1 1 auto", boxShadow: "0 1px 2px rgba(0,0,0,0.05)" }}
-                    >
-                        <Search size={16} color="#94A3B8" style={{ flexShrink: 0 }} />
-                        <input
-                            type="search"
-                            placeholder="Search meetings..."
-                            value={globalSearch}
-                            onChange={(e) => setGlobalSearch(e.target.value)}
-                            style={{ border: "none", outline: "none", width: "100%", marginLeft: "8px", fontSize: "14px", background: "transparent", color: "#334155" }}
-                        />
-                    </div>
-
-                    <select
-                        value={sortBy}
-                        onChange={(e) => setSortBy(e.target.value)}
-                        className="mm-select shrink-0 w-full sm:w-auto"
-                        style={{ height: "40px", minWidth: "200px" }}
-                    >
-                        <option value="Date (Newest)">Date (Newest)</option>
-                        <option value="Date (Oldest)">Date (Oldest)</option>
-                        <option value="Participants (High to Low)">Participants (High to Low)</option>
-                        <option value="Participants (Low to High)">Participants (Low to High)</option>
-                    </select>
-                </div>
-            </div>
-
-            {loading ? (
-                <LoadingState message="Loading meetings..." />
-            ) : finalFiltered.length === 0 ? (
-                <EmptyState
-                    icon={<Presentation size={40} />}
-                    title="No meetings found"
-                    description="No meeting records match the selected filter."
-                />
-            ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
-                    {finalFiltered.map((m) => (
-                        <MeetingCard key={m.id} meeting={m} currentUserId={user?.uid} isStaff={isStaff} />
-                    ))}
-                </div>
-            )}
         </div>
-    );
+
+        {/* Filter Tabs */}
+        <div className="overflow-x-auto pb-2">
+          {workflowMode === "live" ? (
+            <Tabs tabs={liveTabs} activeTab={liveTab} onTabChange={setLiveTab} />
+          ) : (
+            <Tabs tabs={manualTabs} activeTab={manualTab} onTabChange={setManualTab} />
+          )}
+        </div>
+
+      </div>
+
+      {/* ═════════════════════════════════════════════════════════ */}
+      {/* 4. MEETINGS ROSTER LIST                                   */}
+      {/* ═════════════════════════════════════════════════════════ */}
+      {loading ? (
+        <LoadingState message="Loading sessions..." />
+      ) : workflowMode === "live" ? (
+        filteredScheduled.length === 0 ? (
+          <EmptyState
+            icon={<Video size={48} className="text-blue-500" />}
+            title="No Online Meetings Found"
+            description="There are no live or scheduled online sessions matching your filter."
+            action={{
+              label: "+ Schedule a Meeting",
+              onClick: () => router.push("/meetings/schedule"),
+            }}
+          />
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+            {filteredScheduled.map((meeting) => (
+              <LiveSessionCard
+                key={meeting.id}
+                meeting={meeting}
+                currentUserId={user?.uid}
+                isStaff={isStaff}
+              />
+            ))}
+          </div>
+        )
+      ) : finalManual.length === 0 ? (
+        <EmptyState
+          icon={<Presentation size={48} className="text-slate-400" />}
+          title="No Manual Meeting Records Found"
+          description="There are no manual meeting submissions matching your filter."
+          action={{
+            label: "Submit Meeting Details",
+            onClick: () => router.push("/meetings/new"),
+          }}
+        />
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+          {finalManual.map((meeting) => (
+            <ManualRecordCard
+              key={meeting.id}
+              meeting={meeting}
+              currentUserId={user?.uid}
+              isStaff={isStaff}
+            />
+          ))}
+        </div>
+      )}
+
+    </div>
+  );
 }
 
-function MeetingCard({ meeting, currentUserId, isStaff }: { meeting: Meeting; currentUserId?: string; isStaff: boolean }) {
-    const isPending = meeting.status === "pending";
-    const isApproved = meeting.status === "approved";
-    const isRejected = meeting.status === "rejected";
-    const isAttendee = currentUserId ? (meeting.attendeeIds || []).includes(currentUserId) : false;
-    const isOwner = currentUserId === meeting.submittedBy;
-    // If not owner, but attendee
-    // Student view requires: "Clearly indicate whether the currently logged-in student attended that meeting"
+// ── Live Session Card with Clear, Spacious Buttons ─────────────
+function LiveSessionCard({
+  meeting,
+  currentUserId,
+  isStaff,
+}: {
+  meeting: ScheduledMeeting;
+  currentUserId?: string;
+  isStaff: boolean;
+}) {
+  const isHost = meeting.hostId === currentUserId;
+  const isLive = meeting.status === "live";
+  const isSummaryRequired = meeting.status === "summary_required";
+  const isUnderReview = meeting.status === "submitted_for_review";
+  const isApproved = meeting.status === "approved";
+  const isRejected = meeting.status === "rejected";
+  const isCancelled = meeting.status === "cancelled";
 
-    const statusBadge = isPending ? (
-        <Badge variant="pending" icon={<Clock size={11} />}>Pending Review</Badge>
-    ) : isRejected ? (
-        <Badge variant="rejected" icon={<XCircle size={11} />}>Rejected</Badge>
-    ) : isApproved ? (
-        <Badge variant="approved" icon={<CheckCircle2 size={11} />}>Approved</Badge>
-    ) : null;
+  return (
+    <div
+      className={`rounded-2xl border bg-white p-7 shadow-xs hover:shadow-md transition flex flex-col justify-between space-y-6 ${
+        isLive
+          ? "border-emerald-500 ring-2 ring-emerald-500/20"
+          : "border-slate-200"
+      }`}
+    >
+      <div className="space-y-4">
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-[11px] font-extrabold uppercase tracking-wider text-blue-700 bg-blue-50 border border-blue-200 px-3 py-0.5 rounded-full">
+            Online Session
+          </span>
 
-    const cardStyle: React.CSSProperties = {
-        display: "flex",
-        flexDirection: "column",
-        justifyContent: "space-between",
-        borderRadius: 16,
-        overflow: "hidden",
-        transition: "all 0.2s ease",
-        position: "relative",
-        ...(isAttendee
-            ? {
-                background: "linear-gradient(135deg, #F5F3FF 0%, #FAFAF9 50%, #FFFFFF 100%)",
-                border: "2px solid #8B5CF6", // Purple highlight for attended
-                boxShadow: "0 4px 16px rgba(139, 92, 246, 0.12), 0 1px 4px rgba(139, 92, 246, 0.08)",
-            }
-            : isPending && isStaff
-                ? { background: "#FFFBF0", border: "1.5px solid #FCD34D", boxShadow: "0 2px 8px rgba(252, 211, 77, 0.12)" }
-                : isRejected && isStaff
-                    ? { background: "#FFF5F5", border: "1.5px solid #FCA5A5", boxShadow: "0 2px 8px rgba(252, 165, 165, 0.1)" }
-                    : { background: "var(--color-surface)", border: "1.5px solid var(--color-border)", boxShadow: "var(--shadow-xs)" }),
-    };
-
-    return (
-        <div style={cardStyle} className="hover:shadow-lg h-full">
-            {isAttendee && (
-                <div style={{ height: 4, background: "linear-gradient(90deg, #8B5CF6, #A855F7, #D946EF)", borderRadius: "0 0 0 0", flexShrink: 0 }} />
-            )}
-
-            <div style={{ padding: "1.25rem 1.25rem 0.75rem", flex: 1, display: "flex", flexDirection: "column", gap: "0.75rem" }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "0.5rem" }}>
-                    <span style={{ fontSize: "0.6875rem", fontWeight: 700, color: "#2563EB", background: "#EFF6FF", padding: "4px 10px", borderRadius: 99, border: "1px solid #BFDBFE", flexShrink: 0, textTransform: "uppercase", letterSpacing: "0.04em" }}>
-                        {meeting.mode}
-                    </span>
-                    <div className="shrink-0">{statusBadge}</div>
-                </div>
-
-                <h3 style={{ fontSize: "1.125rem", fontWeight: 800, color: "#0F172A", lineHeight: 1.3, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }} title={meeting.title}>
-                    {meeting.title}
-                </h3>
-
-                <div style={{ paddingTop: "0.5rem", display: "flex", flexDirection: "column", gap: "0.375rem" }}>
-                    <p style={{ display: "flex", alignItems: "center", gap: "0.5rem", fontSize: "0.75rem", color: "#64748B" }}>
-                        <Clock size={14} color="#94A3B8" /> <span>{formatDate(meeting.date)}, {meeting.time}</span>
-                    </p>
-                    {(meeting.location) && (
-                        <p style={{ display: "flex", alignItems: "center", gap: "0.5rem", fontSize: "0.75rem", color: "#64748B" }}>
-                            <MapPin size={14} color="#94A3B8" /> <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={meeting.location}>{meeting.location}</span>
-                        </p>
-                    )}
-                    {(meeting.link) && (
-                        <p style={{ display: "flex", alignItems: "center", gap: "0.5rem", fontSize: "0.75rem", color: "#64748B" }}>
-                            <LinkIcon size={14} color="#94A3B8" /> <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>Online Link Available</span>
-                        </p>
-                    )}
-                    <p style={{ display: "flex", alignItems: "center", gap: "0.5rem", fontSize: "0.75rem", color: "#64748B" }}>
-                        <Users size={14} color="#94A3B8" /> <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{meeting.attendeeCount} Attendees</span>
-                    </p>
-                </div>
-
-                {meeting.purpose && (
-                    <p style={{ fontSize: "0.8125rem", color: "#475569", lineHeight: 1.5, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden", marginTop: "4px" }}>
-                        <span className="font-semibold text-slate-700">Purpose: </span>{meeting.purpose}
-                    </p>
-                )}
-            </div>
-
-            <div style={{ padding: "0.75rem 1.25rem 1.25rem", borderTop: "1px solid rgba(148, 163, 184, 0.12)", display: "flex", alignItems: "center", justifyContent: "space-between", gap: "0.5rem", flexWrap: "wrap" }}>
-                <div style={{ display: "flex", flexDirection: "column", gap: "3px", flex: 1, minWidth: "80px" }}>
-                    <p style={{ fontSize: "0.75rem", color: "#64748B", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                        By {meeting.submittedByName}
-                    </p>
-                    {!isStaff && isApproved && isAttendee && (
-                        <span className="text-xs font-bold text-emerald-600 bg-emerald-50 px-2 py-1 rounded w-fit capitalize flex items-center gap-1">
-                            ✓ You attended this meeting
-                        </span>
-                    )}
-                    {!isStaff && isApproved && !isAttendee && (
-                        <span className="text-xs font-semibold text-slate-500 bg-slate-100 px-2 py-1 rounded w-fit">
-                            Meeting details available
-                        </span>
-                    )}
-                </div>
-                <Link href={`/meetings/${meeting.id}`}>
-                    <Button size="md" variant={isAttendee ? "primary" : "outline"}>
-                        View Details
-                    </Button>
-                </Link>
-            </div>
+          {isLive ? (
+            <span className="inline-flex items-center gap-1.5 text-xs font-extrabold text-emerald-700 bg-emerald-50 border border-emerald-300 px-3 py-0.5 rounded-full uppercase tracking-wider animate-pulse">
+              <span className="w-2 h-2 rounded-full bg-emerald-500" />
+              Live Now
+            </span>
+          ) : isSummaryRequired ? (
+            <Badge variant="warning">Summary Required</Badge>
+          ) : isUnderReview ? (
+            <Badge variant="pending">Under Review</Badge>
+          ) : isApproved ? (
+            <Badge variant="approved">Approved</Badge>
+          ) : isRejected ? (
+            <Badge variant="rejected">Rejected</Badge>
+          ) : isCancelled ? (
+            <Badge variant="secondary">Cancelled</Badge>
+          ) : (
+            <Badge variant="info">Scheduled</Badge>
+          )}
         </div>
-    );
+
+        {/* Title */}
+        <h3 className="text-lg font-bold text-slate-900 leading-snug break-words line-clamp-2">
+          {meeting.title}
+        </h3>
+
+        {/* Time, Host & Attendees */}
+        <div className="space-y-2.5 text-sm text-slate-600 pt-1">
+          <div className="flex items-center gap-2.5">
+            <Calendar size={16} className="text-slate-400 shrink-0" />
+            <span>
+              {formatDate(meeting.date)} • {meeting.startTime} ({meeting.expectedDuration} mins)
+            </span>
+          </div>
+
+          <div className="flex items-center gap-2.5">
+            <Users size={16} className="text-slate-400 shrink-0" />
+            <span>
+              Host: <strong className="text-slate-800">{meeting.hostName}</strong>
+              {meeting.attendeeCount !== undefined && ` • ${meeting.attendeeCount} Joined`}
+            </span>
+          </div>
+        </div>
+
+        {meeting.purpose && (
+          <p className="text-xs sm:text-sm text-slate-500 line-clamp-2 italic bg-slate-50 p-3 rounded-xl border border-slate-200/60">
+            "{meeting.purpose}"
+          </p>
+        )}
+      </div>
+
+      {/* Action Button Area with Generous Space */}
+      <div className="pt-2">
+        {isLive ? (
+          <Link href={`/meet/${meeting.id}`} className="block w-full">
+            <button
+              type="button"
+              className="w-full min-h-[48px] px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:scale-[0.99] text-white font-extrabold text-sm tracking-wide transition shadow-sm flex items-center justify-center gap-2 cursor-pointer whitespace-nowrap"
+            >
+              <Video size={18} className="shrink-0" />
+              <span>JOIN MEETING NOW</span>
+            </button>
+          </Link>
+        ) : isSummaryRequired && isHost ? (
+          <Link href={`/meet/${meeting.id}`} className="block w-full">
+            <button
+              type="button"
+              className="w-full min-h-[48px] px-5 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-sm tracking-wide transition shadow-sm flex items-center justify-center gap-2 cursor-pointer whitespace-nowrap"
+            >
+              <span>Complete Meeting Summary</span>
+            </button>
+          </Link>
+        ) : isUnderReview && isStaff ? (
+          <Link href={`/meetings/live/${meeting.id}/review`} className="block w-full">
+            <button
+              type="button"
+              className="w-full min-h-[48px] px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-sm tracking-wide transition shadow-sm flex items-center justify-center gap-2 cursor-pointer whitespace-nowrap"
+            >
+              <span>Review Meeting Report</span>
+            </button>
+          </Link>
+        ) : isCancelled ? (
+          <button
+            type="button"
+            disabled
+            className="w-full min-h-[48px] px-5 py-2.5 rounded-xl bg-slate-100 text-slate-400 font-semibold text-sm cursor-not-allowed whitespace-nowrap"
+          >
+            Session Cancelled
+          </button>
+        ) : (
+          <Link href={`/meet/${meeting.id}`} className="block w-full">
+            <button
+              type="button"
+              className={`w-full min-h-[48px] px-5 py-2.5 rounded-xl font-extrabold text-sm tracking-wide transition shadow-sm flex items-center justify-center gap-2 cursor-pointer whitespace-nowrap ${
+                isHost
+                  ? "bg-blue-600 hover:bg-blue-700 text-white"
+                  : "bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200"
+              }`}
+            >
+              <Video size={18} className="shrink-0" />
+              <span>{isHost ? "START MEETING" : "JOIN MEETING"}</span>
+            </button>
+          </Link>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Manual Meeting Record Card (Preserved 100%) ────────────────
+function ManualRecordCard({
+  meeting,
+  currentUserId,
+  isStaff,
+}: {
+  meeting: Meeting;
+  currentUserId?: string;
+  isStaff: boolean;
+}) {
+  const isPending = meeting.status === "pending";
+  const isApproved = meeting.status === "approved";
+  const isRejected = meeting.status === "rejected";
+
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-white p-7 shadow-xs hover:shadow-md transition flex flex-col justify-between space-y-5">
+      <div className="space-y-3.5">
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-[11px] font-bold text-slate-600 bg-slate-100 px-3 py-0.5 rounded-full uppercase tracking-wider">
+            {meeting.mode || "Meeting"} Record
+          </span>
+          {isPending ? (
+            <Badge variant="pending">Pending Review</Badge>
+          ) : isApproved ? (
+            <Badge variant="approved">Approved</Badge>
+          ) : (
+            <Badge variant="rejected">Rejected</Badge>
+          )}
+        </div>
+
+        <h3 className="text-lg font-bold text-slate-900 line-clamp-2">
+          {meeting.title}
+        </h3>
+
+        <div className="space-y-2 text-sm text-slate-600">
+          <p className="flex items-center gap-2.5">
+            <Calendar size={15} className="text-slate-400 shrink-0" />
+            <span>{formatDate(meeting.date)}</span>
+          </p>
+          <p className="flex items-center gap-2.5">
+            <Users size={15} className="text-slate-400 shrink-0" />
+            <span>Submitted by: <strong>{meeting.submittedByName}</strong></span>
+          </p>
+          {meeting.location && (
+            <p className="flex items-center gap-2.5">
+              <MapPin size={15} className="text-slate-400 shrink-0" />
+              <span className="truncate">{meeting.location}</span>
+            </p>
+          )}
+        </div>
+      </div>
+
+      <Link href={`/meetings/${meeting.id}`} className="block w-full pt-2">
+        <button
+          type="button"
+          className="w-full min-h-[48px] px-5 py-2.5 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 font-bold text-sm transition cursor-pointer whitespace-nowrap"
+        >
+          View Full Record →
+        </button>
+      </Link>
+    </div>
+  );
 }

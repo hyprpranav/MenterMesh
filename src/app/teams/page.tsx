@@ -4,6 +4,7 @@
 // MentorMesh — Teams List Page  (v3 – Modal Info + Full-Screen Chat)
 // ============================================================
 import React, { useEffect, useState, useMemo, useRef } from "react";
+import { createPortal } from "react-dom";
 import Link from "next/link";
 import { AppShell } from "@/components/layout/AppShell";
 import { useAuth } from "@/contexts/AuthContext";
@@ -630,10 +631,16 @@ function TeamCard({ team, currentUserId, isStaff, onApprove, onReject, onViewInf
   );
 }
 
-// ── TeamInfoModal — centered card ──────────────────────────────
+// ── TeamInfoModal — Centered Popup Modal Card (Portaled to document.body) ──
 function TeamInfoModal({ team, isStaff, onClose, onOpenChat, onDeleteTeam }: {
   team: Team; isStaff: boolean; onClose: () => void; onOpenChat: () => void; onDeleteTeam?: () => void;
 }) {
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
   useEffect(() => {
     document.body.style.overflow = "hidden";
     const handleEsc = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
@@ -644,167 +651,221 @@ function TeamInfoModal({ team, isStaff, onClose, onOpenChat, onDeleteTeam }: {
     };
   }, [onClose]);
 
-  return (
-    <>
-      <style>{`
-        .mm-custom-team-overlay {
-          position: fixed; inset: 0; z-index: 9999;
-          background: rgba(15,23,42,0.55); backdrop-filter: blur(4px);
-          display: flex; align-items: center; justify-content: center;
-          padding: 1rem; animation: mm-fade-in 0.2s ease;
-          overflow: hidden;
-        }
-        .mm-custom-team-modal {
-          background: var(--color-surface);
-          border-radius: 20px; width: 100%; max-width: 480px;
-          display: flex; flex-direction: column;
-          box-shadow: 0 25px 50px -12px rgba(0,0,0,0.25);
-          animation: mm-modal-in 0.22s cubic-bezier(0.16,1,0.3,1);
-          overflow: hidden; max-height: 90vh;
-        }
-        @media (max-width: 640px) {
-          .mm-custom-team-overlay {
-            padding: 0; align-items: flex-end; 
-          }
-          .mm-custom-team-modal {
-            max-width: 100%; border-radius: 24px 24px 0 0; 
-            max-height: 85vh; /* Mobile specific height, leave room for bottom sheet feel */
-            animation: mm-slide-up 0.3s cubic-bezier(0.16,1,0.3,1);
-          }
-        }
-        @keyframes mm-slide-up {
-          from { transform: translateY(100%); opacity: 0; }
-          to { transform: translateY(0); opacity: 1; }
-        }
-      `}</style>
-      <div className="mm-custom-team-overlay" onClick={onClose}>
-        <div className="mm-custom-team-modal" onClick={(e) => e.stopPropagation()}>
-          {/* Header */}
-          <div style={{ padding: "1.125rem 1.25rem", borderBottom: "1px solid var(--color-border)", display: "flex", alignItems: "center", gap: "0.75rem", flexShrink: 0 }}>
-            <div style={{ width: 36, height: 36, borderRadius: 10, background: "var(--color-primary-light)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-              <Users size={18} color="var(--color-primary)" />
-            </div>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <p style={{ fontWeight: 700, fontSize: 15, color: "var(--color-text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{team.name}</p>
-              <p style={{ fontSize: 11, color: "var(--color-muted)" }}>Team Information</p>
-            </div>
-            <button onClick={onClose} style={{ width: 32, height: 32, borderRadius: 8, border: "none", background: "var(--color-surface-2)", cursor: "pointer", color: "var(--color-muted)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-              <X size={16} />
-            </button>
+  if (!mounted) return null;
+
+  const modalContent = (
+    <div
+      className="fixed inset-0 z-[99999] flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+      role="dialog"
+      aria-modal="true"
+      aria-label={`${team.name} details`}
+    >
+      <div
+        className="w-full max-w-[500px] max-h-[85vh] bg-white rounded-2xl shadow-2xl border border-slate-200/80 flex flex-col overflow-hidden animate-in zoom-in-95 duration-200"
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          boxShadow: "0 25px 50px -12px rgba(15, 23, 42, 0.35), 0 0 0 1px rgba(15, 23, 42, 0.08)",
+        }}
+      >
+        {/* Header — Fixed at Top */}
+        <div className="px-5 py-4 border-b border-slate-200 flex items-center gap-3 bg-white shrink-0">
+          <div className="w-10 h-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center shrink-0 border border-blue-100 shadow-2xs">
+            <Users size={20} />
+          </div>
+          <div className="flex-1 min-w-0">
+            <h3 className="font-bold text-base text-slate-900 truncate">
+              {team.name}
+            </h3>
+            <p className="text-xs text-slate-500 font-medium">Team Information</p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="w-8 h-8 rounded-lg bg-slate-100 hover:bg-slate-200 active:scale-95 text-slate-500 hover:text-slate-700 flex items-center justify-center transition shrink-0 cursor-pointer"
+            aria-label="Close dialog"
+          >
+            <X size={18} />
+          </button>
+        </div>
+
+        {/* Body — Smoothly Scrollable with Slim Scrollbar */}
+        <div
+          className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-4 overscroll-contain"
+          style={{
+            scrollbarWidth: "thin",
+            WebkitOverflowScrolling: "touch",
+          }}
+        >
+          {/* Status Bar */}
+          <div className="flex items-center justify-between p-3.5 bg-slate-50 rounded-xl border border-slate-200/70">
+            <span className="text-xs sm:text-sm font-bold text-slate-700">Team Status</span>
+            <Badge variant={teamStatusBadge(team.status).variant}>
+              {teamStatusBadge(team.status).label}
+            </Badge>
           </div>
 
-          {/* Body */}
-          <div style={{ flex: 1, overflowY: "auto", padding: "1.125rem" }}>
-            <div style={{ display: "flex", flexDirection: "column", gap: "0.875rem" }}>
+          {/* About / Description */}
+          {team.description && (
+            <div className="p-4 bg-blue-50/70 rounded-xl border border-blue-100 space-y-1">
+              <p className="text-xs font-bold text-blue-900 uppercase tracking-wider">About Project</p>
+              <p className="text-xs sm:text-sm text-blue-950/80 leading-relaxed break-words whitespace-pre-wrap">
+                {team.description}
+              </p>
+            </div>
+          )}
 
-              {/* Status */}
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0.75rem 1rem", background: "var(--color-surface-2)", borderRadius: 12, border: "1px solid var(--color-border)" }}>
-                <span style={{ fontSize: 13, fontWeight: 600, color: "var(--color-text)" }}>Status</span>
-                <Badge variant={teamStatusBadge(team.status).variant}>{teamStatusBadge(team.status).label}</Badge>
+          {/* Event info if applicable */}
+          {team.eventName && (
+            <div className="p-3.5 bg-indigo-50/60 rounded-xl border border-indigo-100 flex items-center justify-between">
+              <span className="text-xs sm:text-sm font-bold text-indigo-950">Associated Event</span>
+              <span className="text-xs font-bold text-indigo-700 bg-white px-2.5 py-1 rounded-lg border border-indigo-200">
+                {team.eventName}
+              </span>
+            </div>
+          )}
+
+          {/* Members List */}
+          <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-xs">
+            <div className="px-4 py-3 bg-slate-50/80 border-b border-slate-200 flex items-center justify-between">
+              <div className="flex items-center gap-2 text-slate-800 font-bold text-xs sm:text-sm">
+                <Users size={15} className="text-slate-500" />
+                <span>Members ({team.memberIds.length})</span>
               </div>
-
-              {team.description && (
-                <div style={{ padding: "0.875rem 1rem", background: "#EFF6FF", borderRadius: 12, border: "1px solid #DBEAFE" }}>
-                  <p style={{ fontSize: 11, fontWeight: 700, color: "#1E40AF", marginBottom: 4 }}>About</p>
-                  <p style={{ fontSize: 13, color: "#1D4ED8", lineHeight: 1.55 }}>{team.description}</p>
-                </div>
-              )}
-
-              {/* Timeline */}
-              <div style={{ padding: "0.875rem 1rem", background: "var(--color-surface)", borderRadius: 12, border: "1px solid var(--color-border)", display: "flex", flexDirection: "column", gap: "0.75rem" }}>
-                <p style={{ fontSize: 11, fontWeight: 700, color: "var(--color-text-2)", textTransform: "uppercase", letterSpacing: "0.06em" }}>Timeline</p>
-                <TimelineRow icon={<Calendar size={14} color="#D97706" />} iconBg="#FEF3C7" label={`Submitted by ${team.createdByName}`} value={fmtDT(team.createdAt)} />
-                {team.reviewedByName && (
-                  <TimelineRow
-                    icon={<Shield size={14} color={team.status === "rejected" ? "#DC2626" : "#16A34A"} />}
-                    iconBg={team.status === "rejected" ? "#FFE4E6" : "#DCFCE7"}
-                    label={`${team.status === "rejected" ? "Rejected" : "Approved"} by ${team.reviewedByName}`}
-                    value={fmtDT(team.reviewedAt)}
-                  />
-                )}
-                {team.finalizedAt && (
-                  <TimelineRow icon={<CheckCircle2 size={14} color="#2563EB" />} iconBg="#EFF6FF" label="Finalized" value={fmtDT(team.finalizedAt)} />
-                )}
-              </div>
-
-              {/* Members */}
-              <div style={{ background: "var(--color-surface)", borderRadius: 12, border: "1px solid var(--color-border)", overflow: "hidden" }}>
-                <div style={{ padding: "0.75rem 1rem", borderBottom: "1px solid var(--color-border)", display: "flex", alignItems: "center", gap: "0.5rem" }}>
-                  <Users size={14} color="var(--color-muted)" />
-                  <p style={{ fontSize: 13, fontWeight: 700, color: "var(--color-text)" }}>Members ({team.memberIds.length})</p>
-                </div>
-                <div style={{ padding: "0.5rem" }}>
-                  {(team.memberNames || []).map((memberName, idx) => {
-                    const isLeader = memberName === team.leaderName;
-                    return (
-                      <div key={idx} style={{ display: "flex", alignItems: "center", gap: "0.625rem", padding: "0.5rem 0.625rem", borderRadius: 8, background: isLeader ? "#FFFBEB" : "transparent" }}>
-                        <Avatar name={memberName} size="sm" />
-                        <p style={{ flex: 1, fontSize: 13, fontWeight: isLeader ? 700 : 500, color: "var(--color-text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{memberName}</p>
-                        {isLeader && (
-                          <span style={{ display: "inline-flex", alignItems: "center", gap: 3, fontSize: 10, fontWeight: 700, color: "#D97706", background: "#FEF3C7", border: "1px solid #FDE68A", borderRadius: 99, padding: "2px 8px", flexShrink: 0 }}>
-                            <Star size={9} fill="currentColor" /> Leader
-                          </span>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* Rejection feedback */}
-              {team.reviewFeedback && team.status === "rejected" && (
-                <div style={{ padding: "0.875rem 1rem", background: "#FFF1F2", borderRadius: 12, border: "1px solid #FFE4E6" }}>
-                  <p style={{ fontSize: 12, fontWeight: 700, color: "#B91C1C", marginBottom: 4 }}>Rejection Feedback</p>
-                  <p style={{ fontSize: 13, color: "#DC2626" }}>{team.reviewFeedback}</p>
-                </div>
-              )}
-
-              {/* Open Chat CTA */}
-              <button onClick={onOpenChat} style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0.875rem 1.125rem", background: "linear-gradient(135deg,#25D366,#128C7E)", borderRadius: 14, border: "none", cursor: "pointer", color: "#fff", transition: "all 0.15s" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
-                  <MessageCircle size={22} />
-                  <div style={{ textAlign: "left" }}>
-                    <p style={{ fontWeight: 700, fontSize: 15 }}>Team Group Chat</p>
-                    <p style={{ fontSize: 12, opacity: 0.85 }}>Open WhatsApp-style chat</p>
-                  </div>
-                </div>
-                <ChevronRight size={20} />
-              </button>
-
-              {/* Full Details Page Link */}
-              <Link href={`/teams/${team.id}`} style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0.875rem 1.125rem", background: "linear-gradient(135deg,#EFF6FF,#DBEAFE)", borderRadius: 14, border: "1.5px solid #93C5FD", cursor: "pointer", color: "#1D4ED8", textDecoration: "none", transition: "all 0.15s" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
-                  <Info size={22} />
-                  <div style={{ textAlign: "left" }}>
-                    <p style={{ fontWeight: 700, fontSize: 15 }}>Full Team Details</p>
-                    <p style={{ fontSize: 12, opacity: 0.7 }}>Members, docs, links & management</p>
-                  </div>
-                </div>
-                <ChevronRight size={20} />
-              </Link>
-
-              {/* Delete Team (Staff/Developer only) */}
-              {isStaff && onDeleteTeam && (
-                <button onClick={onDeleteTeam} style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: "0.5rem", padding: "0.875rem 1rem", background: "#FEF2F2", border: "1.5px solid #FECDD3", borderRadius: 14, cursor: "pointer", color: "#DC2626", fontWeight: 700, fontSize: 14, transition: "all 0.15s" }}>
-                  <Trash2 size={16} />
-                  Delete This Team
-                </button>
+              {team.leaderName && (
+                <span className="text-[11px] font-bold text-amber-800 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-md inline-flex items-center gap-1">
+                  <Star size={10} fill="currentColor" /> Leader: {team.leaderName}
+                </span>
               )}
             </div>
+            <div className="p-2 divide-y divide-slate-100">
+              {(team.memberNames || []).map((memberName, idx) => {
+                const isLeader = memberName === team.leaderName;
+                return (
+                  <div
+                    key={idx}
+                    className={`flex items-center gap-3 p-2.5 rounded-lg transition ${
+                      isLeader ? "bg-amber-50/60" : "hover:bg-slate-50"
+                    }`}
+                  >
+                    <Avatar name={memberName} size="sm" />
+                    <span className={`flex-1 text-xs sm:text-sm truncate ${isLeader ? "font-bold text-slate-900" : "font-medium text-slate-700"}`}>
+                      {memberName}
+                    </span>
+                    {isLeader && (
+                      <span className="inline-flex items-center gap-1 text-[10px] font-extrabold text-amber-800 bg-amber-100/90 border border-amber-300 rounded-full px-2 py-0.5 shrink-0">
+                        <Star size={9} fill="currentColor" /> Leader
+                      </span>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Timeline */}
+          <div className="p-4 bg-slate-50/70 rounded-xl border border-slate-200/80 space-y-3">
+            <p className="text-[11px] font-extrabold text-slate-500 uppercase tracking-wider">Timeline</p>
+            <TimelineRow
+              icon={<Calendar size={14} className="text-amber-600" />}
+              iconBg="bg-amber-100"
+              label={`Submitted by ${team.createdByName}`}
+              value={fmtDT(team.createdAt)}
+            />
+            {team.reviewedByName && (
+              <TimelineRow
+                icon={<Shield size={14} className={team.status === "rejected" ? "text-red-600" : "text-emerald-600"} />}
+                iconBg={team.status === "rejected" ? "bg-red-100" : "bg-emerald-100"}
+                label={`${team.status === "rejected" ? "Rejected" : "Approved"} by ${team.reviewedByName}`}
+                value={fmtDT(team.reviewedAt)}
+              />
+            )}
+            {team.finalizedAt && (
+              <TimelineRow
+                icon={<CheckCircle2 size={14} className="text-blue-600" />}
+                iconBg="bg-blue-100"
+                label="Finalized"
+                value={fmtDT(team.finalizedAt)}
+              />
+            )}
+          </div>
+
+          {/* Rejection feedback if applicable */}
+          {team.reviewFeedback && team.status === "rejected" && (
+            <div className="p-3.5 bg-red-50 rounded-xl border border-red-200 space-y-1">
+              <p className="text-xs font-bold text-red-800">Rejection Feedback</p>
+              <p className="text-xs sm:text-sm text-red-700">{team.reviewFeedback}</p>
+            </div>
+          )}
+
+          {/* Actions */}
+          <div className="pt-2 space-y-2.5">
+            {/* Open Chat CTA */}
+            <button
+              type="button"
+              onClick={onOpenChat}
+              className="w-full flex items-center justify-between p-3.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 active:scale-[0.99] text-white font-bold transition shadow-sm cursor-pointer"
+            >
+              <div className="flex items-center gap-3">
+                <MessageCircle size={20} />
+                <div className="text-left">
+                  <p className="text-sm font-bold">Team Group Chat</p>
+                  <p className="text-[11px] opacity-85 font-normal">Open WhatsApp-style chat</p>
+                </div>
+              </div>
+              <ChevronRight size={18} />
+            </button>
+
+            {/* Full Details Page Link */}
+            <Link
+              href={`/teams/${team.id}`}
+              className="w-full flex items-center justify-between p-3.5 rounded-xl bg-blue-50/80 hover:bg-blue-100/80 text-blue-700 border border-blue-200/80 font-bold transition shadow-2xs cursor-pointer active:scale-[0.99]"
+            >
+              <div className="flex items-center gap-3">
+                <Info size={20} />
+                <div className="text-left">
+                  <p className="text-sm font-bold">Full Team Details</p>
+                  <p className="text-[11px] text-blue-600/80 font-normal">Members, docs, links & management</p>
+                </div>
+              </div>
+              <ChevronRight size={18} />
+            </Link>
+
+            {/* Delete Team (Staff/Developer only) */}
+            {isStaff && onDeleteTeam && (
+              <button
+                type="button"
+                onClick={onDeleteTeam}
+                className="w-full flex items-center justify-center gap-2 p-3 rounded-xl bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 font-bold text-xs sm:text-sm transition cursor-pointer"
+              >
+                <Trash2 size={16} />
+                <span>Delete This Team</span>
+              </button>
+            )}
           </div>
         </div>
       </div>
-    </>
+    </div>
   );
+
+  return createPortal(modalContent, document.body);
 }
 
 function TimelineRow({ icon, iconBg, label, value }: { icon: React.ReactNode; iconBg: string; label: string; value: string }) {
+  const isClass = typeof iconBg === "string" && iconBg.startsWith("bg-");
   return (
-    <div style={{ display: "flex", alignItems: "flex-start", gap: "0.625rem" }}>
-      <div style={{ width: 28, height: 28, borderRadius: 8, background: iconBg, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{icon}</div>
-      <div>
-        <p style={{ fontSize: 11, fontWeight: 600, color: "var(--color-muted)" }}>{label}</p>
-        <p style={{ fontSize: 13, fontWeight: 600, color: "var(--color-text)" }}>{value}</p>
+    <div className="flex items-start gap-2.5">
+      <div
+        className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${isClass ? iconBg : ""}`}
+        style={!isClass ? { background: iconBg } : undefined}
+      >
+        {icon}
+      </div>
+      <div className="min-w-0">
+        <p className="text-[11px] font-semibold text-slate-400">{label}</p>
+        <p className="text-xs sm:text-sm font-semibold text-slate-800 break-words">{value}</p>
       </div>
     </div>
   );
@@ -814,8 +875,13 @@ function TimelineRow({ icon, iconBg, label, value }: { icon: React.ReactNode; ic
 function FullScreenChat({ team, currentUser, isStaff, onBack, onClose }: {
   team: Team; currentUser: any; isStaff: boolean; onBack: () => void; onClose: () => void;
 }) {
+  const [mounted, setMounted] = useState(false);
   const { success, error } = useToast();
   const [messages, setMessages] = useState<TeamChatMessage[]>([]);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
   const [chatText, setChatText] = useState("");
   const [sending, setSending] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -888,9 +954,11 @@ function FullScreenChat({ team, currentUser, isStaff, onBack, onClose }: {
     if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend(); }
   };
 
-  return (
+  if (!mounted) return null;
+
+  return createPortal(
     <div style={{
-      position: "fixed", inset: 0, zIndex: 70,
+      position: "fixed", inset: 0, zIndex: 99999,
       display: "flex", flexDirection: "column",
       background: "#ECE5DD",
       backgroundImage: "url(\"data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23C4BDB5' fill-opacity='0.18'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E\")",
@@ -990,6 +1058,7 @@ function FullScreenChat({ team, currentUser, isStaff, onBack, onClose }: {
           <Send size={18} color="#fff" />
         </button>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
