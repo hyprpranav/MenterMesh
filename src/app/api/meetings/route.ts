@@ -397,3 +397,18 @@ export async function PATCH(req: NextRequest) {
     );
   }
 }
+
+export async function DELETE(req: NextRequest) {
+  try {
+    const { searchParams } = new URL(req.url);
+    const meetingId = searchParams.get("id");
+    if (!meetingId) {
+      return NextResponse.json({ error: "id is required" }, { status: 400 });
+    }
+    await adminDb.collection("scheduledMeetings").doc(meetingId).delete();
+    return NextResponse.json({ success: true });
+  } catch (err: any) {
+    return NextResponse.json({ error: err.message }, { status: 500 });
+  }
+}
+
