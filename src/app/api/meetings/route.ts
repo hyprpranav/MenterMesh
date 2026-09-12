@@ -83,7 +83,7 @@ export async function POST(req: NextRequest) {
 
     const docRef = await adminDb.collection("scheduledMeetings").add(cleanData);
 
-    // Notify invited participants
+    // Notify invited participants (Deterministic single notification)
     if (meetingData.participantIds && meetingData.participantIds.length > 0) {
       const title = `New Meeting Scheduled: ${meetingData.title}`;
       const message = `Hosted by ${meetingData.hostName} on ${meetingData.date} at ${meetingData.startTime} (${meetingData.expectedDuration} mins). Code: ${code}. You have been invited.`;
@@ -91,7 +91,8 @@ export async function POST(req: NextRequest) {
       for (const participantId of meetingData.participantIds) {
         if (participantId === meetingData.hostId) continue;
         try {
-          await adminDb.collection("notifications").add({
+          const notifId = `meeting_invite_${docRef.id}_${participantId}`;
+          await adminDb.collection("notifications").doc(notifId).set({
             recipientId: participantId,
             title,
             message,
@@ -100,14 +101,14 @@ export async function POST(req: NextRequest) {
             priority: "high",
             link: `/meet/${code}`,
             createdAt: FieldValue.serverTimestamp(),
-          });
+          }, { merge: true });
         } catch (e) {
           console.warn("Failed to notify participant via admin:", participantId, e);
         }
       }
     }
 
-    // Notify staff and master users
+    // Notify staff and master users (Deterministic single notification)
     try {
       const staffSnap = await adminDb
         .collection("users")
@@ -119,7 +120,8 @@ export async function POST(req: NextRequest) {
 
       for (const staffDoc of staffSnap.docs) {
         if (staffDoc.id === meetingData.hostId) continue;
-        await adminDb.collection("notifications").add({
+        const notifId = `meeting_live_${docRef.id}_${staffDoc.id}`;
+        await adminDb.collection("notifications").doc(notifId).set({
           recipientId: staffDoc.id,
           title: staffTitle,
           message: staffMsg,
@@ -128,7 +130,7 @@ export async function POST(req: NextRequest) {
           priority: "high",
           link: `/meet/${code}`,
           createdAt: FieldValue.serverTimestamp(),
-        });
+        }, { merge: true });
       }
     } catch (e) {
       console.warn("Failed to notify staff via admin:", e);
@@ -182,6 +184,7 @@ export async function PATCH(req: NextRequest) {
           ...updatedList[index],
           joined: true,
           joinTime: updatedList[index].joinTime || now,
+          photoUrl: participant.photoUrl || updatedList[index].photoUrl || "",
           status: "in_meeting",
         };
       } else {
@@ -189,6 +192,7 @@ export async function PATCH(req: NextRequest) {
           uid: participant.uid || "",
           name: participant.name || "Guest",
           email: participant.email || "",
+          photoUrl: participant.photoUrl || "",
           role: participant.role || "participant",
           invited: participant.invited ?? false,
           joined: true,
@@ -290,7 +294,7 @@ export async function PATCH(req: NextRequest) {
         updatedAt: FieldValue.serverTimestamp(),
       });
 
-      // Notify staff
+      // Notify staff (Deterministic single notification: exactly one notification per staff user)
       try {
         const staffSnap = await adminDb.collection("users").where("role", "in", ["staff", "master"]).get();
         const reviewTitle = `Meeting Ended & Report Ready: ${meeting.title}`;
@@ -298,7 +302,8 @@ export async function PATCH(req: NextRequest) {
         const reviewMsg = `Hosted by ${meeting.hostName}. ${presentCount} attended. Review attendance breakdown and approve.`;
 
         for (const staffDoc of staffSnap.docs) {
-          await adminDb.collection("notifications").add({
+          const notifId = `meeting_ended_${meetingId}_${staffDoc.id}`;
+          await adminDb.collection("notifications").doc(notifId).set({
             recipientId: staffDoc.id,
             title: reviewTitle,
             message: reviewMsg,
@@ -307,7 +312,7 @@ export async function PATCH(req: NextRequest) {
             priority: "high",
             link: `/meetings/live/${meetingId}/review`,
             createdAt: FieldValue.serverTimestamp(),
-          });
+          }, { merge: true });
         }
       } catch (err) {
         console.warn("Failed to notify staff via admin on end meeting:", err);
@@ -328,7 +333,8 @@ export async function PATCH(req: NextRequest) {
       try {
         const staffSnap = await adminDb.collection("users").where("role", "in", ["staff", "master"]).get();
         for (const staffDoc of staffSnap.docs) {
-          await adminDb.collection("notifications").add({
+          const notifId = `meeting_summary_${meetingId}_${staffDoc.id}`;
+          await adminDb.collection("notifications").doc(notifId).set({
             recipientId: staffDoc.id,
             title: "Meeting Report Submitted",
             message: `Meeting '${meeting.title}' report has been submitted by ${meeting.hostName} for review.`,
@@ -337,7 +343,7 @@ export async function PATCH(req: NextRequest) {
             priority: "high",
             link: `/meetings/live/${meetingId}/review`,
             createdAt: FieldValue.serverTimestamp(),
-          });
+          }, { merge: true });
         }
       } catch (err) {
         console.warn("Failed to notify staff about summary via admin:", err);

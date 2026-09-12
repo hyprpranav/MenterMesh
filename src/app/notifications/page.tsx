@@ -79,7 +79,20 @@ function NotificationsContent() {
         const bdayList = await getUpcomingBirthdays(user);
         const all = [...bdayList, ...dbList];
         all.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-        setNotifications(all);
+
+        // Deduplicate notifications so meeting and event duplicates never appear more than once
+        const seen = new Set<string>();
+        const uniqueNotifs: Notification[] = [];
+        for (const notif of all) {
+          const dedupKey = notif.link
+            ? `${notif.recipientId || user.uid}_${notif.link}_${notif.title}`
+            : `${notif.id || notif.title}_${notif.createdAt}`;
+          if (!seen.has(dedupKey)) {
+            seen.add(dedupKey);
+            uniqueNotifs.push(notif);
+          }
+        }
+        setNotifications(uniqueNotifs);
       } catch (err) { console.error(err); }
       finally { setLoading(false); }
     }

@@ -55,10 +55,12 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Avatar } from "@/components/ui/Avatar";
+import { Modal } from "@/components/ui/Modal";
 import { useToast } from "@/components/ui/ToastProvider";
 import { PostMeetingSummaryModal } from "@/components/meetings/PostMeetingSummaryModal";
 
 const REACTION_EMOJIS = ["👍", "❤️", "👏", "🎉", "🔥", "🚀", "💡"];
+const EMAIL_REGEX = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
 
 interface WaitingRoomRequest {
   id: string;
@@ -85,6 +87,7 @@ export default function MeetRoomPage() {
   const [joined, setJoined] = useState(false);
   const [guestName, setGuestName] = useState("");
   const [guestEmail, setGuestEmail] = useState("");
+  const [emailError, setEmailError] = useState<string | null>(null);
   const autoJoinedRef = useRef(false);
 
   // ── Waiting Room State for Non-Host / Guests ───────────────────
@@ -93,6 +96,7 @@ export default function MeetRoomPage() {
 
   // ── Hardware Media Streams & Device Permissions ────────────────
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
+  const [screenStream, setScreenStream] = useState<MediaStream | null>(null);
   const [isMicOn, setIsMicOn] = useState(true);
   const [isCamOn, setIsCamOn] = useState(true);
   const [isScreenSharing, setIsScreenSharing] = useState(false);
@@ -112,7 +116,8 @@ export default function MeetRoomPage() {
   const [chatMessages, setChatMessages] = useState<InMeetingChatMessage[]>([]);
   const [chatInput, setChatInput] = useState("");
 
-  // ── Host Controls & Summary Modal ──────────────────────────────
+  // ── Host Controls, Summary Modal & Leave Call Modal ────────────
+  const [showLeaveModal, setShowLeaveModal] = useState(false);
   const [showSummaryModal, setShowSummaryModal] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
   const [copiedCode, setCopiedCode] = useState(false);
@@ -121,6 +126,7 @@ export default function MeetRoomPage() {
 
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const prejoinVideoRef = useRef<HTMLVideoElement>(null);
+  const screenVideoRef = useRef<HTMLVideoElement>(null);
   const screenTrackRef = useRef<MediaStreamTrack | null>(null);
 
   const isHost = meeting?.hostId === user?.uid;
@@ -175,16 +181,30 @@ export default function MeetRoomPage() {
   // ── 2. Join Meeting Room Helper ─────────────────────────────────
   const doJoinMeeting = useCallback(
     async (targetMeetingId: string, meetingObj: ScheduledMeeting, asHost = false) => {
+      // Validate external / guest participants: only welcome if they provide valid name & email
+      if (!user) {
+        if (!guestName.trim() || guestName.trim().length < 2) {
+          error("Please enter your full name to join.");
+          return;
+        }
+        if (!guestEmail.trim() || !EMAIL_REGEX.test(guestEmail.trim())) {
+          error("A valid email address is required to enter this meeting.");
+          return;
+        }
+      }
+
       const isHostUser = asHost || meetingObj.hostId === user?.uid;
       const isCoHostUser = meetingObj.coHostIds?.includes(user?.uid || "");
-      const currentUserName = user?.name || guestName.trim() || "Guest Participant";
-      const currentUserEmail = user?.email || guestEmail.trim() || "guest@mentormesh.local";
+      const currentUserName = user?.name || guestName.trim();
+      const currentUserEmail = user?.email || guestEmail.trim();
+      const currentUserPhoto = user?.profilePhoto || user?.professionalPhoto || "";
 
-      // Record participant join in Firestore attendance
+      // Record participant join in Firestore attendance with profile photo
       await recordParticipantJoin(targetMeetingId, {
         uid: user?.uid || undefined,
         name: currentUserName,
         email: currentUserEmail,
+        photoUrl: currentUserPhoto,
         role: isHostUser ? "host" : isCoHostUser ? "co_host" : !user ? "external" : "participant",
         invited: true,
         joined: true,
@@ -193,7 +213,7 @@ export default function MeetRoomPage() {
       setSessionStartTime(new Date());
       setJoined(true);
     },
-    [user, guestName, guestEmail]
+    [user, guestName, guestEmail, error]
   );
 
   // ── 3. Load Meeting Details by 4-Digit Code or Document ID ───────
@@ -221,11 +241,18 @@ export default function MeetRoomPage() {
               const updated = { id: snap.id, ...snap.data() } as ScheduledMeeting;
               setMeeting(updated);
 
-              // If host ends meeting for all participants
+              // If host ends meeting for all participants: cleanly terminate and exit
               if (
                 (updated.status === "ended" || updated.status === "submitted_for_review") &&
                 updated.hostId !== user?.uid
               ) {
+                if (localStream) {
+                  localStream.getTracks().forEach((t) => t.stop());
+                }
+                if (screenTrackRef.current) {
+                  screenTrackRef.current.stop();
+                }
+                Object.values(peerConnections.current).forEach((pc) => pc.close());
                 success("The host has ended this meeting.");
                 router.push("/meetings");
               }
@@ -347,77 +374,100 @@ export default function MeetRoomPage() {
     }
   };
 
-  // ── 9. Real Screen Sharing (Entire Screen or Particular App) ────
+  // ── 9. Real Screen Sharing (Google Meet Showcase View) ─────────
   const toggleScreenShare = async () => {
     if (isScreenSharing) {
       if (screenTrackRef.current) {
         screenTrackRef.current.stop();
         screenTrackRef.current = null;
       }
-      // Revert back to camera stream
+      setScreenStream(null);
+      setIsScreenSharing(false);
+
+      // Revert back to camera stream if camera was on
       try {
-        const camStream = await navigator.mediaDevices.getUserMedia({ video: true });
-        const camTrack = camStream.getVideoTracks()[0];
-        if (localStream) {
-          const oldVideo = localStream.getVideoTracks()[0];
-          if (oldVideo) {
-            localStream.removeTrack(oldVideo);
-            oldVideo.stop();
+        if (isCamOn) {
+          const camStream = await navigator.mediaDevices.getUserMedia({ video: true });
+          const camTrack = camStream.getVideoTracks()[0];
+          if (localStream) {
+            const oldVideo = localStream.getVideoTracks()[0];
+            if (oldVideo) {
+              localStream.removeTrack(oldVideo);
+              oldVideo.stop();
+            }
+            localStream.addTrack(camTrack);
+            if (localVideoRef.current) localVideoRef.current.srcObject = localStream;
           }
-          localStream.addTrack(camTrack);
-          if (localVideoRef.current) localVideoRef.current.srcObject = localStream;
+          Object.values(peerConnections.current).forEach((pc) => {
+            const sender = pc.getSenders().find((s) => s.track?.kind === "video");
+            if (sender) sender.replaceTrack(camTrack);
+          });
         }
-        Object.values(peerConnections.current).forEach((pc) => {
-          const sender = pc.getSenders().find((s) => s.track?.kind === "video");
-          if (sender) sender.replaceTrack(camTrack);
-        });
       } catch (e) {
         console.error("Failed to restore camera after screen share:", e);
       }
-      setIsScreenSharing(false);
     } else {
       try {
-        success("Select Entire Screen or a specific Application Window to share.");
         const displayStream = await navigator.mediaDevices.getDisplayMedia({
           video: true,
           audio: true,
         });
         const displayTrack = displayStream.getVideoTracks()[0];
         screenTrackRef.current = displayTrack;
+        setScreenStream(displayStream);
+        setIsScreenSharing(true);
 
-        displayTrack.onended = () => {
-          toggleScreenShare();
-        };
-
-        if (localStream) {
-          const oldVideo = localStream.getVideoTracks()[0];
-          if (oldVideo) {
-            localStream.removeTrack(oldVideo);
-          }
-          localStream.addTrack(displayTrack);
-          if (localVideoRef.current) localVideoRef.current.srcObject = localStream;
+        if (screenVideoRef.current) {
+          screenVideoRef.current.srcObject = displayStream;
         }
 
-        // Replace track on all active WebRTC peer connections
+        displayTrack.onended = () => {
+          if (screenTrackRef.current) {
+            screenTrackRef.current.stop();
+            screenTrackRef.current = null;
+          }
+          setScreenStream(null);
+          setIsScreenSharing(false);
+        };
+
+        // Send screen track to peers
         Object.values(peerConnections.current).forEach((pc) => {
           const sender = pc.getSenders().find((s) => s.track?.kind === "video");
           if (sender) sender.replaceTrack(displayTrack);
         });
 
-        setIsScreenSharing(true);
-        success("Screen casting started.");
+        success("Screen sharing started in showcase view.");
       } catch (e) {
         console.warn("Screen share cancelled or denied:", e);
       }
     }
   };
 
+  // Bind screenStream to screenVideoRef whenever it updates
+  useEffect(() => {
+    if (screenVideoRef.current && screenStream) {
+      screenVideoRef.current.srcObject = screenStream;
+    }
+  }, [screenStream]);
+
   // ── 10. Participant Request Admission (Waiting Room Knock) ──────
   const handleRequestAdmission = async () => {
     if (!meeting || !actualMeetingId) return;
+
+    if (!user) {
+      if (!guestName.trim() || guestName.trim().length < 2) {
+        error("Please enter your name to request admission.");
+        return;
+      }
+      if (!guestEmail.trim() || !EMAIL_REGEX.test(guestEmail.trim())) {
+        error("A valid email address is required to enter this meeting.");
+        return;
+      }
+    }
+
     const participantId = user?.uid || `guest_${Date.now()}`;
-    const currentUserName = user?.name || guestName.trim() || "Guest Participant";
-    const currentUserEmail = user?.email || guestEmail.trim() || "guest@mentormesh.local";
+    const currentUserName = user?.name || guestName.trim();
+    const currentUserEmail = user?.email || guestEmail.trim();
 
     try {
       setWaitingStatus("waiting");
@@ -576,36 +626,58 @@ export default function MeetRoomPage() {
     setTimeout(() => setCopiedCode(false), 3000);
   };
 
-  // ── 16. Leave Meeting ───────────────────────────────────────────
-  const handleLeaveMeeting = async () => {
+  // ── 16. Leave Meeting Only (Keep Room Live for Everyone Else) ───
+  const handleLeaveMeetingOnly = async () => {
     if (localStream) {
       localStream.getTracks().forEach((t) => t.stop());
+      setLocalStream(null);
+    }
+    if (screenTrackRef.current) {
+      screenTrackRef.current.stop();
+      screenTrackRef.current = null;
+      setScreenStream(null);
+    }
+    Object.values(peerConnections.current).forEach((pc) => pc.close());
+
+    if (user?.uid || guestEmail.trim()) {
+      await recordParticipantLeave(actualMeetingId, user?.uid || guestEmail.trim());
     }
 
-    if (user?.uid) {
-      await recordParticipantLeave(actualMeetingId, user.uid);
-    }
-
+    setShowLeaveModal(false);
+    success("You have left the meeting. The room remains active and you can rejoin anytime.");
     router.push("/meetings");
   };
 
-  // ── 17. Host End Meeting -> Triggers Audit Submission & Modal ───
-  const handleEndMeeting = async () => {
+  // ── 17. Host End Meeting for All -> Closes Call, Submits Report ─
+  const handleEndMeetingForAll = async () => {
     if (!meeting) return;
-    if (!confirm("Are you sure you want to end this online meeting for all participants?")) {
-      return;
-    }
 
     try {
       if (localStream) {
         localStream.getTracks().forEach((t) => t.stop());
+        setLocalStream(null);
       }
+      if (screenTrackRef.current) {
+        screenTrackRef.current.stop();
+        screenTrackRef.current = null;
+        setScreenStream(null);
+      }
+      Object.values(peerConnections.current).forEach((pc) => pc.close());
 
       await endLiveMeeting(actualMeetingId, user?.uid || meeting.hostId);
+      setShowLeaveModal(false);
       setShowSummaryModal(true);
     } catch (err: any) {
       console.error("Error ending live meeting:", err);
       error(err.message || "Failed to end meeting.");
+    }
+  };
+
+  const handleCutCallClick = () => {
+    if (hasHostControls) {
+      setShowLeaveModal(true);
+    } else {
+      handleLeaveMeetingOnly();
     }
   };
 
@@ -762,23 +834,50 @@ export default function MeetRoomPage() {
 
               {/* Guest Inputs if unauthenticated */}
               {!user && (
-                <div className="space-y-3">
-                  <input
-                    type="text"
-                    required
-                    placeholder="Your Full Name *"
-                    value={guestName}
-                    onChange={(e) => setGuestName(e.target.value)}
-                    className="w-full bg-slate-950 border border-slate-800 text-white rounded-xl px-4 py-2.5 text-xs outline-none focus:border-blue-500"
-                  />
-                  <input
-                    type="email"
-                    required
-                    placeholder="Your Email Address *"
-                    value={guestEmail}
-                    onChange={(e) => setGuestEmail(e.target.value)}
-                    className="w-full bg-slate-950 border border-slate-800 text-white rounded-xl px-4 py-2.5 text-xs outline-none focus:border-blue-500"
-                  />
+                <div className="space-y-3 bg-slate-950/70 p-4 rounded-2xl border border-slate-800">
+                  <div>
+                    <label className="text-[11px] font-bold text-slate-300 mb-1 block">
+                      Your Full Name <span className="text-red-400">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="e.g. John Doe"
+                      value={guestName}
+                      onChange={(e) => setGuestName(e.target.value)}
+                      className="w-full bg-slate-900 border border-slate-700 text-white rounded-xl px-4 py-2.5 text-xs outline-none focus:border-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[11px] font-bold text-slate-300 mb-1 block">
+                      Email Address <span className="text-red-400">* (Verified for entry)</span>
+                    </label>
+                    <input
+                      type="email"
+                      required
+                      placeholder="e.g. yourname@gmail.com"
+                      value={guestEmail}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setGuestEmail(val);
+                        if (val.trim() && !EMAIL_REGEX.test(val.trim())) {
+                          setEmailError("Please enter a valid email format (name@example.com)");
+                        } else {
+                          setEmailError(null);
+                        }
+                      }}
+                      className={`w-full bg-slate-900 border ${
+                        emailError ? "border-red-500" : "border-slate-700"
+                      } text-white rounded-xl px-4 py-2.5 text-xs outline-none focus:border-blue-500`}
+                    />
+                    {emailError ? (
+                      <p className="text-[11px] text-red-400 mt-1 font-medium">{emailError}</p>
+                    ) : (
+                      <p className="text-[10px] text-slate-500 mt-1">
+                        Only participants with a valid email ID are permitted into this meeting.
+                      </p>
+                    )}
+                  </div>
                 </div>
               )}
 
@@ -797,7 +896,8 @@ export default function MeetRoomPage() {
                   <Button
                     variant="primary"
                     size="lg"
-                    className="w-full bg-blue-600 hover:bg-blue-700 py-3.5 text-sm font-bold shadow-lg shadow-blue-600/30 rounded-2xl"
+                    disabled={!user && (!guestName.trim() || !EMAIL_REGEX.test(guestEmail.trim()))}
+                    className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed py-3.5 text-sm font-bold shadow-lg shadow-blue-600/30 rounded-2xl"
                     onClick={() => doJoinMeeting(actualMeetingId, meeting)}
                   >
                     {isStaffOrAdmin ? "Join Meeting as Staff/Admin" : "Join Meeting Now"}
@@ -827,7 +927,8 @@ export default function MeetRoomPage() {
                       <Button
                         variant="primary"
                         size="md"
-                        className="w-full bg-amber-600 hover:bg-amber-700 text-slate-950 font-bold rounded-xl"
+                        disabled={!user && (!guestName.trim() || !EMAIL_REGEX.test(guestEmail.trim()))}
+                        className="w-full bg-amber-600 hover:bg-amber-700 disabled:opacity-50 disabled:cursor-not-allowed text-slate-950 font-bold rounded-xl"
                         onClick={handleRequestAdmission}
                       >
                         Ask Host to Join
@@ -979,109 +1080,205 @@ export default function MeetRoomPage() {
           `}</style>
         </div>
 
-        {/* Video Tiles Grid */}
-        <div className="flex-1 p-3 sm:p-5 flex items-center justify-center overflow-y-auto">
-          <div className="w-full h-full max-w-6xl max-h-[82vh] grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 gap-4 items-center justify-center">
-            
-            {/* Local Video Tile */}
-            <div className="relative w-full h-full min-h-[240px] bg-slate-900 rounded-3xl overflow-hidden border-2 border-slate-700/90 shadow-2xl flex items-center justify-center">
-              <video
-                ref={localVideoRef}
-                autoPlay
-                playsInline
-                muted
-                className={`w-full h-full object-cover ${!isCamOn ? "hidden" : ""}`}
-              />
+        {/* Main Center Video Area: Spotlight Presentation Showcase or Standard Grid */}
+        <div className="flex-1 p-3 sm:p-5 flex items-center justify-center overflow-hidden">
+          {isScreenSharing ? (
+            <div className="w-full h-full max-h-[82vh] flex flex-col lg:flex-row gap-4 items-stretch justify-center">
+              
+              {/* LARGE GOOGLE MEET SCREEN PRESENTATION SHOWCASE (Dominates ~75-80%) */}
+              <div className="flex-1 relative bg-slate-950 rounded-3xl overflow-hidden border-2 border-blue-500/60 shadow-2xl flex flex-col items-center justify-center min-h-[300px]">
+                <video
+                  ref={screenVideoRef}
+                  autoPlay
+                  playsInline
+                  muted
+                  className="w-full h-full object-contain bg-slate-950 rounded-2xl"
+                />
 
-              {!isCamOn && (
-                <div className="flex flex-col items-center gap-2">
-                  <Avatar
-                    name={user?.name || "You"}
-                    photoUrl={user?.profilePhoto}
-                    size="lg"
-                    className="w-20 h-20 text-2xl ring-4 ring-slate-800"
-                  />
-                  <p className="text-slate-400 text-xs font-semibold">Camera Off</p>
+                {/* Google Meet Style Showcase Header / Overlay Banner */}
+                <div className="absolute top-4 left-4 right-4 flex items-center justify-between z-20 pointer-events-none">
+                  <div className="flex items-center gap-2.5 bg-slate-900/95 backdrop-blur-md px-4 py-2.5 rounded-2xl border border-blue-500/50 shadow-2xl pointer-events-auto">
+                    <Monitor size={20} className="text-blue-400 animate-pulse shrink-0" />
+                    <div>
+                      <p className="text-xs font-bold text-white flex items-center gap-2">
+                        <span>You are presenting to everyone</span>
+                        <span className="w-2 h-2 rounded-full bg-blue-500 animate-ping" />
+                      </p>
+                      <p className="text-[11px] text-slate-400">Your screen is visible to all participants in this room</p>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={toggleScreenShare}
+                    className="pointer-events-auto flex items-center gap-2 bg-red-600 hover:bg-red-700 text-white text-xs font-bold px-4 py-2.5 rounded-xl shadow-xl shadow-red-600/30 transition cursor-pointer"
+                    title="Stop Screen Casting"
+                  >
+                    <Monitor size={15} />
+                    <span>Stop presenting</span>
+                  </button>
                 </div>
-              )}
-
-              {/* Bottom tag info */}
-              <div className="absolute bottom-3.5 left-3.5 flex items-center gap-2 bg-slate-950/80 backdrop-blur-md px-3.5 py-1.5 rounded-full text-xs font-bold border border-slate-700/80">
-                <span>{user?.name || "You"} (You)</span>
-                {isHost && <span className="text-[10px] text-amber-400">★ Host</span>}
-                {!isMicOn && <MicOff size={13} className="text-red-400 ml-1" />}
               </div>
 
-              {raisedHand && (
-                <div className="absolute top-3.5 right-3.5 bg-amber-500 text-slate-950 px-3 py-1 rounded-full text-xs font-black flex items-center gap-1.5 shadow-lg animate-bounce">
-                  <Hand size={14} />
-                  Hand Raised
+              {/* SIDE CAROUSEL STRIP: Participants with Profile Photos */}
+              <div className="w-full lg:w-72 flex lg:flex-col gap-3 overflow-x-auto lg:overflow-y-auto shrink-0 max-h-[82vh] p-1">
+                {/* Local participant card */}
+                <div className="relative w-48 lg:w-full aspect-video bg-slate-900 rounded-2xl overflow-hidden border border-slate-700 shadow-md flex items-center justify-center shrink-0">
+                  <video
+                    ref={localVideoRef}
+                    autoPlay
+                    playsInline
+                    muted
+                    className={`w-full h-full object-cover ${!isCamOn ? "hidden" : ""}`}
+                  />
+                  {!isCamOn && (
+                    <div className="flex flex-col items-center gap-1.5">
+                      <Avatar
+                        name={user?.name || "You"}
+                        photoUrl={user?.profilePhoto || user?.professionalPhoto}
+                        size="md"
+                        className="w-12 h-12 text-base ring-2 ring-slate-700"
+                      />
+                      <span className="text-[10px] text-slate-400 font-medium">Camera off</span>
+                    </div>
+                  )}
+                  <div className="absolute bottom-2 left-2 flex items-center gap-1.5 bg-slate-950/80 backdrop-blur px-2.5 py-1 rounded-full text-[11px] font-bold border border-slate-700">
+                    <span className="truncate max-w-[90px]">{user?.name || "You"} (You)</span>
+                    {!isMicOn && <MicOff size={11} className="text-red-400" />}
+                  </div>
                 </div>
-              )}
-            </div>
 
-            {/* Remote Peer Tiles / Attendees */}
-            {meeting.attendance
-              ?.filter((p) => p.uid !== user?.uid && p.joined)
-              .slice(0, 3)
-              .map((peer, idx) => (
-                <div
-                  key={peer.uid || idx}
-                  className="relative w-full h-full min-h-[240px] bg-slate-900 rounded-3xl overflow-hidden border-2 border-slate-800 shadow-2xl flex items-center justify-center"
-                >
+                {/* Remote peer cards */}
+                {meeting.attendance
+                  ?.filter((p) => p.uid !== user?.uid && p.joined)
+                  .map((peer, idx) => (
+                    <div
+                      key={peer.uid || idx}
+                      className="relative w-48 lg:w-full aspect-video bg-slate-900 rounded-2xl overflow-hidden border border-slate-800 shadow-md flex items-center justify-center shrink-0"
+                    >
+                      <div className="flex flex-col items-center gap-1.5">
+                        <Avatar
+                          name={peer.name}
+                          photoUrl={peer.photoUrl || (peer.uid === user?.uid ? user?.profilePhoto : undefined)}
+                          size="md"
+                          className="w-12 h-12 text-base ring-2 ring-slate-700 bg-slate-800 text-white"
+                        />
+                        <span className="text-[11px] text-slate-300 font-bold truncate max-w-[120px]">{peer.name}</span>
+                        <span className="text-[9px] text-slate-500 capitalize">{peer.role}</span>
+                      </div>
+                      <div className="absolute bottom-2 left-2 flex items-center gap-1.5 bg-slate-950/80 backdrop-blur px-2.5 py-1 rounded-full text-[11px] font-bold border border-slate-700">
+                        <span className="truncate max-w-[90px]">{peer.name}</span>
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                      </div>
+                    </div>
+                  ))}
+              </div>
+
+            </div>
+          ) : (
+            <div className="w-full h-full max-w-6xl max-h-[82vh] grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 gap-4 items-center justify-center">
+              
+              {/* Local Video Tile */}
+              <div className="relative w-full h-full min-h-[240px] bg-slate-900 rounded-3xl overflow-hidden border-2 border-slate-700/90 shadow-2xl flex items-center justify-center">
+                <video
+                  ref={localVideoRef}
+                  autoPlay
+                  playsInline
+                  muted
+                  className={`w-full h-full object-cover ${!isCamOn ? "hidden" : ""}`}
+                />
+
+                {!isCamOn && (
                   <div className="flex flex-col items-center gap-2">
                     <Avatar
-                      name={peer.name}
+                      name={user?.name || "You"}
+                      photoUrl={user?.profilePhoto || user?.professionalPhoto}
                       size="lg"
-                      className="w-20 h-20 text-2xl ring-4 ring-slate-800 bg-slate-800 text-white"
+                      className="w-20 h-20 text-2xl ring-4 ring-slate-800"
                     />
-                    <p className="text-slate-300 text-xs font-bold">{peer.name}</p>
-                    <span className="text-[10px] text-slate-500 capitalize">{peer.role}</span>
+                    <p className="text-slate-400 text-xs font-semibold">Camera Off</p>
                   </div>
+                )}
 
-                  <div className="absolute bottom-3.5 left-3.5 flex items-center gap-2 bg-slate-950/80 backdrop-blur-md px-3.5 py-1.5 rounded-full text-xs font-bold border border-slate-700/80">
-                    <span>{peer.name}</span>
-                    <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                {/* Bottom tag info */}
+                <div className="absolute bottom-3.5 left-3.5 flex items-center gap-2 bg-slate-950/80 backdrop-blur-md px-3.5 py-1.5 rounded-full text-xs font-bold border border-slate-700/80">
+                  <span>{user?.name || "You"} (You)</span>
+                  {isHost && <span className="text-[10px] text-amber-400">★ Host</span>}
+                  {!isMicOn && <MicOff size={13} className="text-red-400 ml-1" />}
+                </div>
+
+                {raisedHand && (
+                  <div className="absolute top-3.5 right-3.5 bg-amber-500 text-slate-950 px-3 py-1 rounded-full text-xs font-black flex items-center gap-1.5 shadow-lg animate-bounce">
+                    <Hand size={14} />
+                    Hand Raised
                   </div>
-                </div>
-              ))}
-
-            {/* Placeholder if host is alone in room */}
-            {(!meeting.attendance || meeting.attendance.filter((p) => p.uid !== user?.uid && p.joined).length === 0) && (
-              <div className="w-full h-full min-h-[240px] bg-slate-900/50 rounded-3xl border-2 border-dashed border-slate-800 flex flex-col items-center justify-center p-6 text-center space-y-3">
-                <div className="w-12 h-12 rounded-2xl bg-slate-800 flex items-center justify-center text-slate-400">
-                  <Users size={24} />
-                </div>
-                <div>
-                  <h4 className="text-sm font-bold text-white">Waiting for participants to join</h4>
-                  <p className="text-xs text-slate-400 mt-1 max-w-xs">
-                    Share the 4-digit code <strong className="text-blue-400 font-mono">{meetingCodeDisplay}</strong> or copy the room link.
-                  </p>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    icon={<Copy size={13} />}
-                    onClick={handleCopyCode}
-                    className="text-xs text-slate-300 hover:text-white border-slate-700 rounded-xl"
-                  >
-                    Copy Code ({meetingCodeDisplay})
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    icon={<Copy size={13} />}
-                    onClick={handleCopyLink}
-                    className="text-xs text-slate-300 hover:text-white border-slate-700 rounded-xl"
-                  >
-                    Copy URL
-                  </Button>
-                </div>
+                )}
               </div>
-            )}
 
-          </div>
+              {/* Remote Peer Tiles / Attendees with Profile Photos */}
+              {meeting.attendance
+                ?.filter((p) => p.uid !== user?.uid && p.joined)
+                .slice(0, 3)
+                .map((peer, idx) => (
+                  <div
+                    key={peer.uid || idx}
+                    className="relative w-full h-full min-h-[240px] bg-slate-900 rounded-3xl overflow-hidden border-2 border-slate-800 shadow-2xl flex items-center justify-center"
+                  >
+                    <div className="flex flex-col items-center gap-2">
+                      <Avatar
+                        name={peer.name}
+                        photoUrl={peer.photoUrl || (peer.uid === user?.uid ? user?.profilePhoto : undefined)}
+                        size="lg"
+                        className="w-20 h-20 text-2xl ring-4 ring-slate-800 bg-slate-800 text-white"
+                      />
+                      <p className="text-slate-300 text-xs font-bold">{peer.name}</p>
+                      <span className="text-[10px] text-slate-500 capitalize">{peer.role}</span>
+                    </div>
+
+                    <div className="absolute bottom-3.5 left-3.5 flex items-center gap-2 bg-slate-950/80 backdrop-blur-md px-3.5 py-1.5 rounded-full text-xs font-bold border border-slate-700/80">
+                      <span>{peer.name}</span>
+                      <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                    </div>
+                  </div>
+                ))}
+
+              {/* Placeholder if host is alone in room */}
+              {(!meeting.attendance || meeting.attendance.filter((p) => p.uid !== user?.uid && p.joined).length === 0) && (
+                <div className="w-full h-full min-h-[240px] bg-slate-900/50 rounded-3xl border-2 border-dashed border-slate-800 flex flex-col items-center justify-center p-6 text-center space-y-3">
+                  <div className="w-12 h-12 rounded-2xl bg-slate-800 flex items-center justify-center text-slate-400">
+                    <Users size={24} />
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-bold text-white">Waiting for participants to join</h4>
+                    <p className="text-xs text-slate-400 mt-1 max-w-xs">
+                      Share the 4-digit code <strong className="text-blue-400 font-mono">{meetingCodeDisplay}</strong> or copy the room link.
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      icon={<Copy size={13} />}
+                      onClick={handleCopyCode}
+                      className="text-xs text-slate-300 hover:text-white border-slate-700 rounded-xl"
+                    >
+                      Copy Code ({meetingCodeDisplay})
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      icon={<Copy size={13} />}
+                      onClick={handleCopyLink}
+                      className="text-xs text-slate-300 hover:text-white border-slate-700 rounded-xl"
+                    >
+                      Copy URL
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+            </div>
+          )}
         </div>
 
         {/* ── SIDE PANEL: CHAT DRAWER ──────────────────────────── */}
@@ -1167,7 +1364,12 @@ export default function MeetRoomPage() {
                   className="flex items-center justify-between p-2.5 rounded-xl bg-slate-800/50 border border-slate-700/50"
                 >
                   <div className="flex items-center gap-2.5 min-w-0">
-                    <Avatar name={p.name} size="sm" className="w-7 h-7 text-xs bg-slate-700" />
+                    <Avatar
+                      name={p.name}
+                      photoUrl={p.photoUrl || (p.uid === user?.uid ? user?.profilePhoto : undefined)}
+                      size="sm"
+                      className="w-7 h-7 text-xs bg-slate-700"
+                    />
                     <div className="min-w-0">
                       <p className="text-xs font-bold text-slate-200 truncate">{p.name}</p>
                       <span className="text-[10px] text-slate-400 capitalize">
@@ -1270,7 +1472,7 @@ export default function MeetRoomPage() {
                     <button
                       type="button"
                       onClick={handleAdmitAll}
-                      className="text-[11px] font-bold text-emerald-400 hover:text-emerald-300 bg-emerald-950/50 hover:bg-emerald-900/60 border border-emerald-800/60 px-2.5 py-1 rounded-lg transition cursor-pointer"
+                      className="text-[11px] text-blue-400 hover:text-blue-300 font-bold cursor-pointer"
                     >
                       Admit All ({waitingList.length})
                     </button>
@@ -1278,21 +1480,19 @@ export default function MeetRoomPage() {
                 </div>
 
                 {waitingList.length === 0 ? (
-                  <div className="p-4 bg-slate-950/40 rounded-xl border border-slate-800 text-center">
-                    <p className="text-xs text-slate-500">No participants currently in the waiting room.</p>
-                  </div>
+                  <p className="text-xs text-slate-500 italic py-2">No participants currently knocking.</p>
                 ) : (
                   <div className="space-y-2">
                     {waitingList.map((req) => (
                       <div
                         key={req.id}
-                        className="p-3 bg-slate-800/80 border border-slate-700 rounded-xl flex items-center justify-between gap-2"
+                        className="flex items-center justify-between p-2.5 rounded-xl bg-slate-800 border border-amber-800/40 animate-in fade-in"
                       >
                         <div className="min-w-0">
                           <p className="text-xs font-bold text-white truncate">{req.name}</p>
                           <p className="text-[10px] text-slate-400 truncate">{req.email}</p>
                         </div>
-                        <div className="flex items-center gap-1 shrink-0">
+                        <div className="flex items-center gap-1.5 shrink-0 ml-2">
                           <button
                             type="button"
                             onClick={() => handleAdmitParticipant(req)}
@@ -1336,10 +1536,10 @@ export default function MeetRoomPage() {
                   variant="danger"
                   size="sm"
                   icon={<PhoneOff size={14} />}
-                  onClick={handleEndMeeting}
+                  onClick={handleCutCallClick}
                   className="w-full text-xs bg-red-600 hover:bg-red-700 rounded-xl justify-start font-bold shadow-md shadow-red-600/20"
                 >
-                  End Meeting & Submit Report
+                  End or Leave Meeting
                 </Button>
               </div>
 
@@ -1511,20 +1711,20 @@ export default function MeetRoomPage() {
               variant="danger"
               size="md"
               icon={<PhoneOff size={16} />}
-              onClick={handleEndMeeting}
+              onClick={handleCutCallClick}
               className="bg-red-600 hover:bg-red-700 font-bold px-4 py-2.5 rounded-2xl shadow-md shadow-red-600/20 text-xs sm:text-sm"
             >
-              End Meeting
+              End / Leave Call
             </Button>
           ) : (
             <Button
               variant="danger"
               size="md"
               icon={<LogOut size={16} />}
-              onClick={handleLeaveMeeting}
+              onClick={handleLeaveMeetingOnly}
               className="bg-red-600/80 hover:bg-red-600 font-bold px-4 py-2.5 rounded-2xl text-xs sm:text-sm"
             >
-              Leave
+              Leave Call
             </Button>
           )}
         </div>
@@ -1542,6 +1742,82 @@ export default function MeetRoomPage() {
             router.push("/meetings");
           }}
         />
+      )}
+
+      {/* ── 4. HOST LEAVE OR END MEETING MODAL ────────────────── */}
+      {showLeaveModal && (
+        <Modal
+          open={showLeaveModal}
+          onClose={() => setShowLeaveModal(false)}
+          title="Leave or End Meeting"
+        >
+          <div className="space-y-4 py-2">
+            <p className="text-xs text-slate-400">
+              You are hosting <strong className="text-white">{meeting.title}</strong>. Choose how you want to exit this call:
+            </p>
+
+            <div className="grid grid-cols-1 gap-3 pt-1">
+              {/* Option 1: End Meeting for Everyone */}
+              <button
+                type="button"
+                onClick={handleEndMeetingForAll}
+                className="w-full text-left p-4 rounded-2xl bg-red-950/40 hover:bg-red-950/70 border border-red-800/80 transition-all flex items-start gap-3.5 group cursor-pointer shadow-sm"
+              >
+                <div className="w-10 h-10 rounded-xl bg-red-600/20 group-hover:bg-red-600 text-red-400 group-hover:text-white flex items-center justify-center shrink-0 transition-colors">
+                  <PhoneOff size={20} />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-sm font-bold text-white group-hover:text-red-300 transition-colors">
+                      End Meeting for All
+                    </h4>
+                    <span className="text-[10px] font-bold text-red-400 bg-red-950 px-2 py-0.5 rounded border border-red-800">
+                      Concludes Session
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-400 mt-1 leading-relaxed">
+                    Disconnect all participants immediately, conclude the call, compile attendance duration records, and submit the meeting report for review.
+                  </p>
+                </div>
+              </button>
+
+              {/* Option 2: Leave Meeting Only */}
+              <button
+                type="button"
+                onClick={handleLeaveMeetingOnly}
+                className="w-full text-left p-4 rounded-2xl bg-slate-800/50 hover:bg-slate-800 border border-slate-700 transition-all flex items-start gap-3.5 group cursor-pointer shadow-sm"
+              >
+                <div className="w-10 h-10 rounded-xl bg-blue-600/20 group-hover:bg-blue-600 text-blue-400 group-hover:text-white flex items-center justify-center shrink-0 transition-colors">
+                  <LogOut size={20} />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-sm font-bold text-white group-hover:text-blue-300 transition-colors">
+                      Leave Meeting Only
+                    </h4>
+                    <span className="text-[10px] font-bold text-blue-400 bg-blue-950 px-2 py-0.5 rounded border border-blue-800">
+                      Room Remains Live
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-400 mt-1 leading-relaxed">
+                    Leave the call yourself. The meeting will remain moving and live so participants can continue or members can cut and come later.
+                  </p>
+                </div>
+              </button>
+            </div>
+
+            <div className="pt-3 border-t border-slate-800 flex justify-end">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setShowLeaveModal(false)}
+                className="text-xs text-slate-400 hover:text-white"
+              >
+                Cancel & Stay in Call
+              </Button>
+            </div>
+          </div>
+        </Modal>
       )}
 
     </div>

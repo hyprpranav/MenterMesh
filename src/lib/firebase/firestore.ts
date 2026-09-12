@@ -935,14 +935,15 @@ export async function createScheduledMeeting(
     updatedAt: serverTimestamp(),
   }));
 
-  // Automatically trigger notifications to all invited students
+  // Automatically trigger notifications to all invited students (deterministic single notification)
   if (data.participantIds && data.participantIds.length > 0) {
     const title = `New Meeting Scheduled: ${data.title}`;
     const message = `Hosted by ${data.hostName} on ${data.date} at ${data.startTime} (${data.expectedDuration} mins). Code: ${code}. You have been invited.`;
     for (const participantId of data.participantIds) {
       if (participantId === data.hostId) continue;
       try {
-        await addDoc(collection(db, "notifications"), {
+        const notifDocId = `meeting_invite_${ref.id}_${participantId}`;
+        await setDoc(doc(db, "notifications", notifDocId), {
           recipientId: participantId,
           title,
           message,
@@ -951,7 +952,7 @@ export async function createScheduledMeeting(
           priority: "high",
           link: `/meet/${code}`,
           createdAt: serverTimestamp(),
-        });
+        }, { merge: true });
       } catch (err) {
         console.warn("Failed to notify participant", participantId, err);
       }
@@ -967,7 +968,8 @@ export async function createScheduledMeeting(
 
     for (const staffDoc of staffSnap.docs) {
       if (staffDoc.id === data.hostId) continue;
-      await addDoc(collection(db, "notifications"), {
+      const notifDocId = `meeting_live_${ref.id}_${staffDoc.id}`;
+      await setDoc(doc(db, "notifications", notifDocId), {
         recipientId: staffDoc.id,
         title: staffTitle,
         message: staffMsg,
@@ -976,7 +978,7 @@ export async function createScheduledMeeting(
         priority: "high",
         link: `/meet/${code}`,
         createdAt: serverTimestamp(),
-      });
+      }, { merge: true });
     }
   } catch (err) {
     console.warn("Failed to notify staff/master users of new meeting:", err);
@@ -1152,6 +1154,7 @@ export async function recordParticipantJoin(
         ...updatedList[index],
         joined: true,
         joinTime: updatedList[index].joinTime || now,
+        photoUrl: participant.photoUrl || updatedList[index].photoUrl || "",
         status: "in_meeting",
       };
     } else {
@@ -1160,6 +1163,7 @@ export async function recordParticipantJoin(
         uid: participant.uid || "",
         name: participant.name || "Guest",
         email: participant.email || "",
+        photoUrl: participant.photoUrl || "",
         role: (participant.role as any) || "participant",
         invited: participant.invited ?? false,
         joined: true,
@@ -1323,7 +1327,8 @@ export async function endLiveMeeting(meetingId: string, hostId: string): Promise
       const reviewMsg = `Hosted by ${meeting.hostName}. ${presentCount} attended. Review attendance breakdown and approve.`;
 
       for (const staffDoc of staffSnap.docs) {
-        await addDoc(collection(db, "notifications"), {
+        const notifDocId = `meeting_ended_${meetingId}_${staffDoc.id}`;
+        await setDoc(doc(db, "notifications", notifDocId), {
           recipientId: staffDoc.id,
           title: reviewTitle,
           message: reviewMsg,
@@ -1332,7 +1337,7 @@ export async function endLiveMeeting(meetingId: string, hostId: string): Promise
           priority: "high",
           link: `/meetings/live/${meetingId}/review`,
           createdAt: serverTimestamp(),
-        });
+        }, { merge: true });
       }
     } catch (err) {
       console.warn("Failed to notify staff/master users of completed meeting report:", err);
@@ -1386,7 +1391,8 @@ export async function submitPostMeetingSummary(
         query(collection(db, "users"), where("role", "in", ["staff", "master"]))
       );
       for (const d of staffAndMasters.docs) {
-        await addDoc(collection(db, "notifications"), {
+        const notifDocId = `meeting_summary_${meetingId}_${d.id}`;
+        await setDoc(doc(db, "notifications", notifDocId), {
           recipientId: d.id,
           title: "Meeting Report Submitted",
           message: `Meeting '${meeting.title}' report has been submitted by ${meeting.hostName} for review.`,
@@ -1395,7 +1401,7 @@ export async function submitPostMeetingSummary(
           priority: "high",
           link: `/meetings/live/${meetingId}/review`,
           createdAt: now,
-        });
+        }, { merge: true });
       }
     } catch (err) {
       console.warn("Failed to notify staff about meeting summary", err);

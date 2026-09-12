@@ -308,6 +308,7 @@ export interface LiveMeetingParticipant {
   uid?: string;
   name: string;
   email: string;
+  photoUrl?: string;
   role: LiveMeetingParticipantRole;
   invited: boolean;
   joined: boolean;
