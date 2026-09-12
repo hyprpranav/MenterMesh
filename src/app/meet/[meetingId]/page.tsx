@@ -111,7 +111,7 @@ function RemoteParticipantCard({
   }, [stream]);
 
   return (
-    <div className="relative w-full h-full min-h-[220px] bg-slate-900 rounded-3xl overflow-hidden border-2 border-slate-800 shadow-2xl flex items-center justify-center group transition-all">
+    <div className="relative w-full aspect-video bg-slate-900 rounded-3xl overflow-hidden border-2 border-slate-800 shadow-2xl flex items-center justify-center group transition-all">
       <video
         ref={videoRef}
         autoPlay
@@ -202,15 +202,17 @@ export default function MeetRoomPage() {
   // ── Helper to distinguish current user vs remote peers ─────────
   const isMe = useCallback(
     (p: LiveMeetingParticipant) => {
-      if (mySessionIdRef.current && p.sessionId) {
-        return p.sessionId === mySessionIdRef.current;
-      }
-      if (p.uid && user?.uid) {
-        return p.uid === user.uid;
-      }
+      // 1. If UID matches, this is definitively the current user
+      if (user?.uid && p.uid && p.uid === user.uid) return true;
+      // 2. If email matches, this is definitively the current user
+      if (user?.email && p.email && user.email.toLowerCase() === p.email.toLowerCase()) return true;
+      // 3. Match by active sessionId
+      if (mySessionIdRef.current && p.sessionId && p.sessionId === mySessionIdRef.current) return true;
+      // 4. If guest / unauthenticated, match by guest email
+      if (!user && guestEmail && p.email && guestEmail.toLowerCase() === p.email.toLowerCase()) return true;
       return false;
     },
-    [user?.uid]
+    [user?.uid, user?.email, guestEmail]
   );
 
   const remoteParticipants = (meeting?.attendance || []).filter(
@@ -402,17 +404,59 @@ export default function MeetRoomPage() {
         throw new Error("Your browser does not support WebRTC media access.");
       }
 
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: true,
-        audio: true,
-      });
+      let stream: MediaStream | null = null;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            width: { ideal: 1280 },
+            height: { ideal: 720 },
+            facingMode: "user",
+          },
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true,
+          },
+        });
+      } catch (comboErr) {
+        console.warn("Combined media request failed, trying separate fallback...", comboErr);
+        let vTrack: MediaStreamTrack | null = null;
+        let aTrack: MediaStreamTrack | null = null;
+        try {
+          const vStream = await navigator.mediaDevices.getUserMedia({
+            video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: "user" },
+          });
+          vTrack = vStream.getVideoTracks()[0] || null;
+        } catch (vErr) {
+          console.warn("Video-only access failed:", vErr);
+        }
+        try {
+          const aStream = await navigator.mediaDevices.getUserMedia({
+            audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+          });
+          aTrack = aStream.getAudioTracks()[0] || null;
+        } catch (aErr) {
+          console.warn("Audio-only access failed:", aErr);
+        }
+
+        if (vTrack || aTrack) {
+          stream = new MediaStream();
+          if (vTrack) stream.addTrack(vTrack);
+          if (aTrack) stream.addTrack(aTrack);
+        } else {
+          throw comboErr;
+        }
+      }
+
+      const hasVideo = stream.getVideoTracks().length > 0;
+      const hasAudio = stream.getAudioTracks().length > 0;
 
       setLocalStream(stream);
-      setIsCamOn(true);
-      setIsMicOn(true);
+      setIsCamOn(hasVideo);
+      setIsMicOn(hasAudio);
       setPermissionError(null);
 
-      if (prejoinVideoRef.current) {
+      if (prejoinVideoRef.current && hasVideo) {
         prejoinVideoRef.current.srcObject = stream;
       }
       return stream;
@@ -532,16 +576,7 @@ export default function MeetRoomPage() {
           }
         );
 
-        // AUTO-JOIN FOR HOST:
-        // When host starts an instant meeting or enters their own live meeting, host ALONE joins immediately!
-        if (
-          user?.uid === data.hostId &&
-          data.status === "live" &&
-          !autoJoinedRef.current
-        ) {
-          autoJoinedRef.current = true;
-          await doJoinMeeting(data.id, data, true);
-        }
+        // Google Meet Flow: Host and participants land on the pre-join lobby card to check camera & mic before entering
 
         // If meeting already completed and host needs to submit report
         if (data.status === "summary_required" && data.hostId === user?.uid) {
@@ -582,12 +617,19 @@ export default function MeetRoomPage() {
     }
   }, [joined, initUserMedia]);
 
+  // Bind local stream to pre-join video preview element before entering
+  useEffect(() => {
+    if (!joined && prejoinVideoRef.current && localStream && isCamOn) {
+      prejoinVideoRef.current.srcObject = localStream;
+    }
+  }, [joined, localStream, isCamOn]);
+
   // Bind local stream to in-room video element once joined
   useEffect(() => {
-    if (joined && localVideoRef.current && localStream) {
+    if (joined && localVideoRef.current && localStream && isCamOn) {
       localVideoRef.current.srcObject = localStream;
     }
-  }, [joined, localStream]);
+  }, [joined, localStream, isCamOn]);
 
   // Clean up media tracks on unmount
   useEffect(() => {
@@ -624,22 +666,65 @@ export default function MeetRoomPage() {
   }, [actualMeetingId, hasHostControls]);
 
   // ── 7. Toggle Microphone ────────────────────────────────────────
-  const toggleMic = () => {
-    if (!localStream) return;
+  const toggleMic = async () => {
+    if (!localStream) {
+      await initUserMedia();
+      return;
+    }
     const audioTrack = localStream.getAudioTracks()[0];
     if (audioTrack) {
       audioTrack.enabled = !audioTrack.enabled;
       setIsMicOn(audioTrack.enabled);
+    } else {
+      try {
+        const micStream = await navigator.mediaDevices.getUserMedia({
+          audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+        });
+        const newTrack = micStream.getAudioTracks()[0];
+        localStream.addTrack(newTrack);
+        setIsMicOn(true);
+        Object.values(peerConnections.current).forEach((pc) => {
+          const sender = pc.getSenders().find((s) => s.track?.kind === "audio");
+          if (sender) sender.replaceTrack(newTrack);
+          else pc.addTrack(newTrack, localStream);
+        });
+      } catch (err) {
+        console.warn("Could not acquire microphone track:", err);
+      }
     }
   };
 
   // ── 8. Toggle Camera ────────────────────────────────────────────
-  const toggleCam = () => {
-    if (!localStream) return;
+  const toggleCam = async () => {
+    if (!localStream) {
+      await initUserMedia();
+      return;
+    }
     const videoTrack = localStream.getVideoTracks()[0];
     if (videoTrack) {
       videoTrack.enabled = !videoTrack.enabled;
       setIsCamOn(videoTrack.enabled);
+    } else {
+      try {
+        const camStream = await navigator.mediaDevices.getUserMedia({
+          video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: "user" },
+        });
+        const newTrack = camStream.getVideoTracks()[0];
+        localStream.addTrack(newTrack);
+        setIsCamOn(true);
+        if (joined && localVideoRef.current) {
+          localVideoRef.current.srcObject = localStream;
+        } else if (!joined && prejoinVideoRef.current) {
+          prejoinVideoRef.current.srcObject = localStream;
+        }
+        Object.values(peerConnections.current).forEach((pc) => {
+          const sender = pc.getSenders().find((s) => s.track?.kind === "video");
+          if (sender) sender.replaceTrack(newTrack);
+          else pc.addTrack(newTrack, localStream);
+        });
+      } catch (err) {
+        console.warn("Could not acquire camera track:", err);
+      }
     }
   };
 
@@ -1036,7 +1121,7 @@ export default function MeetRoomPage() {
                   playsInline
                   muted
                   style={{ transform: "scaleX(-1)" }}
-                  className={`w-full h-full object-cover -scale-x-1 ${!isCamOn ? "hidden" : ""}`}
+                  className={`w-full h-full object-cover ${!isCamOn ? "hidden" : ""}`}
                 />
 
                 {!isCamOn && (
@@ -1183,20 +1268,22 @@ export default function MeetRoomPage() {
                   <Button
                     variant="primary"
                     size="lg"
-                    className="w-full bg-blue-600 hover:bg-blue-700 py-3.5 text-sm font-bold shadow-lg shadow-blue-600/30 rounded-2xl"
+                    className="w-full bg-blue-600 hover:bg-blue-700 py-3.5 text-sm font-bold shadow-lg shadow-blue-600/30 rounded-2xl flex items-center justify-center gap-2"
                     onClick={() => doJoinMeeting(actualMeetingId, meeting, true)}
                   >
-                    Start & Join as Host
+                    <VideoIcon size={18} />
+                    <span>{meeting.purpose?.includes("Instant") || meeting.title?.includes("Instant") ? "Start Instant Meeting" : "Start & Join as Host"}</span>
                   </Button>
                 ) : isStaffOrAdmin || isMeetingLive ? (
                   <Button
                     variant="primary"
                     size="lg"
                     disabled={!user && (!guestName.trim() || !EMAIL_REGEX.test(guestEmail.trim()))}
-                    className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed py-3.5 text-sm font-bold shadow-lg shadow-blue-600/30 rounded-2xl"
+                    className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed py-3.5 text-sm font-bold shadow-lg shadow-blue-600/30 rounded-2xl flex items-center justify-center gap-2"
                     onClick={() => doJoinMeeting(actualMeetingId, meeting)}
                   >
-                    {isStaffOrAdmin ? "Join Meeting as Staff/Admin" : "Join Meeting Now"}
+                    <VideoIcon size={18} />
+                    <span>{isStaffOrAdmin ? "Join Meeting as Staff/Admin" : "Join now"}</span>
                   </Button>
                 ) : (
                   <div className="bg-slate-950/70 border border-slate-800 rounded-2xl p-4 text-center space-y-3">
@@ -1437,7 +1524,7 @@ export default function MeetRoomPage() {
                     playsInline
                     muted
                     style={{ transform: "scaleX(-1)" }}
-                    className={`w-full h-full object-cover -scale-x-1 ${!isCamOn ? "hidden" : ""}`}
+                    className={`w-full h-full object-cover ${!isCamOn ? "hidden" : ""}`}
                   />
                   {!isCamOn && (
                     <div className="flex flex-col items-center gap-1.5">
@@ -1474,25 +1561,25 @@ export default function MeetRoomPage() {
             </div>
           ) : (
             <div
-              className={`w-full h-full max-h-[82vh] transition-all ${
+              className={`w-full h-full max-h-[82vh] transition-all flex items-center justify-center p-2 ${
                 totalParticipants === 1
-                  ? "max-w-4xl mx-auto flex flex-col items-center justify-center p-2"
+                  ? "max-w-4xl mx-auto"
                   : totalParticipants === 2
-                  ? "max-w-6xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-4 items-center justify-center p-2"
+                  ? "max-w-6xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-4"
                   : totalParticipants <= 4
-                  ? "max-w-6xl mx-auto grid grid-cols-1 sm:grid-cols-2 gap-4 items-center justify-center p-2"
-                  : "max-w-7xl mx-auto grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 items-center justify-center overflow-y-auto p-2"
+                  ? "max-w-6xl mx-auto grid grid-cols-1 sm:grid-cols-2 gap-4"
+                  : "max-w-7xl mx-auto grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 overflow-y-auto"
               }`}
             >
               {/* Local Video Tile */}
-              <div className="relative w-full flex-1 min-h-[220px] max-h-[66vh] bg-slate-900 rounded-3xl overflow-hidden border-2 border-slate-700/90 shadow-2xl flex items-center justify-center">
+              <div className={`relative w-full aspect-video bg-slate-900 rounded-3xl overflow-hidden border-2 border-slate-700/90 shadow-2xl flex items-center justify-center ${totalParticipants === 1 ? "max-h-[76vh]" : ""}`}>
                 <video
                   ref={localVideoRef}
                   autoPlay
                   playsInline
                   muted
                   style={{ transform: "scaleX(-1)" }}
-                  className={`w-full h-full object-cover -scale-x-1 ${!isCamOn ? "hidden" : ""}`}
+                  className={`w-full h-full object-cover ${!isCamOn ? "hidden" : ""}`}
                 />
 
                 {!isCamOn && (
