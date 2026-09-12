@@ -391,7 +391,7 @@ export default function MeetRoomPage() {
   const isHost = meeting?.hostId === user?.uid;
   const isCoHost = meeting?.coHostIds?.includes(user?.uid || "");
   const isStaffOrAdmin = user?.role === "staff" || user?.role === "master";
-  const hasHostControls = isHost || isCoHost;
+  const hasHostControls = isHost || isCoHost || isStaffOrAdmin || (Boolean(meeting?.hostId) && Boolean(user?.uid) && meeting?.hostId === user?.uid);
 
   // ── 1. Request & Initialize Camera / Mic ────────────────────────
   const initUserMedia = useCallback(async () => {
@@ -927,7 +927,7 @@ export default function MeetRoomPage() {
   };
 
   // ── 17. Host End Meeting for All -> Closes Call, Submits Report ─
-  const handleEndMeetingForAll = () => {
+  const handleEndMeetingForAll = async () => {
     if (!meeting) return;
 
     try {
@@ -948,11 +948,24 @@ export default function MeetRoomPage() {
     }
 
     setShowLeaveModal(false);
-    setShowSummaryModal(true);
+
+    try {
+      // Immediate direct Firestore write so meeting status becomes "submitted_for_review" right away
+      const docRef = doc(db, "scheduledMeetings", actualMeetingId);
+      await updateDoc(docRef, {
+        status: "submitted_for_review",
+        actualEnd: new Date().toISOString(),
+      });
+    } catch (dbErr) {
+      console.warn("Direct updateDoc in handleEndMeetingForAll:", dbErr);
+    }
 
     endLiveMeeting(actualMeetingId, user?.uid || meeting.hostId).catch((err) => {
       console.warn("Background endLiveMeeting failed:", err);
     });
+
+    success("Meeting has been ended for all participants.");
+    setShowSummaryModal(true);
   };
 
   const handleCutCallClick = () => {
@@ -1022,7 +1035,8 @@ export default function MeetRoomPage() {
                   autoPlay
                   playsInline
                   muted
-                  className={`w-full h-full object-cover ${!isCamOn ? "hidden" : ""}`}
+                  style={{ transform: "scaleX(-1)" }}
+                  className={`w-full h-full object-cover -scale-x-1 ${!isCamOn ? "hidden" : ""}`}
                 />
 
                 {!isCamOn && (
@@ -1240,7 +1254,7 @@ export default function MeetRoomPage() {
   // 2. LIVE MEETING STAGE
   // ═══════════════════════════════════════════════════════════════
   return (
-    <div className="fixed inset-0 bg-slate-950 text-white flex flex-col z-[10000] overflow-hidden select-none">
+    <div className="fixed inset-0 bg-slate-950 text-white flex flex-col z-30 overflow-hidden select-none">
       
       {/* ── TOP BAR ────────────────────────────────────────────── */}
       <header className="h-14 px-4 sm:px-6 bg-slate-900/90 border-b border-slate-800 flex items-center justify-between z-10 shrink-0">
@@ -1294,6 +1308,17 @@ export default function MeetRoomPage() {
               )}
             </button>
           )}
+
+          {/* Top Bar Direct End / Leave Button */}
+          <Button
+            size="sm"
+            variant="danger"
+            onClick={handleCutCallClick}
+            icon={<PhoneOff size={13} />}
+            className="bg-red-600 hover:bg-red-700 text-white text-xs font-bold px-3 py-1.5 rounded-xl shadow-md shadow-red-600/20 shrink-0"
+          >
+            {hasHostControls ? "End / Leave Call" : "Leave Call"}
+          </Button>
         </div>
       </header>
 
@@ -1411,7 +1436,8 @@ export default function MeetRoomPage() {
                     autoPlay
                     playsInline
                     muted
-                    className={`w-full h-full object-cover ${!isCamOn ? "hidden" : ""}`}
+                    style={{ transform: "scaleX(-1)" }}
+                    className={`w-full h-full object-cover -scale-x-1 ${!isCamOn ? "hidden" : ""}`}
                   />
                   {!isCamOn && (
                     <div className="flex flex-col items-center gap-1.5">
@@ -1459,13 +1485,14 @@ export default function MeetRoomPage() {
               }`}
             >
               {/* Local Video Tile */}
-              <div className="relative w-full h-full min-h-[240px] bg-slate-900 rounded-3xl overflow-hidden border-2 border-slate-700/90 shadow-2xl flex items-center justify-center">
+              <div className="relative w-full flex-1 min-h-[220px] max-h-[66vh] bg-slate-900 rounded-3xl overflow-hidden border-2 border-slate-700/90 shadow-2xl flex items-center justify-center">
                 <video
                   ref={localVideoRef}
                   autoPlay
                   playsInline
                   muted
-                  className={`w-full h-full object-cover ${!isCamOn ? "hidden" : ""}`}
+                  style={{ transform: "scaleX(-1)" }}
+                  className={`w-full h-full object-cover -scale-x-1 ${!isCamOn ? "hidden" : ""}`}
                 />
 
                 {!isCamOn && (

@@ -13,6 +13,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import {
   getMeetingsForViewer,
   getScheduledMeetingsForViewer,
+  endLiveMeeting,
   createScheduledMeeting,
   updateScheduledMeeting,
   generateMeetingCode,
@@ -35,6 +36,7 @@ import {
   Sparkles,
   ArrowRight,
   Presentation,
+  PhoneOff,
   Shield,
   MapPin,
   Play,
@@ -54,6 +56,21 @@ function MeetingsHubDashboard() {
   const router = useRouter();
   const { user } = useAuth();
   const { success, error } = useToast();
+
+  const handleEndMeetingDirectly = async (meetingId: string) => {
+    if (!window.confirm("Are you sure you want to cut and end this meeting for all participants?")) return;
+    try {
+      await endLiveMeeting(meetingId, user?.uid || "");
+      success("Meeting has been ended.");
+      setScheduledMeetings((prev) =>
+        prev.map((m) =>
+          m.id === meetingId ? { ...m, status: "submitted_for_review" } : m
+        )
+      );
+    } catch (err: any) {
+      error(err?.message || "Failed to end meeting.");
+    }
+  };
   const isStaff = user?.role === "staff" || user?.role === "master";
 
   // Mode: "live" (Online meetings) vs "manual" (existing manual submissions for staff review)
@@ -507,6 +524,7 @@ function MeetingsHubDashboard() {
                 meeting={meeting}
                 currentUserId={user?.uid}
                 isStaff={isStaff}
+                onEndMeeting={handleEndMeetingDirectly}
               />
             ))}
           </div>
@@ -543,10 +561,12 @@ function LiveSessionCard({
   meeting,
   currentUserId,
   isStaff,
+  onEndMeeting,
 }: {
   meeting: ScheduledMeeting;
   currentUserId?: string;
   isStaff: boolean;
+  onEndMeeting?: (id: string) => void;
 }) {
   const isHost = meeting.hostId === currentUserId;
   const isLive = meeting.status === "live";
@@ -630,15 +650,30 @@ function LiveSessionCard({
       {/* Action Button Area with Generous Space */}
       <div className="pt-2">
         {isLive ? (
-          <Link href={`/meet/${meeting.id}`} className="block w-full">
-            <button
-              type="button"
-              className="w-full min-h-[48px] px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:scale-[0.99] text-white font-extrabold text-sm tracking-wide transition shadow-sm flex items-center justify-center gap-2 cursor-pointer whitespace-nowrap"
-            >
-              <Video size={18} className="shrink-0" />
-              <span>JOIN MEETING NOW</span>
-            </button>
-          </Link>
+          <div className="space-y-2">
+            <Link href={`/meet/${meeting.id}`} className="block w-full">
+              <button
+                type="button"
+                className="w-full min-h-[48px] px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:scale-[0.99] text-white font-extrabold text-sm tracking-wide transition shadow-sm flex items-center justify-center gap-2 cursor-pointer whitespace-nowrap"
+              >
+                <Video size={18} className="shrink-0" />
+                <span>JOIN MEETING NOW</span>
+              </button>
+            </Link>
+            {isHost && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.preventDefault();
+                  onEndMeeting?.(meeting.id);
+                }}
+                className="w-full min-h-[38px] px-4 py-2 rounded-xl bg-red-50 hover:bg-red-100 text-red-700 hover:text-red-800 font-bold text-xs border border-red-200 transition flex items-center justify-center gap-1.5 cursor-pointer"
+              >
+                <PhoneOff size={14} />
+                <span>Cut / End Meeting for All</span>
+              </button>
+            )}
+          </div>
         ) : isSummaryRequired && isHost ? (
           <Link href={`/meet/${meeting.id}`} className="block w-full">
             <button
