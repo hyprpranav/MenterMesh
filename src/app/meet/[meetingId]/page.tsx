@@ -215,25 +215,13 @@ export default function MeetRoomPage() {
   const isMe = useCallback(
     (p: any) => {
       if (!p) return false;
-      // 1. Match by active sessionId
+      // 1. Definite match: current browser tab's active sessionId
       if (mySessionIdRef.current && p.sessionId && p.sessionId === mySessionIdRef.current) return true;
-      // 2. If UID matches
-      if (user?.uid && p.uid && p.uid === user.uid) return true;
-      // 3. If email matches
-      if (user?.email && p.email && user.email.toLowerCase() === p.email.toLowerCase()) return true;
-      // 4. If current user is host and peer role is host or hostId
-      if (isHost && (p.role === "host" || (meeting?.hostId && p.uid === meeting.hostId))) return true;
-      // 5. Name match (e.g. 'Harish Pranav' matching 'Harish Pranav S (Dev)')
-      if (user?.name && p.name) {
-        const n1 = user.name.toLowerCase().replace(/[^a-z0-9]/g, "");
-        const n2 = p.name.toLowerCase().replace(/[^a-z0-9]/g, "");
-        if (n1.length >= 4 && (n1.includes(n2) || n2.includes(n1))) return true;
-      }
-      // 6. Guest unauthenticated match
-      if (!user && guestEmail && p.email && guestEmail.toLowerCase() === p.email.toLowerCase()) return true;
+      // 2. If logged in with the exact same Firebase Auth UID AND same session (or no sessionId set)
+      if (user?.uid && p.uid && p.uid === user.uid && (!p.sessionId || p.sessionId === mySessionIdRef.current)) return true;
       return false;
     },
-    [user?.uid, user?.email, user?.name, isHost, meeting?.hostId, guestEmail]
+    [user?.uid]
   );
 
   // High-speed real-time participants: prioritized from livePeers subcollection
@@ -1428,26 +1416,24 @@ export default function MeetRoomPage() {
               {/* Action Buttons: Host vs Staff vs Waiting Room / Knock */}
               <div className="space-y-2.5 pt-2">
                 {isHost ? (
-                  <Button
-                    variant="primary"
-                    size="lg"
-                    className="w-full bg-blue-600 hover:bg-blue-700 py-3.5 text-sm font-bold shadow-lg shadow-blue-600/30 rounded-2xl flex items-center justify-center gap-2"
+                  <button
+                    type="button"
+                    className="w-full bg-blue-600 hover:bg-blue-700 text-white py-3.5 px-4 text-sm font-bold shadow-lg shadow-blue-600/30 rounded-2xl flex flex-row items-center justify-center gap-2 whitespace-nowrap cursor-pointer transition"
                     onClick={() => doJoinMeeting(actualMeetingId, meeting, true)}
                   >
-                    <VideoIcon size={18} />
+                    <VideoIcon size={18} className="shrink-0" />
                     <span>{meeting.purpose?.includes("Instant") || meeting.title?.includes("Instant") ? "Start Instant Meeting" : "Start & Join as Host"}</span>
-                  </Button>
+                  </button>
                 ) : isStaffOrAdmin || isMeetingLive ? (
-                  <Button
-                    variant="primary"
-                    size="lg"
+                  <button
+                    type="button"
                     disabled={!user && (!guestName.trim() || !EMAIL_REGEX.test(guestEmail.trim()))}
-                    className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed py-3.5 text-sm font-bold shadow-lg shadow-blue-600/30 rounded-2xl flex items-center justify-center gap-2"
+                    className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white py-3.5 px-4 text-sm font-bold shadow-lg shadow-blue-600/30 rounded-2xl flex flex-row items-center justify-center gap-2 whitespace-nowrap cursor-pointer transition"
                     onClick={() => doJoinMeeting(actualMeetingId, meeting)}
                   >
-                    <VideoIcon size={18} />
+                    <VideoIcon size={18} className="shrink-0" />
                     <span>{isStaffOrAdmin ? "Join Meeting as Staff/Admin" : "Join now"}</span>
-                  </Button>
+                  </button>
                 ) : (
                   <div className="bg-slate-950/70 border border-slate-800 rounded-2xl p-4 text-center space-y-3">
                     <div className="w-10 h-10 rounded-full bg-blue-500/10 text-blue-400 flex items-center justify-center mx-auto">
@@ -1506,31 +1492,31 @@ export default function MeetRoomPage() {
   return (
     <div className="fixed inset-0 bg-slate-950 text-white flex flex-col z-30 overflow-hidden select-none">
       
-      {/* ── TOP BAR ────────────────────────────────────────────── */}
-      <header className="h-14 px-4 sm:px-6 bg-slate-900/90 border-b border-slate-800 flex items-center justify-between z-10 shrink-0">
-        <div className="flex items-center gap-3 min-w-0">
-          <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-ping" />
-          <h2 className="font-bold text-sm sm:text-base text-white truncate" title={meeting.title}>
+      {/* ── TOP BAR (Mobile Optimized, No Vertical Wrapping) ──── */}
+      <header className="h-14 px-3 sm:px-6 bg-slate-900/90 border-b border-slate-800 flex items-center justify-between z-10 shrink-0 gap-2">
+        <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
+          <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-ping shrink-0" />
+          <h2 className="font-bold text-xs sm:text-base text-white truncate max-w-[120px] sm:max-w-[240px]" title={meeting.title}>
             {meeting.title}
           </h2>
-          <span className="hidden sm:inline text-xs bg-slate-800 text-slate-300 px-2 py-0.5 rounded border border-slate-700">
+          <span className="hidden sm:inline text-xs bg-slate-800 text-slate-300 px-2 py-0.5 rounded border border-slate-700 shrink-0">
             MentorMesh Room
           </span>
-          <span className="text-xs font-mono text-emerald-400 font-bold bg-slate-950/60 px-2.5 py-0.5 rounded border border-emerald-500/20">
+          <span className="text-[11px] sm:text-xs font-mono text-emerald-400 font-bold bg-slate-950/60 px-2 sm:px-2.5 py-0.5 rounded border border-emerald-500/20 whitespace-nowrap shrink-0">
             {meetingDurationTimer}
           </span>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
           {/* 4-Digit Meeting Code Badge */}
           <button
             type="button"
             onClick={handleCopyCode}
-            className="flex items-center gap-1.5 text-xs font-mono font-bold text-blue-300 hover:text-white bg-blue-950/70 hover:bg-blue-900/80 border border-blue-500/40 px-3 py-1 rounded-xl transition cursor-pointer"
+            className="flex items-center gap-1 text-[11px] sm:text-xs font-mono font-bold text-blue-300 hover:text-white bg-blue-950/70 hover:bg-blue-900/80 border border-blue-500/40 px-2 sm:px-3 py-1 rounded-xl transition cursor-pointer whitespace-nowrap shrink-0"
             title="Click to copy 4-digit code"
           >
-            <span>Code: {meetingCodeDisplay}</span>
-            {copiedCode ? <Check size={13} className="text-emerald-400" /> : <Copy size={13} />}
+            <span>{meetingCodeDisplay}</span>
+            {copiedCode ? <Check size={12} className="text-emerald-400 shrink-0" /> : <Copy size={12} className="shrink-0" />}
           </button>
 
           <Button
@@ -1538,7 +1524,7 @@ export default function MeetRoomPage() {
             variant="ghost"
             onClick={handleCopyLink}
             icon={copiedLink ? <Check size={14} className="text-emerald-400" /> : <Copy size={14} />}
-            className="text-xs text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-xl"
+            className="hidden sm:inline-flex text-xs text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-xl whitespace-nowrap shrink-0"
           >
             {copiedLink ? "Link Copied" : "Copy Link"}
           </Button>
@@ -1547,10 +1533,10 @@ export default function MeetRoomPage() {
             <button
               type="button"
               onClick={() => setActivePanel(activePanel === "hostControls" ? "none" : "hostControls")}
-              className="hidden md:flex items-center gap-1.5 text-[11px] font-bold text-amber-300 bg-amber-950/60 hover:bg-amber-900/80 border border-amber-700/80 px-2.5 py-1 rounded-full transition cursor-pointer"
+              className="hidden md:flex items-center gap-1.5 text-[11px] font-bold text-amber-300 bg-amber-950/60 hover:bg-amber-900/80 border border-amber-700/80 px-2.5 py-1 rounded-full transition cursor-pointer whitespace-nowrap shrink-0"
             >
               <Shield size={12} />
-              Host Controls Active
+              Host Controls
               {waitingList.length > 0 && (
                 <span className="bg-amber-500 text-slate-950 px-1.5 py-0.2 rounded-full font-black text-[10px] animate-pulse">
                   {waitingList.length}
@@ -1560,15 +1546,14 @@ export default function MeetRoomPage() {
           )}
 
           {/* Top Bar Direct End / Leave Button */}
-          <Button
-            size="sm"
-            variant="danger"
+          <button
+            type="button"
             onClick={handleCutCallClick}
-            icon={<PhoneOff size={13} />}
-            className="bg-red-600 hover:bg-red-700 text-white text-xs font-bold px-3 py-1.5 rounded-xl shadow-md shadow-red-600/20 shrink-0"
+            className="bg-red-600 hover:bg-red-700 text-white text-[11px] sm:text-xs font-bold px-2.5 sm:px-3 py-1.5 rounded-xl shadow-md shadow-red-600/20 shrink-0 flex items-center gap-1 whitespace-nowrap cursor-pointer transition"
           >
-            {hasHostControls ? "End / Leave Call" : "Leave Call"}
-          </Button>
+            <PhoneOff size={13} className="shrink-0" />
+            <span>Leave</span>
+          </button>
         </div>
       </header>
 
@@ -1638,12 +1623,11 @@ export default function MeetRoomPage() {
         </div>
 
         {/* Main Center Video Area: Spotlight Presentation Showcase or Standard Grid */}
-        <div className="flex-1 p-3 sm:p-5 flex items-center justify-center overflow-hidden">
+        <div className="flex-1 p-2 sm:p-5 flex flex-col items-center justify-center overflow-hidden w-full">
           {isScreenSharing ? (
-            <div className="w-full h-full max-h-[82vh] flex flex-col lg:flex-row gap-4 items-stretch justify-center">
-              
-              {/* LARGE GOOGLE MEET SCREEN PRESENTATION SHOWCASE (Dominates ~75-80%) */}
-              <div className="flex-1 relative bg-slate-950 rounded-3xl overflow-hidden border-2 border-blue-500/60 shadow-2xl flex flex-col items-center justify-center min-h-[300px]">
+            <div className="w-full h-full max-h-[82vh] flex flex-col lg:flex-row gap-3 sm:gap-4 items-stretch justify-center">
+              {/* LARGE GOOGLE MEET SCREEN PRESENTATION SHOWCASE */}
+              <div className="flex-1 relative bg-slate-950 rounded-2xl sm:rounded-3xl overflow-hidden border-2 border-blue-500/60 shadow-2xl flex flex-col items-center justify-center min-h-[260px] sm:min-h-[300px]">
                 <video
                   ref={screenVideoRef}
                   autoPlay
@@ -1653,34 +1637,34 @@ export default function MeetRoomPage() {
                 />
 
                 {/* Google Meet Style Showcase Header / Overlay Banner */}
-                <div className="absolute top-4 left-4 right-4 flex items-center justify-between z-20 pointer-events-none">
-                  <div className="flex items-center gap-2.5 bg-slate-900/95 backdrop-blur-md px-4 py-2.5 rounded-2xl border border-blue-500/50 shadow-2xl pointer-events-auto">
-                    <Monitor size={20} className="text-blue-400 animate-pulse shrink-0" />
+                <div className="absolute top-3 left-3 right-3 sm:top-4 sm:left-4 sm:right-4 flex items-center justify-between z-20 pointer-events-none">
+                  <div className="flex items-center gap-2 bg-slate-900/95 backdrop-blur-md px-3 py-2 sm:px-4 sm:py-2.5 rounded-xl sm:rounded-2xl border border-blue-500/50 shadow-2xl pointer-events-auto">
+                    <Monitor size={17} className="text-blue-400 animate-pulse shrink-0" />
                     <div>
-                      <p className="text-xs font-bold text-white flex items-center gap-2">
+                      <p className="text-[11px] sm:text-xs font-bold text-white flex items-center gap-1.5">
                         <span>You are presenting to everyone</span>
                         <span className="w-2 h-2 rounded-full bg-blue-500 animate-ping" />
                       </p>
-                      <p className="text-[11px] text-slate-400">Your screen is visible to all participants in this room</p>
+                      <p className="text-[10px] sm:text-[11px] text-slate-400 hidden sm:block">Your screen is visible to all participants in this room</p>
                     </div>
                   </div>
 
                   <button
                     type="button"
                     onClick={toggleScreenShare}
-                    className="pointer-events-auto flex items-center gap-2 bg-red-600 hover:bg-red-700 text-white text-xs font-bold px-4 py-2.5 rounded-xl shadow-xl shadow-red-600/30 transition cursor-pointer"
+                    className="pointer-events-auto flex items-center gap-1.5 bg-red-600 hover:bg-red-700 text-white text-[11px] sm:text-xs font-bold px-3 py-2 sm:px-4 sm:py-2.5 rounded-xl shadow-xl shadow-red-600/30 transition cursor-pointer"
                     title="Stop Screen Casting"
                   >
-                    <Monitor size={15} />
+                    <Monitor size={14} />
                     <span>Stop presenting</span>
                   </button>
                 </div>
               </div>
 
               {/* SIDE CAROUSEL STRIP: Participants with Profile Photos */}
-              <div className="w-full lg:w-72 flex lg:flex-col gap-3 overflow-x-auto lg:overflow-y-auto shrink-0 max-h-[82vh] p-1">
+              <div className="w-full lg:w-72 flex lg:flex-col gap-2 sm:gap-3 overflow-x-auto lg:overflow-y-auto shrink-0 max-h-[82vh] p-1">
                 {/* Local participant card */}
-                <div className="relative w-48 lg:w-full aspect-video bg-slate-900 rounded-2xl overflow-hidden border border-slate-700 shadow-md flex items-center justify-center shrink-0">
+                <div className="relative w-36 sm:w-48 lg:w-full aspect-video bg-slate-900 rounded-xl sm:rounded-2xl overflow-hidden border border-slate-700 shadow-md flex items-center justify-center shrink-0">
                   <video
                     ref={localVideoRef}
                     autoPlay
@@ -1690,19 +1674,19 @@ export default function MeetRoomPage() {
                     className={`w-full h-full object-cover ${!isCamOn ? "hidden" : ""}`}
                   />
                   {!isCamOn && (
-                    <div className="flex flex-col items-center gap-1.5">
+                    <div className="flex flex-col items-center gap-1">
                       <Avatar
                         name={user?.name || guestName || "You"}
                         photoUrl={user?.profilePhoto || user?.professionalPhoto}
-                        size="md"
-                        className="w-12 h-12 text-base ring-2 ring-slate-700"
+                        size="sm"
+                        className="w-8 h-8 sm:w-12 sm:h-12 text-xs sm:text-base ring-2 ring-slate-700"
                       />
-                      <span className="text-[10px] text-slate-400 font-medium">Camera off</span>
+                      <span className="text-[9px] sm:text-[10px] text-slate-400 font-medium">Camera off</span>
                     </div>
                   )}
-                  <div className="absolute bottom-2 left-2 flex items-center gap-1.5 bg-slate-950/80 backdrop-blur px-2.5 py-1 rounded-full text-[11px] font-bold border border-slate-700">
-                    <span className="truncate max-w-[90px]">{user?.name || guestName || "You"} (You)</span>
-                    {!isMicOn && <MicOff size={11} className="text-red-400" />}
+                  <div className="absolute bottom-1.5 left-1.5 sm:bottom-2 sm:left-2 flex items-center gap-1 bg-slate-950/80 backdrop-blur px-2 py-0.5 rounded-full text-[10px] font-bold border border-slate-700">
+                    <span className="truncate max-w-[75px] sm:max-w-[90px]">{user?.name || guestName || "You"} (You)</span>
+                    {!isMicOn && <MicOff size={10} className="text-red-400" />}
                   </div>
                 </div>
 
@@ -1710,7 +1694,7 @@ export default function MeetRoomPage() {
                 {remoteParticipants.map((peer, idx) => (
                   <div
                     key={peer.sessionId || peer.uid || idx}
-                    className="relative w-48 lg:w-full aspect-video bg-slate-900 rounded-2xl overflow-hidden border border-slate-800 shadow-md flex items-center justify-center shrink-0"
+                    className="relative w-36 sm:w-48 lg:w-full aspect-video bg-slate-900 rounded-xl sm:rounded-2xl overflow-hidden border border-slate-800 shadow-md flex items-center justify-center shrink-0"
                   >
                     <RemoteParticipantCard
                       peer={peer}
@@ -1720,105 +1704,103 @@ export default function MeetRoomPage() {
                   </div>
                 ))}
               </div>
-
             </div>
           ) : (
-            <div
-              className={`w-full h-full max-h-[82vh] transition-all flex items-center justify-center p-2 ${
-                totalParticipants === 1
-                  ? "max-w-4xl mx-auto"
-                  : totalParticipants === 2
-                  ? "max-w-6xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-4"
-                  : totalParticipants <= 4
-                  ? "max-w-6xl mx-auto grid grid-cols-1 sm:grid-cols-2 gap-4"
-                  : "max-w-7xl mx-auto grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 overflow-y-auto"
-              }`}
-            >
-              {/* Local Video Tile */}
-              <div className={`relative w-full aspect-video bg-slate-900 rounded-3xl overflow-hidden border-2 border-slate-700/90 shadow-2xl flex items-center justify-center ${totalParticipants === 1 ? "max-h-[76vh]" : ""}`}>
-                <video
-                  ref={localVideoRef}
-                  autoPlay
-                  playsInline
-                  muted
-                  style={{ transform: "scaleX(-1)" }}
-                  className={`w-full h-full object-cover ${!isCamOn ? "hidden" : ""}`}
-                />
+            <div className="w-full h-full max-h-[82vh] flex flex-col items-center justify-center">
+              <div
+                className={`w-full transition-all ${
+                  totalParticipants === 1
+                    ? "max-w-3xl mx-auto flex items-center justify-center"
+                    : totalParticipants === 2
+                    ? "max-w-5xl mx-auto grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 items-center justify-center"
+                    : totalParticipants <= 4
+                    ? "max-w-5xl mx-auto grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 items-center justify-center overflow-y-auto max-h-[75vh]"
+                    : "max-w-6xl mx-auto grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4 items-center justify-center overflow-y-auto max-h-[75vh]"
+                }`}
+              >
+                {/* Local Video Tile */}
+                <div className={`relative w-full aspect-video bg-slate-900 rounded-2xl sm:rounded-3xl overflow-hidden border-2 border-slate-700/90 shadow-2xl flex items-center justify-center ${totalParticipants === 1 ? "max-h-[60vh] sm:max-h-[74vh]" : ""}`}>
+                  <video
+                    ref={localVideoRef}
+                    autoPlay
+                    playsInline
+                    muted
+                    style={{ transform: "scaleX(-1)" }}
+                    className={`w-full h-full object-cover ${!isCamOn ? "hidden" : ""}`}
+                  />
 
-                {!isCamOn && (
-                  <div className="flex flex-col items-center gap-2">
-                    <Avatar
-                      name={user?.name || guestName || "You"}
-                      photoUrl={user?.profilePhoto || user?.professionalPhoto}
-                      size="lg"
-                      className="w-20 h-20 text-2xl ring-4 ring-slate-800"
-                    />
-                    <p className="text-slate-400 text-xs font-semibold">Camera Off</p>
+                  {!isCamOn && (
+                    <div className="flex flex-col items-center gap-2">
+                      <Avatar
+                        name={user?.name || guestName || "You"}
+                        photoUrl={user?.profilePhoto || user?.professionalPhoto}
+                        size="lg"
+                        className="w-16 h-16 sm:w-22 sm:h-22 text-xl sm:text-2xl ring-4 ring-slate-800 shadow-xl"
+                      />
+                      <p className="text-slate-400 text-xs sm:text-sm font-semibold">Camera Off</p>
+                    </div>
+                  )}
+
+                  {/* Bottom tag info */}
+                  <div className="absolute bottom-2.5 left-2.5 sm:bottom-3.5 sm:left-3.5 flex items-center gap-1.5 sm:gap-2 bg-slate-950/80 backdrop-blur-md px-2.5 py-1 sm:px-3.5 sm:py-1.5 rounded-full text-[11px] sm:text-xs font-bold border border-slate-700/80">
+                    <span className="truncate max-w-[120px]">{user?.name || guestName || "You"} (You)</span>
+                    {isHost && <span className="text-[10px] text-amber-400">★ Host</span>}
+                    {!isMicOn && <MicOff size={12} className="text-red-400 ml-1" />}
                   </div>
-                )}
 
-                {/* Bottom tag info */}
-                <div className="absolute bottom-3.5 left-3.5 flex items-center gap-2 bg-slate-950/80 backdrop-blur-md px-3.5 py-1.5 rounded-full text-xs font-bold border border-slate-700/80">
-                  <span>{user?.name || guestName || "You"} (You)</span>
-                  {isHost && <span className="text-[10px] text-amber-400">★ Host</span>}
-                  {!isMicOn && <MicOff size={13} className="text-red-400 ml-1" />}
+                  {raisedHand && (
+                    <div className="absolute top-2.5 right-2.5 sm:top-3.5 sm:right-3.5 bg-amber-500 text-slate-950 px-2.5 py-0.5 sm:px-3 sm:py-1 rounded-full text-[10px] sm:text-xs font-black flex items-center gap-1 shadow-lg animate-bounce">
+                      <Hand size={12} />
+                      Hand Raised
+                    </div>
+                  )}
                 </div>
 
-                {raisedHand && (
-                  <div className="absolute top-3.5 right-3.5 bg-amber-500 text-slate-950 px-3 py-1 rounded-full text-xs font-black flex items-center gap-1.5 shadow-lg animate-bounce">
-                    <Hand size={14} />
-                    Hand Raised
-                  </div>
-                )}
+                {/* Remote Peer Cards */}
+                {remoteParticipants.map((peer, idx) => {
+                  const peerKey = peer.sessionId || peer.uid || `peer_${idx}`;
+                  return (
+                    <RemoteParticipantCard
+                      key={peerKey}
+                      peer={peer}
+                      stream={remoteStreams[peer.sessionId || peer.uid || ""]}
+                      isHost={peer.uid === meeting.hostId || peer.role === "host"}
+                    />
+                  );
+                })}
               </div>
 
-              {/* Remote Peer Cards */}
-              {remoteParticipants.map((peer, idx) => {
-                const peerKey = peer.sessionId || peer.uid || `peer_${idx}`;
-                return (
-                  <RemoteParticipantCard
-                    key={peerKey}
-                    peer={peer}
-                    stream={remoteStreams[peer.sessionId || peer.uid || ""]}
-                    isHost={peer.uid === meeting.hostId || peer.role === "host"}
-                  />
-                );
-              })}
-
-              {/* In-room helper banner if host or participant is alone */}
+              {/* In-room helper banner placed BELOW video (never horizontally beside it) */}
               {totalParticipants === 1 && (
-                <div className="mt-4 flex flex-wrap items-center justify-center gap-3 bg-slate-900/90 backdrop-blur border border-slate-800 px-5 py-3 rounded-2xl text-xs text-slate-300 shadow-xl">
-                  <div className="flex items-center gap-2">
+                <div className="mt-3 sm:mt-4 flex flex-wrap items-center justify-center gap-2 sm:gap-3 bg-slate-900/90 backdrop-blur border border-slate-800 px-3 py-2 sm:px-5 sm:py-2.5 rounded-xl sm:rounded-2xl text-[11px] sm:text-xs text-slate-300 shadow-xl max-w-sm sm:max-w-md mx-auto">
+                  <div className="flex items-center gap-1.5">
                     <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                    <span>Meeting Live • Code:</span>
-                    <strong className="text-blue-400 font-mono text-sm tracking-wider">{meetingCodeDisplay}</strong>
+                    <span>Live Code:</span>
+                    <strong className="text-blue-400 font-mono text-xs sm:text-sm">{meetingCodeDisplay}</strong>
                   </div>
-                  <div className="flex items-center gap-2 ml-2">
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      icon={<Copy size={13} />}
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
                       onClick={handleCopyCode}
-                      className="text-xs h-8 px-3 rounded-xl border-slate-700 hover:text-white"
+                      className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-[11px] text-slate-300 border border-slate-700 flex items-center gap-1 cursor-pointer transition"
                     >
-                      Copy Code
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      icon={<Copy size={13} />}
+                      <Copy size={11} />
+                      <span>Code</span>
+                    </button>
+                    <button
+                      type="button"
                       onClick={handleCopyLink}
-                      className="text-xs h-8 px-3 rounded-xl border-slate-700 hover:text-white"
+                      className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-[11px] text-slate-300 border border-slate-700 flex items-center gap-1 cursor-pointer transition"
                     >
-                      Copy Link
-                    </Button>
+                      <Copy size={11} />
+                      <span>Link</span>
+                    </button>
                   </div>
                 </div>
               )}
             </div>
           )}
         </div>
-
         {/* ── SIDE PANEL: CHAT DRAWER ──────────────────────────── */}
         {activePanel === "chat" && (
           <div className="w-80 sm:w-96 bg-slate-900 border-l border-slate-800 flex flex-col z-40 animate-in slide-in-from-right duration-200">
@@ -2109,10 +2091,9 @@ export default function MeetRoomPage() {
         ))}
       </div>
 
-      {/* ── BOTTOM CONTROLS BAR ────────────────────────────────── */}
-      <footer className="h-20 bg-slate-900/95 border-t border-slate-800/90 px-4 sm:px-8 flex items-center justify-between z-40 shrink-0">
-        
-        {/* Left: Meeting Info */}
+      {/* ── BOTTOM CONTROLS BAR (Mobile Fitted, No Clipping) ── */}
+      <footer className="h-16 sm:h-20 bg-slate-900/95 border-t border-slate-800/90 px-2 sm:px-8 flex items-center justify-between z-40 shrink-0">
+        {/* Left: Meeting Info (hidden on mobile) */}
         <div className="hidden md:flex items-center gap-2 text-xs text-slate-400 min-w-0">
           <span className="font-semibold text-white truncate max-w-[200px]">{meeting.title}</span>
           <span>•</span>
@@ -2120,73 +2101,72 @@ export default function MeetRoomPage() {
         </div>
 
         {/* Center: Core Call Controls */}
-        <div className="flex items-center gap-2 sm:gap-3 mx-auto md:mx-0">
-          
+        <div className="flex items-center gap-1.5 sm:gap-3 mx-auto max-w-full overflow-x-auto py-1 no-scrollbar">
           {/* Mic */}
           <button
             type="button"
             onClick={toggleMic}
-            className={`w-11 h-11 rounded-2xl flex items-center justify-center transition-all cursor-pointer ${
+            className={`w-9 h-9 sm:w-11 sm:h-11 rounded-xl sm:rounded-2xl flex items-center justify-center transition-all cursor-pointer shrink-0 ${
               isMicOn
                 ? "bg-slate-800 hover:bg-slate-700 text-white"
                 : "bg-red-600 hover:bg-red-700 text-white shadow-lg shadow-red-600/30"
             }`}
             title={isMicOn ? "Mute Microphone" : "Unmute Microphone"}
           >
-            {isMicOn ? <Mic size={20} /> : <MicOff size={20} />}
+            {isMicOn ? <Mic size={17} /> : <MicOff size={17} />}
           </button>
 
           {/* Camera */}
           <button
             type="button"
             onClick={toggleCam}
-            className={`w-11 h-11 rounded-2xl flex items-center justify-center transition-all cursor-pointer ${
+            className={`w-9 h-9 sm:w-11 sm:h-11 rounded-xl sm:rounded-2xl flex items-center justify-center transition-all cursor-pointer shrink-0 ${
               isCamOn
                 ? "bg-slate-800 hover:bg-slate-700 text-white"
                 : "bg-red-600 hover:bg-red-700 text-white shadow-lg shadow-red-600/30"
             }`}
             title={isCamOn ? "Turn Camera Off" : "Turn Camera On"}
           >
-            {isCamOn ? <VideoIcon size={20} /> : <VideoOff size={20} />}
+            {isCamOn ? <VideoIcon size={17} /> : <VideoOff size={17} />}
           </button>
 
-          {/* Screen Share (Entire Screen or Application Window) */}
+          {/* Screen Share */}
           <button
             type="button"
             onClick={toggleScreenShare}
-            className={`w-11 h-11 rounded-2xl flex items-center justify-center transition-all cursor-pointer ${
+            className={`w-9 h-9 sm:w-11 sm:h-11 rounded-xl sm:rounded-2xl flex items-center justify-center transition-all cursor-pointer shrink-0 ${
               isScreenSharing
                 ? "bg-blue-600 hover:bg-blue-700 text-white shadow-lg shadow-blue-600/30"
                 : "bg-slate-800 hover:bg-slate-700 text-white"
             }`}
-            title={isScreenSharing ? "Stop Screen Share" : "Share Entire Screen or App Window"}
+            title={isScreenSharing ? "Stop Screen Share" : "Share Screen"}
           >
-            {isScreenSharing ? <Monitor size={20} /> : <ScreenShare size={20} />}
+            {isScreenSharing ? <Monitor size={17} /> : <ScreenShare size={17} />}
           </button>
 
           {/* Raise Hand */}
           <button
             type="button"
             onClick={() => setRaisedHand(!raisedHand)}
-            className={`w-11 h-11 rounded-2xl flex items-center justify-center transition-all cursor-pointer ${
+            className={`w-9 h-9 sm:w-11 sm:h-11 rounded-xl sm:rounded-2xl flex items-center justify-center transition-all cursor-pointer shrink-0 ${
               raisedHand
                 ? "bg-amber-500 hover:bg-amber-600 text-slate-950 shadow-lg"
                 : "bg-slate-800 hover:bg-slate-700 text-white"
             }`}
             title={raisedHand ? "Lower Hand" : "Raise Hand"}
           >
-            <Hand size={20} />
+            <Hand size={17} />
           </button>
 
           {/* Reactions */}
-          <div className="relative">
+          <div className="relative shrink-0">
             <button
               type="button"
               onClick={() => setShowReactionsMenu(!showReactionsMenu)}
-              className="w-11 h-11 rounded-2xl bg-slate-800 hover:bg-slate-700 text-white flex items-center justify-center transition-all cursor-pointer"
+              className="w-9 h-9 sm:w-11 sm:h-11 rounded-xl sm:rounded-2xl bg-slate-800 hover:bg-slate-700 text-white flex items-center justify-center transition-all cursor-pointer"
               title="Reactions"
             >
-              <Smile size={20} />
+              <Smile size={17} />
             </button>
 
             {showReactionsMenu && (
@@ -2209,77 +2189,89 @@ export default function MeetRoomPage() {
           <button
             type="button"
             onClick={() => setActivePanel(activePanel === "chat" ? "none" : "chat")}
-            className={`w-11 h-11 rounded-2xl flex items-center justify-center transition-all cursor-pointer ${
+            className={`w-9 h-9 sm:w-11 sm:h-11 rounded-xl sm:rounded-2xl flex items-center justify-center transition-all cursor-pointer shrink-0 ${
               activePanel === "chat"
                 ? "bg-blue-600 text-white"
                 : "bg-slate-800 hover:bg-slate-700 text-white"
             }`}
             title="Chat"
           >
-            <MessageSquare size={20} />
+            <MessageSquare size={17} />
           </button>
 
           {/* Participants Toggle */}
           <button
             type="button"
             onClick={() => setActivePanel(activePanel === "participants" ? "none" : "participants")}
-            className={`w-11 h-11 rounded-2xl flex items-center justify-center transition-all cursor-pointer ${
+            className={`w-9 h-9 sm:w-11 sm:h-11 rounded-xl sm:rounded-2xl flex items-center justify-center transition-all cursor-pointer shrink-0 relative ${
               activePanel === "participants"
                 ? "bg-blue-600 text-white"
                 : "bg-slate-800 hover:bg-slate-700 text-white"
             }`}
             title="Participants"
           >
-            <Users size={20} />
+            <Users size={17} />
+            {totalParticipants > 1 && (
+              <span className="absolute -top-1 -right-1 bg-blue-500 text-white text-[9px] font-bold w-4 h-4 rounded-full flex items-center justify-center">
+                {totalParticipants}
+              </span>
+            )}
           </button>
 
-          {/* Host Controls Toggle */}
+          {/* Host Controls Toggle (If Host or Co-Host) */}
           {hasHostControls && (
             <button
               type="button"
               onClick={() => setActivePanel(activePanel === "hostControls" ? "none" : "hostControls")}
-              className={`relative w-11 h-11 rounded-2xl flex items-center justify-center transition-all cursor-pointer ${
+              className={`w-9 h-9 sm:w-11 sm:h-11 rounded-xl sm:rounded-2xl flex items-center justify-center transition-all cursor-pointer shrink-0 relative ${
                 activePanel === "hostControls"
-                  ? "bg-amber-500 text-slate-950 font-bold shadow-lg"
-                  : "bg-slate-800 hover:bg-slate-700 text-amber-400"
+                  ? "bg-amber-500 text-slate-950 font-bold"
+                  : "bg-slate-800 hover:bg-slate-700 text-white"
               }`}
               title="Host Controls"
             >
-              <Shield size={20} />
+              <Shield size={17} />
               {waitingList.length > 0 && (
-                <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-red-500 text-white text-[10px] font-black flex items-center justify-center animate-bounce">
+                <span className="absolute -top-1 -right-1 bg-amber-500 text-slate-950 font-black text-[10px] w-4 h-4 rounded-full flex items-center justify-center shadow-md animate-pulse">
                   {waitingList.length}
                 </span>
               )}
             </button>
           )}
+
+          {/* End Call / Leave Call */}
+          <button
+            type="button"
+            onClick={handleCutCallClick}
+            className="w-9 h-9 sm:w-auto sm:px-4 sm:h-11 rounded-xl sm:rounded-2xl bg-red-600 hover:bg-red-700 text-white flex items-center justify-center gap-1.5 font-bold text-xs shadow-lg shadow-red-600/30 transition-all cursor-pointer shrink-0"
+            title="Leave Call"
+          >
+            <PhoneOff size={16} />
+            <span className="hidden sm:inline">Leave</span>
+          </button>
         </div>
 
-        {/* Right: End / Leave Button */}
-        <div className="flex items-center gap-2">
-          {hasHostControls ? (
-            <Button
-              variant="danger"
-              size="md"
-              icon={<PhoneOff size={16} />}
-              onClick={handleCutCallClick}
-              className="bg-red-600 hover:bg-red-700 font-bold px-4 py-2.5 rounded-2xl shadow-md shadow-red-600/20 text-xs sm:text-sm"
-            >
-              End / Leave Call
-            </Button>
-          ) : (
-            <Button
-              variant="danger"
-              size="md"
-              icon={<LogOut size={16} />}
-              onClick={handleLeaveMeetingOnly}
-              className="bg-red-600/80 hover:bg-red-600 font-bold px-4 py-2.5 rounded-2xl text-xs sm:text-sm"
-            >
-              Leave Call
-            </Button>
-          )}
+        {/* Right: Quick Share Links (hidden on mobile) */}
+        <div className="hidden lg:flex items-center gap-2">
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={handleCopyCode}
+            icon={copiedCode ? <Check size={14} className="text-emerald-400" /> : <Copy size={14} />}
+            className="text-xs text-slate-300 border-slate-700 rounded-xl"
+          >
+            {copiedCode ? "Copied" : "Copy Code"}
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={handleCopyLink}
+            icon={copiedLink ? <Check size={14} className="text-emerald-400" /> : <Copy size={14} />}
+            className="text-xs text-slate-300 border-slate-700 rounded-xl"
+          >
+            {copiedLink ? "Copied" : "Copy Link"}
+          </Button>
         </div>
-
       </footer>
 
       {/* ── 3. HOST POST-MEETING SUMMARY MODAL ────────────────── */}
