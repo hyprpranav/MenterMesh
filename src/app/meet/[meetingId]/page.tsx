@@ -23,6 +23,7 @@ import {
   addDoc,
   setDoc,
   updateDoc,
+  deleteDoc,
   onSnapshot,
   query,
   orderBy,
@@ -188,6 +189,11 @@ export default function MeetRoomPage() {
   const [remoteStreams, setRemoteStreams] = useState<Record<string, MediaStream>>({});
   const mySessionIdRef = useRef<string>("");
 
+  const isHost = Boolean(meeting?.hostId) && Boolean(user?.uid) && meeting?.hostId === user?.uid;
+  const isCoHost = Boolean(meeting?.coHostIds?.includes(user?.uid || ""));
+  const isStaffOrAdmin = user?.role === "staff" || user?.role === "master";
+  const hasHostControls = isHost || isCoHost || isStaffOrAdmin;
+
   useEffect(() => {
     if (typeof window !== "undefined") {
       let sid = sessionStorage.getItem(`mm_meet_sid_${actualMeetingId}`);
@@ -199,25 +205,47 @@ export default function MeetRoomPage() {
     }
   }, [actualMeetingId]);
 
+  // ── Live Active Peers State (Subcollection + Heartbeat) ────────
+  const [livePeers, setLivePeers] = useState<LiveMeetingParticipant[]>([]);
+  const [toasts, setToasts] = useState<{ id: string; message: string; type: "join" | "leave" }[]>([]);
+  const knownPeersRef = useRef<Set<string>>(new Set());
+  const candidateQueue = useRef<Record<string, RTCIceCandidateInit[]>>({});
+
   // ── Helper to distinguish current user vs remote peers ─────────
   const isMe = useCallback(
-    (p: LiveMeetingParticipant) => {
-      // 1. If UID matches, this is definitively the current user
-      if (user?.uid && p.uid && p.uid === user.uid) return true;
-      // 2. If email matches, this is definitively the current user
-      if (user?.email && p.email && user.email.toLowerCase() === p.email.toLowerCase()) return true;
-      // 3. Match by active sessionId
+    (p: any) => {
+      if (!p) return false;
+      // 1. Match by active sessionId
       if (mySessionIdRef.current && p.sessionId && p.sessionId === mySessionIdRef.current) return true;
-      // 4. If guest / unauthenticated, match by guest email
+      // 2. If UID matches
+      if (user?.uid && p.uid && p.uid === user.uid) return true;
+      // 3. If email matches
+      if (user?.email && p.email && user.email.toLowerCase() === p.email.toLowerCase()) return true;
+      // 4. If current user is host and peer role is host or hostId
+      if (isHost && (p.role === "host" || (meeting?.hostId && p.uid === meeting.hostId))) return true;
+      // 5. Name match (e.g. 'Harish Pranav' matching 'Harish Pranav S (Dev)')
+      if (user?.name && p.name) {
+        const n1 = user.name.toLowerCase().replace(/[^a-z0-9]/g, "");
+        const n2 = p.name.toLowerCase().replace(/[^a-z0-9]/g, "");
+        if (n1.length >= 4 && (n1.includes(n2) || n2.includes(n1))) return true;
+      }
+      // 6. Guest unauthenticated match
       if (!user && guestEmail && p.email && guestEmail.toLowerCase() === p.email.toLowerCase()) return true;
       return false;
     },
-    [user?.uid, user?.email, guestEmail]
+    [user?.uid, user?.email, user?.name, isHost, meeting?.hostId, guestEmail]
   );
 
-  const remoteParticipants = (meeting?.attendance || []).filter(
-    (p) => !isMe(p) && p.joined && p.status !== "left"
-  );
+  // High-speed real-time participants: prioritized from livePeers subcollection
+  const remoteParticipants = React.useMemo(() => {
+    if (livePeers.length > 0) {
+      return livePeers.filter((p) => !isMe(p));
+    }
+    return (meeting?.attendance || []).filter(
+      (p) => !isMe(p) && p.joined && p.status !== "left"
+    );
+  }, [livePeers, meeting?.attendance, isMe]);
+
   const totalParticipants = 1 + remoteParticipants.length;
 
   // ── WebRTC Peer Connection Factory ──────────────────────────────
@@ -231,7 +259,7 @@ export default function MeetRoomPage() {
 
       const pc = new RTCPeerConnection({
         iceServers: [
-          { urls: ["stun:stun.l.google.com:19302", "stun:stun1.l.google.com:19302"] },
+          { urls: ["stun:stun.l.google.com:19302", "stun:stun1.l.google.com:19302", "stun:stun2.l.google.com:19302", "stun:stun3.l.google.com:19302", "stun:stun4.l.google.com:19302", "stun:global.stun.twilio.com:3478"] },
         ],
       });
 
@@ -291,6 +319,12 @@ export default function MeetRoomPage() {
                 pc = createPeerConnection(fromSid);
               }
               await pc.setRemoteDescription(new RTCSessionDescription(JSON.parse(data.sdp)));
+              if (candidateQueue.current[fromSid]) {
+                for (const c of candidateQueue.current[fromSid]) {
+                  await pc.addIceCandidate(new RTCIceCandidate(c)).catch(() => {});
+                }
+                delete candidateQueue.current[fromSid];
+              }
               const answer = await pc.createAnswer();
               await pc.setLocalDescription(answer);
 
@@ -305,11 +339,23 @@ export default function MeetRoomPage() {
               const pc = peerConnections.current[fromSid];
               if (pc && pc.signalingState === "have-local-offer") {
                 await pc.setRemoteDescription(new RTCSessionDescription(JSON.parse(data.sdp)));
+                if (candidateQueue.current[fromSid]) {
+                  for (const c of candidateQueue.current[fromSid]) {
+                    await pc.addIceCandidate(new RTCIceCandidate(c)).catch(() => {});
+                  }
+                  delete candidateQueue.current[fromSid];
+                }
               }
             } else if (data.type === "candidate") {
               const pc = peerConnections.current[fromSid];
               if (pc && data.candidate) {
-                await pc.addIceCandidate(new RTCIceCandidate(JSON.parse(data.candidate))).catch(() => {});
+                const cand = JSON.parse(data.candidate);
+                if (pc.remoteDescription) {
+                  await pc.addIceCandidate(new RTCIceCandidate(cand)).catch(() => {});
+                } else {
+                  candidateQueue.current[fromSid] = candidateQueue.current[fromSid] || [];
+                  candidateQueue.current[fromSid].push(cand);
+                }
               }
             }
           } catch (err) {
@@ -390,10 +436,7 @@ export default function MeetRoomPage() {
   const screenVideoRef = useRef<HTMLVideoElement>(null);
   const screenTrackRef = useRef<MediaStreamTrack | null>(null);
 
-  const isHost = meeting?.hostId === user?.uid;
-  const isCoHost = meeting?.coHostIds?.includes(user?.uid || "");
-  const isStaffOrAdmin = user?.role === "staff" || user?.role === "master";
-  const hasHostControls = isHost || isCoHost || isStaffOrAdmin || (Boolean(meeting?.hostId) && Boolean(user?.uid) && meeting?.hostId === user?.uid);
+  // (Host controls hoisted above)
 
   // ── 1. Request & Initialize Camera / Mic ────────────────────────
   const initUserMedia = useCallback(async () => {
@@ -640,6 +683,108 @@ export default function MeetRoomPage() {
     };
   }, [localStream]);
 
+  // ── 5B. Real-Time Active Peers Subcollection, Heartbeat & Auto-Disconnect ────
+  useEffect(() => {
+    if (!joined || !actualMeetingId || !mySessionIdRef.current) return;
+    const mySid = mySessionIdRef.current;
+    const peerDocRef = doc(db, "scheduledMeetings", actualMeetingId, "livePeers", mySid);
+
+    const publishPresence = async () => {
+      try {
+        await setDoc(
+          peerDocRef,
+          {
+            sessionId: mySid,
+            uid: user?.uid || "",
+            name: user?.name || guestName || "Participant",
+            email: user?.email || guestEmail || "",
+            photoUrl: user?.profilePhoto || user?.professionalPhoto || "",
+            role: isHost ? "host" : isCoHost ? "co_host" : !user ? "external" : "participant",
+            isCamOn,
+            isMicOn,
+            isScreenSharing,
+            lastSeen: Date.now(),
+          },
+          { merge: true }
+        );
+      } catch (err) {
+        console.warn("Failed publishing live peer presence:", err);
+      }
+    };
+
+    publishPresence();
+    const heartbeatTimer = setInterval(publishPresence, 4000);
+
+    const peersCol = collection(db, "scheduledMeetings", actualMeetingId, "livePeers");
+    const unsubPeers = onSnapshot(peersCol, (snap) => {
+      const now = Date.now();
+      const currentList: LiveMeetingParticipant[] = [];
+
+      snap.forEach((d) => {
+        const data = d.data() as any;
+        if (!data) return;
+        // Drop any peer that has not sent a heartbeat within 18 seconds
+        if (data.lastSeen && now - data.lastSeen > 18000) return;
+        if (data.sessionId === mySid) return;
+        if (isMe(data)) return;
+
+        currentList.push({
+          sessionId: data.sessionId || d.id,
+          uid: data.uid,
+          name: data.name || "Participant",
+          email: data.email || "",
+          photoUrl: data.photoUrl || "",
+          role: data.role || "participant",
+          status: "in_meeting",
+          joined: true,
+          isCamOn: data.isCamOn ?? true,
+          isMicOn: data.isMicOn ?? true,
+        } as any);
+      });
+
+      // Google Meet-style Join / Leave Toast Notifications
+      const currentIds = new Set(currentList.map((p) => p.sessionId || p.uid || p.name));
+      currentList.forEach((p) => {
+        const key = p.sessionId || p.uid || p.name;
+        if (!knownPeersRef.current.has(key)) {
+          knownPeersRef.current.add(key);
+          const toastId = "toast_" + Math.random().toString(36).slice(2);
+          setToasts((prev) => [...prev.slice(-2), { id: toastId, message: `${p.name} joined the meeting`, type: "join" }]);
+          setTimeout(() => setToasts((prev) => prev.filter((t) => t.id !== toastId)), 3500);
+        }
+      });
+
+      knownPeersRef.current.forEach((oldKey) => {
+        if (!currentIds.has(oldKey)) {
+          knownPeersRef.current.delete(oldKey);
+        }
+      });
+
+      setLivePeers(currentList);
+    });
+
+    const handleUnloadCleanup = () => {
+      try {
+        deleteDoc(peerDocRef).catch(() => {});
+        const leaveId = mySid || user?.uid || guestEmail;
+        if (leaveId) {
+          recordParticipantLeave(actualMeetingId, leaveId).catch(() => {});
+        }
+      } catch (_) {}
+    };
+
+    window.addEventListener("beforeunload", handleUnloadCleanup);
+    window.addEventListener("pagehide", handleUnloadCleanup);
+
+    return () => {
+      clearInterval(heartbeatTimer);
+      unsubPeers();
+      window.removeEventListener("beforeunload", handleUnloadCleanup);
+      window.removeEventListener("pagehide", handleUnloadCleanup);
+      handleUnloadCleanup();
+    };
+  }, [joined, actualMeetingId, user, guestName, guestEmail, isHost, isCoHost, isCamOn, isMicOn, isScreenSharing, isMe]);
+
   // ── 6. Host Waiting Room Real-Time Listener ─────────────────────
   useEffect(() => {
     if (!actualMeetingId || !hasHostControls) return;
@@ -694,34 +839,51 @@ export default function MeetRoomPage() {
     }
   };
 
-  // ── 8. Toggle Camera ────────────────────────────────────────────
+  // ── 8. Toggle Camera (Physical Hardware Release & Re-acquisition) ───
   const toggleCam = async () => {
-    if (!localStream) {
-      await initUserMedia();
-      return;
-    }
-    const videoTrack = localStream.getVideoTracks()[0];
-    if (videoTrack) {
-      videoTrack.enabled = !videoTrack.enabled;
-      setIsCamOn(videoTrack.enabled);
+    if (isCamOn) {
+      // Physically stop all video tracks to extinguish the webcam hardware LED
+      if (localStream) {
+        localStream.getVideoTracks().forEach((track) => {
+          track.stop();
+          localStream.removeTrack(track);
+        });
+      }
+      setIsCamOn(false);
+      Object.values(peerConnections.current).forEach((pc) => {
+        const sender = pc.getSenders().find((s) => s.track?.kind === "video");
+        if (sender) sender.replaceTrack(null);
+      });
+      if (actualMeetingId && mySessionIdRef.current) {
+        updateDoc(doc(db, "scheduledMeetings", actualMeetingId, "livePeers", mySessionIdRef.current), { isCamOn: false }).catch(() => {});
+      }
     } else {
+      // Turn on camera: acquire fresh video track and turn on webcam hardware
       try {
         const camStream = await navigator.mediaDevices.getUserMedia({
           video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: "user" },
         });
         const newTrack = camStream.getVideoTracks()[0];
-        localStream.addTrack(newTrack);
+        if (localStream) {
+          localStream.addTrack(newTrack);
+        } else {
+          setLocalStream(camStream);
+        }
         setIsCamOn(true);
+        const activeSt = localStream || camStream;
         if (joined && localVideoRef.current) {
-          localVideoRef.current.srcObject = localStream;
+          localVideoRef.current.srcObject = activeSt;
         } else if (!joined && prejoinVideoRef.current) {
-          prejoinVideoRef.current.srcObject = localStream;
+          prejoinVideoRef.current.srcObject = activeSt;
         }
         Object.values(peerConnections.current).forEach((pc) => {
           const sender = pc.getSenders().find((s) => s.track?.kind === "video");
           if (sender) sender.replaceTrack(newTrack);
-          else pc.addTrack(newTrack, localStream);
+          else pc.addTrack(newTrack, activeSt);
         });
+        if (actualMeetingId && mySessionIdRef.current) {
+          updateDoc(doc(db, "scheduledMeetings", actualMeetingId, "livePeers", mySessionIdRef.current), { isCamOn: true }).catch(() => {});
+        }
       } catch (err) {
         console.warn("Could not acquire camera track:", err);
       }
@@ -797,12 +959,13 @@ export default function MeetRoomPage() {
     }
   };
 
-  // Bind screenStream to screenVideoRef whenever it updates
+  // Bind screenStream to screenVideoRef whenever it updates and start playback
   useEffect(() => {
-    if (screenVideoRef.current && screenStream) {
+    if (isScreenSharing && screenVideoRef.current && screenStream) {
       screenVideoRef.current.srcObject = screenStream;
+      screenVideoRef.current.play().catch(() => {});
     }
-  }, [screenStream]);
+  }, [isScreenSharing, screenStream]);
 
   // ── 10. Participant Request Admission (Waiting Room Knock) ──────
   const handleRequestAdmission = async () => {
@@ -1931,6 +2094,19 @@ export default function MeetRoomPage() {
           </div>
         )}
 
+      </div>
+
+      {/* ── Google Meet Toast Notifications (Join/Leave Announcements) ── */}
+      <div className="fixed bottom-24 left-6 z-50 flex flex-col gap-2 pointer-events-none">
+        {toasts.map((t) => (
+          <div
+            key={t.id}
+            className="bg-slate-900/95 border border-slate-700/90 text-white text-xs font-semibold px-4 py-2.5 rounded-2xl shadow-2xl backdrop-blur-md flex items-center gap-2.5 animate-in fade-in slide-in-from-bottom-2"
+          >
+            <span className={`w-2 h-2 rounded-full ${t.type === "join" ? "bg-emerald-400 animate-pulse" : "bg-red-400"}`} />
+            <span>{t.message}</span>
+          </div>
+        ))}
       </div>
 
       {/* ── BOTTOM CONTROLS BAR ────────────────────────────────── */}
