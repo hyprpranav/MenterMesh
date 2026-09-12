@@ -26,6 +26,7 @@ import {
   onSnapshot,
   query,
   orderBy,
+  where,
 } from "firebase/firestore";
 import { db } from "@/lib/firebase/config";
 import {
@@ -71,6 +72,79 @@ interface WaitingRoomRequest {
   requestedAt: number;
 }
 
+// ── Remote Participant Card with Live Video / Avatar Fallback ──────
+function RemoteParticipantCard({
+  peer,
+  stream,
+  isHost,
+}: {
+  peer: LiveMeetingParticipant;
+  stream?: MediaStream | null;
+  isHost?: boolean;
+}) {
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const [hasVideoTrack, setHasVideoTrack] = useState(false);
+
+  useEffect(() => {
+    if (videoRef.current && stream) {
+      videoRef.current.srcObject = stream;
+      const vTrack = stream.getVideoTracks()[0];
+      if (vTrack) {
+        setHasVideoTrack(vTrack.enabled && vTrack.readyState === "live");
+        const handleTrackState = () => {
+          setHasVideoTrack(vTrack.enabled && vTrack.readyState === "live");
+        };
+        vTrack.addEventListener("mute", handleTrackState);
+        vTrack.addEventListener("unmute", handleTrackState);
+        vTrack.addEventListener("ended", handleTrackState);
+        return () => {
+          vTrack.removeEventListener("mute", handleTrackState);
+          vTrack.removeEventListener("unmute", handleTrackState);
+          vTrack.removeEventListener("ended", handleTrackState);
+        };
+      } else {
+        setHasVideoTrack(false);
+      }
+    } else {
+      setHasVideoTrack(false);
+    }
+  }, [stream]);
+
+  return (
+    <div className="relative w-full h-full min-h-[220px] bg-slate-900 rounded-3xl overflow-hidden border-2 border-slate-800 shadow-2xl flex items-center justify-center group transition-all">
+      <video
+        ref={videoRef}
+        autoPlay
+        playsInline
+        className={`w-full h-full object-cover ${!hasVideoTrack ? "hidden" : ""}`}
+      />
+      {!hasVideoTrack && (
+        <div className="flex flex-col items-center gap-2.5 p-4 text-center">
+          <Avatar
+            name={peer.name}
+            photoUrl={peer.photoUrl}
+            size="lg"
+            className="w-20 h-20 text-2xl ring-4 ring-slate-800 bg-slate-800 text-white shadow-xl"
+          />
+          <div>
+            <p className="text-slate-200 text-sm font-bold truncate max-w-[200px]">{peer.name}</p>
+            <span className="inline-block mt-1 text-[10px] text-slate-400 capitalize px-2 py-0.5 rounded-full bg-slate-800/80 border border-slate-700/80">
+              {peer.role || "Participant"}
+            </span>
+          </div>
+        </div>
+      )}
+
+      {/* Bottom tag info */}
+      <div className="absolute bottom-3.5 left-3.5 flex items-center gap-2 bg-slate-950/80 backdrop-blur-md px-3.5 py-1.5 rounded-full text-xs font-bold border border-slate-700/80">
+        <span className="truncate max-w-[120px]">{peer.name}</span>
+        {isHost && <span className="text-[10px] text-amber-400 font-semibold">★ Host</span>}
+        <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+      </div>
+    </div>
+  );
+}
+
 export default function MeetRoomPage() {
   const params = useParams();
   const router = useRouter();
@@ -111,6 +185,191 @@ export default function MeetRoomPage() {
 
   // ── Remote Peers & WebRTC Connections ──────────────────────────
   const peerConnections = useRef<Record<string, RTCPeerConnection>>({});
+  const [remoteStreams, setRemoteStreams] = useState<Record<string, MediaStream>>({});
+  const mySessionIdRef = useRef<string>("");
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      let sid = sessionStorage.getItem(`mm_meet_sid_${actualMeetingId}`);
+      if (!sid) {
+        sid = "sid_" + Math.random().toString(36).slice(2, 9) + "_" + Date.now();
+        sessionStorage.setItem(`mm_meet_sid_${actualMeetingId}`, sid);
+      }
+      mySessionIdRef.current = sid;
+    }
+  }, [actualMeetingId]);
+
+  // ── Helper to distinguish current user vs remote peers ─────────
+  const isMe = useCallback(
+    (p: LiveMeetingParticipant) => {
+      if (mySessionIdRef.current && p.sessionId) {
+        return p.sessionId === mySessionIdRef.current;
+      }
+      if (p.uid && user?.uid) {
+        return p.uid === user.uid;
+      }
+      return false;
+    },
+    [user?.uid]
+  );
+
+  const remoteParticipants = (meeting?.attendance || []).filter(
+    (p) => !isMe(p) && p.joined && p.status !== "left"
+  );
+  const totalParticipants = 1 + remoteParticipants.length;
+
+  // ── WebRTC Peer Connection Factory ──────────────────────────────
+  const createPeerConnection = useCallback(
+    (peerKey: string) => {
+      if (peerConnections.current[peerKey]) {
+        try {
+          peerConnections.current[peerKey].close();
+        } catch (_) {}
+      }
+
+      const pc = new RTCPeerConnection({
+        iceServers: [
+          { urls: ["stun:stun.l.google.com:19302", "stun:stun1.l.google.com:19302"] },
+        ],
+      });
+
+      if (localStream) {
+        localStream.getTracks().forEach((track) => {
+          pc.addTrack(track, localStream);
+        });
+      }
+
+      pc.onicecandidate = (event) => {
+        if (event.candidate && actualMeetingId && mySessionIdRef.current) {
+          addDoc(collection(db, "scheduledMeetings", actualMeetingId, "signals"), {
+            from: mySessionIdRef.current,
+            to: peerKey,
+            type: "candidate",
+            candidate: JSON.stringify(event.candidate),
+            createdAt: Date.now(),
+          }).catch(() => {});
+        }
+      };
+
+      pc.ontrack = (event) => {
+        const stream = event.streams[0] || new MediaStream([event.track]);
+        setRemoteStreams((prev) => ({
+          ...prev,
+          [peerKey]: stream,
+        }));
+      };
+
+      peerConnections.current[peerKey] = pc;
+      return pc;
+    },
+    [actualMeetingId, localStream]
+  );
+
+  // ── WebRTC Incoming Signals Listener ────────────────────────────
+  useEffect(() => {
+    if (!joined || !actualMeetingId || !mySessionIdRef.current) return;
+    const mySid = mySessionIdRef.current;
+
+    const signalsCol = collection(db, "scheduledMeetings", actualMeetingId, "signals");
+    const q = query(signalsCol, where("to", "==", mySid));
+
+    const unsub = onSnapshot(
+      q,
+      async (snap) => {
+        for (const change of snap.docChanges()) {
+          if (change.type !== "added") continue;
+          const data = change.doc.data();
+          const fromSid = data.from;
+          if (!fromSid || fromSid === mySid) continue;
+
+          try {
+            if (data.type === "offer") {
+              let pc = peerConnections.current[fromSid];
+              if (!pc || pc.connectionState === "closed") {
+                pc = createPeerConnection(fromSid);
+              }
+              await pc.setRemoteDescription(new RTCSessionDescription(JSON.parse(data.sdp)));
+              const answer = await pc.createAnswer();
+              await pc.setLocalDescription(answer);
+
+              await addDoc(signalsCol, {
+                from: mySid,
+                to: fromSid,
+                type: "answer",
+                sdp: JSON.stringify(answer),
+                createdAt: Date.now(),
+              });
+            } else if (data.type === "answer") {
+              const pc = peerConnections.current[fromSid];
+              if (pc && pc.signalingState === "have-local-offer") {
+                await pc.setRemoteDescription(new RTCSessionDescription(JSON.parse(data.sdp)));
+              }
+            } else if (data.type === "candidate") {
+              const pc = peerConnections.current[fromSid];
+              if (pc && data.candidate) {
+                await pc.addIceCandidate(new RTCIceCandidate(JSON.parse(data.candidate))).catch(() => {});
+              }
+            }
+          } catch (err) {
+            console.warn("Signaling process error:", err);
+          }
+        }
+      },
+      (err) => {
+        console.warn("Signal listener notice:", err?.message);
+      }
+    );
+
+    return () => unsub();
+  }, [joined, actualMeetingId, createPeerConnection]);
+
+  // ── WebRTC Mesh Initiator (for remote peers) ────────────────────
+  useEffect(() => {
+    if (!joined || !actualMeetingId || !mySessionIdRef.current) return;
+    const mySid = mySessionIdRef.current;
+
+    remoteParticipants.forEach(async (peer) => {
+      const peerKey = peer.sessionId || peer.uid;
+      if (!peerKey || peerKey === mySid) return;
+
+      // Deterministic initiator: smaller session ID initiates
+      if (mySid < peerKey && !peerConnections.current[peerKey]) {
+        try {
+          const pc = createPeerConnection(peerKey);
+          const offer = await pc.createOffer();
+          await pc.setLocalDescription(offer);
+
+          await addDoc(collection(db, "scheduledMeetings", actualMeetingId, "signals"), {
+            from: mySid,
+            to: peerKey,
+            type: "offer",
+            sdp: JSON.stringify(offer),
+            createdAt: Date.now(),
+          });
+        } catch (err) {
+          console.warn("Failed creating WebRTC offer for peer:", peerKey, err);
+        }
+      }
+    });
+  }, [joined, actualMeetingId, remoteParticipants, createPeerConnection]);
+
+  // ── Sync local tracks across peer connections on toggle ────────
+  useEffect(() => {
+    if (!localStream) return;
+    const videoTrack = localStream.getVideoTracks()[0];
+    const audioTrack = localStream.getAudioTracks()[0];
+
+    Object.values(peerConnections.current).forEach((pc) => {
+      if (pc.signalingState === "closed") return;
+      pc.getSenders().forEach((sender) => {
+        if (sender.track?.kind === "video" && videoTrack) {
+          sender.replaceTrack(videoTrack).catch(() => {});
+        } else if (sender.track?.kind === "audio" && audioTrack) {
+          sender.replaceTrack(audioTrack).catch(() => {});
+        }
+      });
+    });
+  }, [localStream, isCamOn, isMicOn]);
 
   // ── Chat & Signaling ───────────────────────────────────────────
   const [chatMessages, setChatMessages] = useState<InMeetingChatMessage[]>([]);
@@ -199,9 +458,19 @@ export default function MeetRoomPage() {
       const currentUserEmail = user?.email || guestEmail.trim();
       const currentUserPhoto = user?.profilePhoto || user?.professionalPhoto || "";
 
-      // Record participant join in Firestore attendance with profile photo
+      if (!mySessionIdRef.current && typeof window !== "undefined") {
+        let sid = sessionStorage.getItem(`mm_meet_sid_${targetMeetingId}`);
+        if (!sid) {
+          sid = "sid_" + Math.random().toString(36).slice(2, 9) + "_" + Date.now();
+          sessionStorage.setItem(`mm_meet_sid_${targetMeetingId}`, sid);
+        }
+        mySessionIdRef.current = sid;
+      }
+
+      // Record participant join in Firestore attendance with profile photo and sessionId
       await recordParticipantJoin(targetMeetingId, {
         uid: user?.uid || undefined,
+        sessionId: mySessionIdRef.current,
         name: currentUserName,
         email: currentUserEmail,
         photoUrl: currentUserPhoto,
@@ -627,29 +896,38 @@ export default function MeetRoomPage() {
   };
 
   // ── 16. Leave Meeting Only (Keep Room Live for Everyone Else) ───
-  const handleLeaveMeetingOnly = async () => {
-    if (localStream) {
-      localStream.getTracks().forEach((t) => t.stop());
-      setLocalStream(null);
-    }
-    if (screenTrackRef.current) {
-      screenTrackRef.current.stop();
-      screenTrackRef.current = null;
-      setScreenStream(null);
-    }
-    Object.values(peerConnections.current).forEach((pc) => pc.close());
-
-    if (user?.uid || guestEmail.trim()) {
-      await recordParticipantLeave(actualMeetingId, user?.uid || guestEmail.trim());
+  const handleLeaveMeetingOnly = () => {
+    try {
+      if (localStream) {
+        localStream.getTracks().forEach((t) => t.stop());
+        setLocalStream(null);
+      }
+      if (screenTrackRef.current) {
+        screenTrackRef.current.stop();
+        screenTrackRef.current = null;
+        setScreenStream(null);
+      }
+      Object.values(peerConnections.current).forEach((pc) => {
+        try { pc.close(); } catch (_) {}
+      });
+    } catch (e) {
+      console.warn("Cleanup error on leave:", e);
     }
 
     setShowLeaveModal(false);
     success("You have left the meeting. The room remains active and you can rejoin anytime.");
     router.push("/meetings");
+
+    const leaveId = mySessionIdRef.current || user?.uid || guestEmail.trim();
+    if (leaveId) {
+      recordParticipantLeave(actualMeetingId, leaveId).catch((err) => {
+        console.warn("Background recordParticipantLeave failed:", err);
+      });
+    }
   };
 
   // ── 17. Host End Meeting for All -> Closes Call, Submits Report ─
-  const handleEndMeetingForAll = async () => {
+  const handleEndMeetingForAll = () => {
     if (!meeting) return;
 
     try {
@@ -662,15 +940,19 @@ export default function MeetRoomPage() {
         screenTrackRef.current = null;
         setScreenStream(null);
       }
-      Object.values(peerConnections.current).forEach((pc) => pc.close());
-
-      await endLiveMeeting(actualMeetingId, user?.uid || meeting.hostId);
-      setShowLeaveModal(false);
-      setShowSummaryModal(true);
-    } catch (err: any) {
-      console.error("Error ending live meeting:", err);
-      error(err.message || "Failed to end meeting.");
+      Object.values(peerConnections.current).forEach((pc) => {
+        try { pc.close(); } catch (_) {}
+      });
+    } catch (e) {
+      console.warn("Cleanup error on end:", e);
     }
+
+    setShowLeaveModal(false);
+    setShowSummaryModal(true);
+
+    endLiveMeeting(actualMeetingId, user?.uid || meeting.hostId).catch((err) => {
+      console.warn("Background endLiveMeeting failed:", err);
+    });
   };
 
   const handleCutCallClick = () => {
@@ -1134,7 +1416,7 @@ export default function MeetRoomPage() {
                   {!isCamOn && (
                     <div className="flex flex-col items-center gap-1.5">
                       <Avatar
-                        name={user?.name || "You"}
+                        name={user?.name || guestName || "You"}
                         photoUrl={user?.profilePhoto || user?.professionalPhoto}
                         size="md"
                         className="w-12 h-12 text-base ring-2 ring-slate-700"
@@ -1143,41 +1425,39 @@ export default function MeetRoomPage() {
                     </div>
                   )}
                   <div className="absolute bottom-2 left-2 flex items-center gap-1.5 bg-slate-950/80 backdrop-blur px-2.5 py-1 rounded-full text-[11px] font-bold border border-slate-700">
-                    <span className="truncate max-w-[90px]">{user?.name || "You"} (You)</span>
+                    <span className="truncate max-w-[90px]">{user?.name || guestName || "You"} (You)</span>
                     {!isMicOn && <MicOff size={11} className="text-red-400" />}
                   </div>
                 </div>
 
                 {/* Remote peer cards */}
-                {meeting.attendance
-                  ?.filter((p) => p.uid !== user?.uid && p.joined)
-                  .map((peer, idx) => (
-                    <div
-                      key={peer.uid || idx}
-                      className="relative w-48 lg:w-full aspect-video bg-slate-900 rounded-2xl overflow-hidden border border-slate-800 shadow-md flex items-center justify-center shrink-0"
-                    >
-                      <div className="flex flex-col items-center gap-1.5">
-                        <Avatar
-                          name={peer.name}
-                          photoUrl={peer.photoUrl || (peer.uid === user?.uid ? user?.profilePhoto : undefined)}
-                          size="md"
-                          className="w-12 h-12 text-base ring-2 ring-slate-700 bg-slate-800 text-white"
-                        />
-                        <span className="text-[11px] text-slate-300 font-bold truncate max-w-[120px]">{peer.name}</span>
-                        <span className="text-[9px] text-slate-500 capitalize">{peer.role}</span>
-                      </div>
-                      <div className="absolute bottom-2 left-2 flex items-center gap-1.5 bg-slate-950/80 backdrop-blur px-2.5 py-1 rounded-full text-[11px] font-bold border border-slate-700">
-                        <span className="truncate max-w-[90px]">{peer.name}</span>
-                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                      </div>
-                    </div>
-                  ))}
+                {remoteParticipants.map((peer, idx) => (
+                  <div
+                    key={peer.sessionId || peer.uid || idx}
+                    className="relative w-48 lg:w-full aspect-video bg-slate-900 rounded-2xl overflow-hidden border border-slate-800 shadow-md flex items-center justify-center shrink-0"
+                  >
+                    <RemoteParticipantCard
+                      peer={peer}
+                      stream={remoteStreams[peer.sessionId || peer.uid || ""]}
+                      isHost={peer.uid === meeting.hostId || peer.role === "host"}
+                    />
+                  </div>
+                ))}
               </div>
 
             </div>
           ) : (
-            <div className="w-full h-full max-w-6xl max-h-[82vh] grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 gap-4 items-center justify-center">
-              
+            <div
+              className={`w-full h-full max-h-[82vh] transition-all ${
+                totalParticipants === 1
+                  ? "max-w-4xl mx-auto flex flex-col items-center justify-center p-2"
+                  : totalParticipants === 2
+                  ? "max-w-6xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-4 items-center justify-center p-2"
+                  : totalParticipants <= 4
+                  ? "max-w-6xl mx-auto grid grid-cols-1 sm:grid-cols-2 gap-4 items-center justify-center p-2"
+                  : "max-w-7xl mx-auto grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 items-center justify-center overflow-y-auto p-2"
+              }`}
+            >
               {/* Local Video Tile */}
               <div className="relative w-full h-full min-h-[240px] bg-slate-900 rounded-3xl overflow-hidden border-2 border-slate-700/90 shadow-2xl flex items-center justify-center">
                 <video
@@ -1191,7 +1471,7 @@ export default function MeetRoomPage() {
                 {!isCamOn && (
                   <div className="flex flex-col items-center gap-2">
                     <Avatar
-                      name={user?.name || "You"}
+                      name={user?.name || guestName || "You"}
                       photoUrl={user?.profilePhoto || user?.professionalPhoto}
                       size="lg"
                       className="w-20 h-20 text-2xl ring-4 ring-slate-800"
@@ -1202,7 +1482,7 @@ export default function MeetRoomPage() {
 
                 {/* Bottom tag info */}
                 <div className="absolute bottom-3.5 left-3.5 flex items-center gap-2 bg-slate-950/80 backdrop-blur-md px-3.5 py-1.5 rounded-full text-xs font-bold border border-slate-700/80">
-                  <span>{user?.name || "You"} (You)</span>
+                  <span>{user?.name || guestName || "You"} (You)</span>
                   {isHost && <span className="text-[10px] text-amber-400">★ Host</span>}
                   {!isMicOn && <MicOff size={13} className="text-red-400 ml-1" />}
                 </div>
@@ -1215,68 +1495,49 @@ export default function MeetRoomPage() {
                 )}
               </div>
 
-              {/* Remote Peer Tiles / Attendees with Profile Photos */}
-              {meeting.attendance
-                ?.filter((p) => p.uid !== user?.uid && p.joined)
-                .slice(0, 3)
-                .map((peer, idx) => (
-                  <div
-                    key={peer.uid || idx}
-                    className="relative w-full h-full min-h-[240px] bg-slate-900 rounded-3xl overflow-hidden border-2 border-slate-800 shadow-2xl flex items-center justify-center"
-                  >
-                    <div className="flex flex-col items-center gap-2">
-                      <Avatar
-                        name={peer.name}
-                        photoUrl={peer.photoUrl || (peer.uid === user?.uid ? user?.profilePhoto : undefined)}
-                        size="lg"
-                        className="w-20 h-20 text-2xl ring-4 ring-slate-800 bg-slate-800 text-white"
-                      />
-                      <p className="text-slate-300 text-xs font-bold">{peer.name}</p>
-                      <span className="text-[10px] text-slate-500 capitalize">{peer.role}</span>
-                    </div>
+              {/* Remote Peer Cards */}
+              {remoteParticipants.map((peer, idx) => {
+                const peerKey = peer.sessionId || peer.uid || `peer_${idx}`;
+                return (
+                  <RemoteParticipantCard
+                    key={peerKey}
+                    peer={peer}
+                    stream={remoteStreams[peer.sessionId || peer.uid || ""]}
+                    isHost={peer.uid === meeting.hostId || peer.role === "host"}
+                  />
+                );
+              })}
 
-                    <div className="absolute bottom-3.5 left-3.5 flex items-center gap-2 bg-slate-950/80 backdrop-blur-md px-3.5 py-1.5 rounded-full text-xs font-bold border border-slate-700/80">
-                      <span>{peer.name}</span>
-                      <span className="w-2 h-2 rounded-full bg-emerald-500" />
-                    </div>
-                  </div>
-                ))}
-
-              {/* Placeholder if host is alone in room */}
-              {(!meeting.attendance || meeting.attendance.filter((p) => p.uid !== user?.uid && p.joined).length === 0) && (
-                <div className="w-full h-full min-h-[240px] bg-slate-900/50 rounded-3xl border-2 border-dashed border-slate-800 flex flex-col items-center justify-center p-6 text-center space-y-3">
-                  <div className="w-12 h-12 rounded-2xl bg-slate-800 flex items-center justify-center text-slate-400">
-                    <Users size={24} />
-                  </div>
-                  <div>
-                    <h4 className="text-sm font-bold text-white">Waiting for participants to join</h4>
-                    <p className="text-xs text-slate-400 mt-1 max-w-xs">
-                      Share the 4-digit code <strong className="text-blue-400 font-mono">{meetingCodeDisplay}</strong> or copy the room link.
-                    </p>
-                  </div>
+              {/* In-room helper banner if host or participant is alone */}
+              {totalParticipants === 1 && (
+                <div className="mt-4 flex flex-wrap items-center justify-center gap-3 bg-slate-900/90 backdrop-blur border border-slate-800 px-5 py-3 rounded-2xl text-xs text-slate-300 shadow-xl">
                   <div className="flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                    <span>Meeting Live • Code:</span>
+                    <strong className="text-blue-400 font-mono text-sm tracking-wider">{meetingCodeDisplay}</strong>
+                  </div>
+                  <div className="flex items-center gap-2 ml-2">
                     <Button
                       size="sm"
                       variant="outline"
                       icon={<Copy size={13} />}
                       onClick={handleCopyCode}
-                      className="text-xs text-slate-300 hover:text-white border-slate-700 rounded-xl"
+                      className="text-xs h-8 px-3 rounded-xl border-slate-700 hover:text-white"
                     >
-                      Copy Code ({meetingCodeDisplay})
+                      Copy Code
                     </Button>
                     <Button
                       size="sm"
                       variant="outline"
                       icon={<Copy size={13} />}
                       onClick={handleCopyLink}
-                      className="text-xs text-slate-300 hover:text-white border-slate-700 rounded-xl"
+                      className="text-xs h-8 px-3 rounded-xl border-slate-700 hover:text-white"
                     >
-                      Copy URL
+                      Copy Link
                     </Button>
                   </div>
                 </div>
               )}
-
             </div>
           )}
         </div>
@@ -1360,7 +1621,7 @@ export default function MeetRoomPage() {
             <div className="flex-1 p-4 overflow-y-auto space-y-2">
               {meeting.attendance?.map((p, idx) => (
                 <div
-                  key={p.uid || idx}
+                  key={p.sessionId || p.uid || idx}
                   className="flex items-center justify-between p-2.5 rounded-xl bg-slate-800/50 border border-slate-700/50"
                 >
                   <div className="flex items-center gap-2.5 min-w-0">

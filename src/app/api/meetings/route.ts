@@ -108,34 +108,6 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Notify staff and master users (Deterministic single notification)
-    try {
-      const staffSnap = await adminDb
-        .collection("users")
-        .where("role", "in", ["staff", "master"])
-        .get();
-
-      const staffTitle = `Live / Scheduled Meeting: ${meetingData.title}`;
-      const staffMsg = `Hosted by ${meetingData.hostName} (Code: ${code}). Staff & Admin can join directly at any time.`;
-
-      for (const staffDoc of staffSnap.docs) {
-        if (staffDoc.id === meetingData.hostId) continue;
-        const notifId = `meeting_live_${docRef.id}_${staffDoc.id}`;
-        await adminDb.collection("notifications").doc(notifId).set({
-          recipientId: staffDoc.id,
-          title: staffTitle,
-          message: staffMsg,
-          type: "meeting",
-          read: false,
-          priority: "high",
-          link: `/meet/${code}`,
-          createdAt: FieldValue.serverTimestamp(),
-        }, { merge: true });
-      }
-    } catch (e) {
-      console.warn("Failed to notify staff via admin:", e);
-    }
-
     return NextResponse.json({
       success: true,
       id: docRef.id,
@@ -172,16 +144,24 @@ export async function PATCH(req: NextRequest) {
 
     if (action === "join" && participant) {
       const currentAttendance = meeting.attendance || [];
-      const index = currentAttendance.findIndex(
-        (p: any) =>
-          (participant.uid && p.uid === participant.uid) ||
-          (participant.email && p.email === participant.email)
-      );
+      const index = currentAttendance.findIndex((p: any) => {
+        if (participant.sessionId && p.sessionId) {
+          return p.sessionId === participant.sessionId;
+        }
+        if (participant.uid && p.uid) {
+          return p.uid === participant.uid;
+        }
+        if (participant.email && p.email) {
+          return p.email === participant.email;
+        }
+        return false;
+      });
 
       let updatedList = [...currentAttendance];
       if (index >= 0) {
         updatedList[index] = {
           ...updatedList[index],
+          sessionId: participant.sessionId || updatedList[index].sessionId,
           joined: true,
           joinTime: updatedList[index].joinTime || now,
           photoUrl: participant.photoUrl || updatedList[index].photoUrl || "",
@@ -190,6 +170,7 @@ export async function PATCH(req: NextRequest) {
       } else {
         updatedList.push({
           uid: participant.uid || "",
+          sessionId: participant.sessionId || "",
           name: participant.name || "Guest",
           email: participant.email || "",
           photoUrl: participant.photoUrl || "",
@@ -216,10 +197,14 @@ export async function PATCH(req: NextRequest) {
       return NextResponse.json({ success: true });
     }
 
-    if (action === "leave" && participant?.uid) {
+    if (action === "leave" && (participant?.sessionId || participant?.uid || participant?.email)) {
       const currentAttendance = meeting.attendance || [];
       const updatedList = currentAttendance.map((p: any) => {
-        if (p.uid === participant.uid || p.email === participant.email) {
+        if (
+          (participant.sessionId && p.sessionId === participant.sessionId) ||
+          (participant.uid && p.uid === participant.uid) ||
+          (participant.email && p.email === participant.email)
+        ) {
           const joinMs = p.joinTime ? new Date(p.joinTime).getTime() : Date.now();
           const leaveMs = Date.now();
           const durationMin = Math.max(1, Math.round((leaveMs - joinMs) / (1000 * 60)));
@@ -294,30 +279,6 @@ export async function PATCH(req: NextRequest) {
         updatedAt: FieldValue.serverTimestamp(),
       });
 
-      // Notify staff (Deterministic single notification: exactly one notification per staff user)
-      try {
-        const staffSnap = await adminDb.collection("users").where("role", "in", ["staff", "master"]).get();
-        const reviewTitle = `Meeting Ended & Report Ready: ${meeting.title}`;
-        const presentCount = updatedAttendance.filter((p: any) => p.status === "present" || p.joined).length;
-        const reviewMsg = `Hosted by ${meeting.hostName}. ${presentCount} attended. Review attendance breakdown and approve.`;
-
-        for (const staffDoc of staffSnap.docs) {
-          const notifId = `meeting_ended_${meetingId}_${staffDoc.id}`;
-          await adminDb.collection("notifications").doc(notifId).set({
-            recipientId: staffDoc.id,
-            title: reviewTitle,
-            message: reviewMsg,
-            type: "meeting",
-            read: false,
-            priority: "high",
-            link: `/meetings/live/${meetingId}/review`,
-            createdAt: FieldValue.serverTimestamp(),
-          }, { merge: true });
-        }
-      } catch (err) {
-        console.warn("Failed to notify staff via admin on end meeting:", err);
-      }
-
       return NextResponse.json({ success: true });
     }
 
@@ -329,25 +290,6 @@ export async function PATCH(req: NextRequest) {
         summarySubmittedAt: FieldValue.serverTimestamp(),
         updatedAt: FieldValue.serverTimestamp(),
       });
-
-      try {
-        const staffSnap = await adminDb.collection("users").where("role", "in", ["staff", "master"]).get();
-        for (const staffDoc of staffSnap.docs) {
-          const notifId = `meeting_summary_${meetingId}_${staffDoc.id}`;
-          await adminDb.collection("notifications").doc(notifId).set({
-            recipientId: staffDoc.id,
-            title: "Meeting Report Submitted",
-            message: `Meeting '${meeting.title}' report has been submitted by ${meeting.hostName} for review.`,
-            type: "meeting",
-            read: false,
-            priority: "high",
-            link: `/meetings/live/${meetingId}/review`,
-            createdAt: FieldValue.serverTimestamp(),
-          }, { merge: true });
-        }
-      } catch (err) {
-        console.warn("Failed to notify staff about summary via admin:", err);
-      }
 
       return NextResponse.json({ success: true });
     }

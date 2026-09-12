@@ -959,31 +959,6 @@ export async function createScheduledMeeting(
     }
   }
 
-  // Automatically notify Staff and Admin (Master) users so they can join whenever they want
-  try {
-    const staffQuery = query(collection(db, "users"), where("role", "in", ["staff", "master"]));
-    const staffSnap = await getDocs(staffQuery);
-    const staffTitle = `Live / Scheduled Meeting: ${data.title}`;
-    const staffMsg = `Hosted by ${data.hostName} (Code: ${code}). Staff & Admin can join directly at any time.`;
-
-    for (const staffDoc of staffSnap.docs) {
-      if (staffDoc.id === data.hostId) continue;
-      const notifDocId = `meeting_live_${ref.id}_${staffDoc.id}`;
-      await setDoc(doc(db, "notifications", notifDocId), {
-        recipientId: staffDoc.id,
-        title: staffTitle,
-        message: staffMsg,
-        type: "meeting",
-        read: false,
-        priority: "high",
-        link: `/meet/${code}`,
-        createdAt: serverTimestamp(),
-      }, { merge: true });
-    }
-  } catch (err) {
-    console.warn("Failed to notify staff/master users of new meeting:", err);
-  }
-
   return ref.id;
 }
 
@@ -1141,10 +1116,19 @@ export async function recordParticipantJoin(
     const currentAttendance = meeting.attendance || [];
     const now = new Date().toISOString();
 
-    // Find if already in attendance
-    const index = currentAttendance.findIndex(
-      (p) => (participant.uid && p.uid === participant.uid) || (participant.email && p.email === participant.email)
-    );
+    // Find if already in attendance by sessionId or uid or email
+    const index = currentAttendance.findIndex((p) => {
+      if (participant.sessionId && p.sessionId) {
+        return p.sessionId === participant.sessionId;
+      }
+      if (participant.uid && p.uid) {
+        return p.uid === participant.uid;
+      }
+      if (participant.email && p.email) {
+        return p.email === participant.email;
+      }
+      return false;
+    });
 
     let updatedList = [...currentAttendance];
 
@@ -1152,6 +1136,7 @@ export async function recordParticipantJoin(
       // Update existing record
       updatedList[index] = {
         ...updatedList[index],
+        sessionId: participant.sessionId || updatedList[index].sessionId,
         joined: true,
         joinTime: updatedList[index].joinTime || now,
         photoUrl: participant.photoUrl || updatedList[index].photoUrl || "",
@@ -1161,6 +1146,7 @@ export async function recordParticipantJoin(
       // Add new participant
       updatedList.push({
         uid: participant.uid || "",
+        sessionId: participant.sessionId || "",
         name: participant.name || "Guest",
         email: participant.email || "",
         photoUrl: participant.photoUrl || "",
@@ -1217,7 +1203,11 @@ export async function recordParticipantLeave(
     const now = new Date().toISOString();
 
     const updatedList = currentAttendance.map((p) => {
-      if (p.uid === participantUidOrEmail || p.email === participantUidOrEmail) {
+      if (
+        (participantUidOrEmail && p.sessionId === participantUidOrEmail) ||
+        (participantUidOrEmail && p.uid === participantUidOrEmail) ||
+        (participantUidOrEmail && p.email === participantUidOrEmail)
+      ) {
         const joinMs = p.joinTime ? new Date(p.joinTime as string).getTime() : Date.now();
         const leaveMs = Date.now();
         const durationMin = Math.max(1, Math.round((leaveMs - joinMs) / (1000 * 60)));
@@ -1317,31 +1307,6 @@ export async function endLiveMeeting(meetingId: string, hostId: string): Promise
       attendance: updatedAttendance,
       updatedAt: serverTimestamp(),
     });
-
-    // Automatically notify Staff & Master Admin that meeting attendance record is ready for review
-    try {
-      const staffQuery = query(collection(db, "users"), where("role", "in", ["staff", "master"]));
-      const staffSnap = await getDocs(staffQuery);
-      const reviewTitle = `Meeting Ended & Report Ready: ${meeting.title}`;
-      const presentCount = updatedAttendance.filter((p) => p.status === "present" || p.joined).length;
-      const reviewMsg = `Hosted by ${meeting.hostName}. ${presentCount} attended. Review attendance breakdown and approve.`;
-
-      for (const staffDoc of staffSnap.docs) {
-        const notifDocId = `meeting_ended_${meetingId}_${staffDoc.id}`;
-        await setDoc(doc(db, "notifications", notifDocId), {
-          recipientId: staffDoc.id,
-          title: reviewTitle,
-          message: reviewMsg,
-          type: "meeting",
-          read: false,
-          priority: "high",
-          link: `/meetings/live/${meetingId}/review`,
-          createdAt: serverTimestamp(),
-        }, { merge: true });
-      }
-    } catch (err) {
-      console.warn("Failed to notify staff/master users of completed meeting report:", err);
-    }
   } catch (err) {
     console.warn("Direct endLiveMeeting failed, falling back to server API:", err);
     try {
@@ -1384,28 +1349,6 @@ export async function submitPostMeetingSummary(
       summarySubmittedAt: now,
       updatedAt: now,
     });
-
-    // Notify Staff and Masters
-    try {
-      const staffAndMasters = await getDocs(
-        query(collection(db, "users"), where("role", "in", ["staff", "master"]))
-      );
-      for (const d of staffAndMasters.docs) {
-        const notifDocId = `meeting_summary_${meetingId}_${d.id}`;
-        await setDoc(doc(db, "notifications", notifDocId), {
-          recipientId: d.id,
-          title: "Meeting Report Submitted",
-          message: `Meeting '${meeting.title}' report has been submitted by ${meeting.hostName} for review.`,
-          type: "meeting",
-          read: false,
-          priority: "high",
-          link: `/meetings/live/${meetingId}/review`,
-          createdAt: now,
-        }, { merge: true });
-      }
-    } catch (err) {
-      console.warn("Failed to notify staff about meeting summary", err);
-    }
   } catch (err) {
     console.warn("Direct submitPostMeetingSummary failed, falling back to server API:", err);
     try {

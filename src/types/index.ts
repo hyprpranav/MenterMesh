@@ -306,6 +306,7 @@ export type LiveMeetingParticipantRole = "host" | "co_host" | "participant" | "e
 
 export interface LiveMeetingParticipant {
   uid?: string;
+  sessionId?: string;
   name: string;
   email: string;
   photoUrl?: string;
